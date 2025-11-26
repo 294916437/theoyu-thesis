@@ -1,0 +1,13 @@
+dist
+node_modules
+coverage
+.vscode
+*.min.js
+package-lock.yaml
+*.svg
+*.png
+*.jpg
+*.jpeg
+*.gif
+.github
+public

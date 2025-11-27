@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.theoyu.thesis.media.biz.model.mapper.RoomMessagePOMapper">
+  <resultMap id="BaseResultMap" type="com.theoyu.thesis.media.biz.model.entity.RoomMessagePO">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="room_id" jdbcType="BIGINT" property="roomId" />
+    <result column="sender_id" jdbcType="BIGINT" property="senderId" />
+    <result column="type" jdbcType="TINYINT" property="type" />
+    <result column="content_uuid" jdbcType="VARCHAR" property="contentUuid" />
+    <result column="is_recalled" jdbcType="BIT" property="isRecalled" />
+    <result column="created_time" jdbcType="TIMESTAMP" property="createdTime" />
+    <result column="updated_time" jdbcType="TIMESTAMP" property="updatedTime" />
+  </resultMap>
+  <sql id="Base_Column_List">
+    id, room_id, sender_id, `type`, content_uuid, is_recalled, created_time, updated_time
+  </sql>
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select 
+    <include refid="Base_Column_List" />
+    from t_room_message
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from t_room_message
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+  <insert id="insert" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomMessagePO">
+    insert into t_room_message (id, room_id, sender_id, 
+      `type`, content_uuid, is_recalled, 
+      created_time, updated_time)
+    values (#{id,jdbcType=BIGINT}, #{roomId,jdbcType=BIGINT}, #{senderId,jdbcType=BIGINT}, 
+      #{type,jdbcType=TINYINT}, #{contentUuid,jdbcType=VARCHAR}, #{isRecalled,jdbcType=BIT}, 
+      #{createdTime,jdbcType=TIMESTAMP}, #{updatedTime,jdbcType=TIMESTAMP})
+  </insert>
+  <insert id="insertSelective" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomMessagePO">
+    insert into t_room_message
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        id,
+      </if>
+      <if test="roomId != null">
+        room_id,
+      </if>
+      <if test="senderId != null">
+        sender_id,
+      </if>
+      <if test="type != null">
+        `type`,
+      </if>
+      <if test="contentUuid != null">
+        content_uuid,
+      </if>
+      <if test="isRecalled != null">
+        is_recalled,
+      </if>
+      <if test="createdTime != null">
+        created_time,
+      </if>
+      <if test="updatedTime != null">
+        updated_time,
+      </if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        #{id,jdbcType=BIGINT},
+      </if>
+      <if test="roomId != null">
+        #{roomId,jdbcType=BIGINT},
+      </if>
+      <if test="senderId != null">
+        #{senderId,jdbcType=BIGINT},
+      </if>
+      <if test="type != null">
+        #{type,jdbcType=TINYINT},
+      </if>
+      <if test="contentUuid != null">
+        #{contentUuid,jdbcType=VARCHAR},
+      </if>
+      <if test="isRecalled != null">
+        #{isRecalled,jdbcType=BIT},
+      </if>
+      <if test="createdTime != null">
+        #{createdTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatedTime != null">
+        #{updatedTime,jdbcType=TIMESTAMP},
+      </if>
+    </trim>
+  </insert>
+  <update id="updateByPrimaryKeySelective" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomMessagePO">
+    update t_room_message
+    <set>
+      <if test="roomId != null">
+        room_id = #{roomId,jdbcType=BIGINT},
+      </if>
+      <if test="senderId != null">
+        sender_id = #{senderId,jdbcType=BIGINT},
+      </if>
+      <if test="type != null">
+        `type` = #{type,jdbcType=TINYINT},
+      </if>
+      <if test="contentUuid != null">
+        content_uuid = #{contentUuid,jdbcType=VARCHAR},
+      </if>
+      <if test="isRecalled != null">
+        is_recalled = #{isRecalled,jdbcType=BIT},
+      </if>
+      <if test="createdTime != null">
+        created_time = #{createdTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatedTime != null">
+        updated_time = #{updatedTime,jdbcType=TIMESTAMP},
+      </if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+  <update id="updateByPrimaryKey" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomMessagePO">
+    update t_room_message
+    set room_id = #{roomId,jdbcType=BIGINT},
+      sender_id = #{senderId,jdbcType=BIGINT},
+      `type` = #{type,jdbcType=TINYINT},
+      content_uuid = #{contentUuid,jdbcType=VARCHAR},
+      is_recalled = #{isRecalled,jdbcType=BIT},
+      created_time = #{createdTime,jdbcType=TIMESTAMP},
+      updated_time = #{updatedTime,jdbcType=TIMESTAMP}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+</mapper>

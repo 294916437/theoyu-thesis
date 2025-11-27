@@ -23,7 +23,7 @@
         <module>thesis-user</module>
         <module>thesis-kv</module>
         <module>thesis-id-generator</module>
-        <module>thesis-user-relation</module>
+        <module>thesis-media</module>
     </modules>
 
     <properties>

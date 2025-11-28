@@ -1,0 +1,19 @@
+[package]
+name = "sfu"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# WebRTC 核心库
+webrtc = "0.10.0" 
+# 异步运行时
+tokio = { version = "1.0", features = ["full"] }
+# HTTP 服务器 (用于交换 SDP)
+warp = "0.3"
+# 错误处理与序列化
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# 解决跨线程共享状态
+lazy_static = "1.4"
+base64 = "0.21"

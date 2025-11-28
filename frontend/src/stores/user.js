@@ -5,10 +5,10 @@ export const useUserStore = defineStore(
 	'user',
 	() => {
 		// ========== State ==========
+		// 用户Token
 		const token = ref('')
 		// 主页用户信息
 		const profile = ref({})
-		// ========== Getters ==========
 		// 用户ID
 		const userId = ref()
 

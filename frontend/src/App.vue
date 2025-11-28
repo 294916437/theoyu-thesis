@@ -1,9 +1,14 @@
-<script setup>
-import VuetifyDemo from './components/common/VuetifyDemo.vue'
-</script>
-
 <template>
-	<VuetifyDemo />
+	<v-app>
+		<router-view />
+
+		<!-- 全局通知 -->
+		<NotificationContainer />
+	</v-app>
 </template>
 
-<style scoped></style>
+<script setup>
+import NotificationContainer from './features/shared/NotificationContainer.vue'
+</script>
+
+<style></style>

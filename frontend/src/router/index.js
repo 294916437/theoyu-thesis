@@ -2,7 +2,39 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({
 	history: createWebHistory(),
-	routes: [],
+	routes: [
+		{
+			path: '/',
+			name: 'Home',
+			component: () => import('@/features/home/views/HomePage.vue'),
+			meta: {
+				title: '首页',
+			},
+		},
+		{
+			path: '/meeting/:id',
+			name: 'MeetingRoom',
+			component: () => import('@/features/meeting/views/MeetingRoom.vue'),
+			meta: {
+				title: '会议室',
+				requiresAuth: true,
+			},
+		},
+		{
+			path: '/meeting/detail/:id',
+			name: 'MeetingDetail',
+			component: () => import('@/features/meeting/views/MeetingDetail.vue'),
+			meta: {
+				title: '会议详情',
+			},
+		},
+		{
+			path: '/:pathMatch(.*)*',
+			name: 'NotFound',
+			component: () => import('@/features/shared/NotFound.vue'),
+		},
+	],
+
 	scrollBehavior(to, from, savedPosition) {
 		if (savedPosition) {
 			return savedPosition

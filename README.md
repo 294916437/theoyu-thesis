@@ -40,6 +40,26 @@ theoyu-thesis/
 2. WebRTC 连接质量优化策略
 3. 多人会议的资源调度算法
 4. 网络自适应传输机制
+# 项目结构
+### 后端开发
+```bash
+cd backend
+mvn clean install
+mvn spring-boot:run
+```
+
+### 前端开发
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### SFU 开发
+```bash
+cd sfu
+cargo run
+```
 
 ## 开发进度
 

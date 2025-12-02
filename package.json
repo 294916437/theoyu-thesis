@@ -1,0 +1,20 @@
+{
+	"name": "theoyu-thesis",
+	"version": "1.0.0",
+	"private": true,
+	"workspaces": [
+		"frontend",
+		"wasm"
+	],
+	"scripts": {
+		"dev:frontend": "npm run dev --workspace=frontend",
+		"build:frontend": "npm run build --workspace=frontend",
+		"dev:sfu": "cd sfu && cargo run",
+		"build:sfu": "cd sfu && cargo build --release",
+		"install:all": "npm install && cd backend && mvn install"
+	},
+	"engines": {
+		"node": ">=18.0.0",
+		"npm": ">=9.0.0"
+	}
+}

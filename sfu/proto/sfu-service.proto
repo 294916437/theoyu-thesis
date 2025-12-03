@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package sfu;
+
+// ==================== 消息定义（按依赖顺序） ====================
+
+// 1. 基础配置消息（被其他消息引用，需要先定义）
+message RoomConfig {
+  int32 max_participants = 1;
+  bool enable_recording = 2;
+  repeated string allowed_codecs = 3;
+}
+
+// 2. 请求消息
+message RoomAccessRequest {
+  string room_id = 1;
+  string user_id = 2;
+  string token = 3;
+}
+
+message TokenRequest {
+  string token = 1;
+}
+
+message RoomConfigRequest {
+  string room_id = 1;
+}
+
+message ParticipantEvent {
+  string room_id = 1;
+  string user_id = 2;
+  string username = 3;
+  int64 timestamp = 4;
+}
+
+message MediaStatsRequest {
+  string room_id = 1;
+  string peer_id = 2;
+  map<string, string> stats = 3;
+}
+
+// 3. 响应消息（引用上面定义的类型）
+message RoomAccessResponse {
+  bool allowed = 1;
+  string message = 2;
+  RoomConfig config = 3;
+}
+
+message TokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string username = 3;
+}
+
+message RoomConfigResponse {
+  int32 max_participants = 1;
+  bool enable_recording = 2;
+  repeated string allowed_codecs = 3;
+}
+
+message AckResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ==================== 服务定义 ====================
+
+service SFUService {
+  // 验证房间访问权限
+  rpc ValidateRoomAccess(RoomAccessRequest) returns (RoomAccessResponse);
+  
+  // 验证用户token
+  rpc ValidateUserToken(TokenRequest) returns (TokenResponse);
+  
+  // 同步参与者加入事件
+  rpc NotifyParticipantJoined(ParticipantEvent) returns (AckResponse);
+  
+  // 同步参与者离开事件
+  rpc NotifyParticipantLeft(ParticipantEvent) returns (AckResponse);
+  
+  // 获取房间配置
+  rpc GetRoomConfig(RoomConfigRequest) returns (RoomConfigResponse);
+  
+  // 上报媒体统计信息
+  rpc ReportMediaStats(MediaStatsRequest) returns (AckResponse);
+}

@@ -1,1 +1,8 @@
-target
+# node.js环境的配置文件
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+*.log
+npm-debug.log*

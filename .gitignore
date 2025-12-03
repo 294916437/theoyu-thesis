@@ -4,6 +4,8 @@
 *.swp
 *.swo
 *~
+# demo
+mediasoup-demo
 
 # OS
 .DS_Store

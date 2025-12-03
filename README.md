@@ -1,4 +1,4 @@
-# 基于 WebAssembly 与 WebRTC 的实时视频会议系统设计与优化
+# 基于 WebRTC 的实时视频会议系统设计与优化
 
 ## 项目简介
 
@@ -8,13 +8,14 @@
 
 - **WebRTC**: 实时通信框架
 - **WebAssembly**: 高性能计算模块
+- **Rust**: 编译为 wasm 模块
 - **前端**: Vue.js (用户交互页面)
 - **后端**: SpringCloud (信令服务器和基础业务)
 
 ## 主要功能
 
 - [ ] 多人实时音视频通话
-- [ ] WebAssembly 加速的视频处理
+- [ ] WebAssembly 加速的端侧视频处理
 - [ ] 屏幕共享
 - [ ] 录制回放
 - [ ] 性能监控与优化
@@ -26,6 +27,7 @@ theoyu-thesis/
 ├── frontend/          # 前端代码
 ├── backend/           # 后端信令服务器
 ├── wasm/              # WebAssembly 模块
+├── sfu/               # sfu服务器
 ├── docs/              # 项目文档
 └── README.md
 ```
@@ -40,8 +42,11 @@ theoyu-thesis/
 2. WebRTC 连接质量优化策略
 3. 多人会议的资源调度算法
 4. 网络自适应传输机制
+
 # 项目结构
+
 ### 后端开发
+
 ```bash
 cd backend
 mvn clean install
@@ -49,6 +54,7 @@ mvn spring-boot:run
 ```
 
 ### 前端开发
+
 ```bash
 cd frontend
 npm install
@@ -56,6 +62,7 @@ npm run dev
 ```
 
 ### SFU 开发
+
 ```bash
 cd sfu
 cargo run

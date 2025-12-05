@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Date;
 
 @Data
 @AllArgsConstructor
@@ -22,9 +23,11 @@ public class RoomPO {
 
     private String title;
 
-    private Byte type;
+    private Integer type;
 
-    private Byte status;
+    private Integer maxParticipants;
+
+    private Integer status;
 
     private LocalDateTime startTime;
 

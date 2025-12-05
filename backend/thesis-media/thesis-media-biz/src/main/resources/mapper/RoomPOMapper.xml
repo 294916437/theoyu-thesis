@@ -8,6 +8,7 @@
     <result column="sfu_node_id" jdbcType="BIGINT" property="sfuNodeId" />
     <result column="title" jdbcType="VARCHAR" property="title" />
     <result column="type" jdbcType="TINYINT" property="type" />
+    <result column="max_participants" jdbcType="INTEGER" property="maxParticipants" />
     <result column="status" jdbcType="TINYINT" property="status" />
     <result column="start_time" jdbcType="TIMESTAMP" property="startTime" />
     <result column="end_time" jdbcType="TIMESTAMP" property="endTime" />
@@ -18,8 +19,8 @@
     <result column="settings" jdbcType="LONGVARCHAR" property="settings" />
   </resultMap>
   <sql id="Base_Column_List">
-    id, room_no, host_id, sfu_node_id, title, `type`, `status`, start_time, end_time, 
-    created_time, updated_time
+    id, room_no, host_id, sfu_node_id, title, `type`, max_participants, `status`, start_time, 
+    end_time, created_time, updated_time
   </sql>
   <sql id="Blob_Column_List">
     settings
@@ -39,14 +40,14 @@
   <insert id="insert" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomPO">
     insert into t_room (id, room_no, host_id, 
       sfu_node_id, title, `type`, 
-      `status`, start_time, end_time, 
-      created_time, updated_time, settings
-      )
+      max_participants, `status`, start_time, 
+      end_time, created_time, updated_time, 
+      settings)
     values (#{id,jdbcType=BIGINT}, #{roomNo,jdbcType=VARCHAR}, #{hostId,jdbcType=BIGINT}, 
       #{sfuNodeId,jdbcType=BIGINT}, #{title,jdbcType=VARCHAR}, #{type,jdbcType=TINYINT}, 
-      #{status,jdbcType=TINYINT}, #{startTime,jdbcType=TIMESTAMP}, #{endTime,jdbcType=TIMESTAMP}, 
-      #{createdTime,jdbcType=TIMESTAMP}, #{updatedTime,jdbcType=TIMESTAMP}, #{settings,jdbcType=LONGVARCHAR}
-      )
+      #{maxParticipants,jdbcType=INTEGER}, #{status,jdbcType=TINYINT}, #{startTime,jdbcType=TIMESTAMP}, 
+      #{endTime,jdbcType=TIMESTAMP}, #{createdTime,jdbcType=TIMESTAMP}, #{updatedTime,jdbcType=TIMESTAMP}, 
+      #{settings,jdbcType=LONGVARCHAR})
   </insert>
   <insert id="insertSelective" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomPO">
     insert into t_room
@@ -68,6 +69,9 @@
       </if>
       <if test="type != null">
         `type`,
+      </if>
+      <if test="maxParticipants != null">
+        max_participants,
       </if>
       <if test="status != null">
         `status`,
@@ -107,6 +111,9 @@
       <if test="type != null">
         #{type,jdbcType=TINYINT},
       </if>
+      <if test="maxParticipants != null">
+        #{maxParticipants,jdbcType=INTEGER},
+      </if>
       <if test="status != null">
         #{status,jdbcType=TINYINT},
       </if>
@@ -145,6 +152,9 @@
       <if test="type != null">
         `type` = #{type,jdbcType=TINYINT},
       </if>
+      <if test="maxParticipants != null">
+        max_participants = #{maxParticipants,jdbcType=INTEGER},
+      </if>
       <if test="status != null">
         `status` = #{status,jdbcType=TINYINT},
       </if>
@@ -173,6 +183,7 @@
       sfu_node_id = #{sfuNodeId,jdbcType=BIGINT},
       title = #{title,jdbcType=VARCHAR},
       `type` = #{type,jdbcType=TINYINT},
+      max_participants = #{maxParticipants,jdbcType=INTEGER},
       `status` = #{status,jdbcType=TINYINT},
       start_time = #{startTime,jdbcType=TIMESTAMP},
       end_time = #{endTime,jdbcType=TIMESTAMP},
@@ -188,6 +199,7 @@
       sfu_node_id = #{sfuNodeId,jdbcType=BIGINT},
       title = #{title,jdbcType=VARCHAR},
       `type` = #{type,jdbcType=TINYINT},
+      max_participants = #{maxParticipants,jdbcType=INTEGER},
       `status` = #{status,jdbcType=TINYINT},
       start_time = #{startTime,jdbcType=TIMESTAMP},
       end_time = #{endTime,jdbcType=TIMESTAMP},

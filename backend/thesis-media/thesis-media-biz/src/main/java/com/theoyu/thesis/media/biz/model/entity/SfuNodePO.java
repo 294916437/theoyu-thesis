@@ -6,7 +6,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.util.Date;
 
 @Data
 @AllArgsConstructor
@@ -25,12 +24,15 @@ public class SfuNodePO {
 
     private String region;
 
-    private Byte status;
+    private Integer status;
 
     private Integer currentLoad;
 
     private LocalDateTime createdTime;
 
     private LocalDateTime updatedTime;
+
+    private String grpcHost;
+
 
 }

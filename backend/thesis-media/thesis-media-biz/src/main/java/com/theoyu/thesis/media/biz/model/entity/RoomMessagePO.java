@@ -19,7 +19,9 @@ public class RoomMessagePO {
 
     private Long senderId;
 
-    private Byte type;
+    private Integer messageType;
+
+    private Integer contentType;
 
     private String contentUuid;
 

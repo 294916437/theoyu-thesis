@@ -2,9 +2,8 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.theoyu.thesis.media.biz.model.mapper.RoomParticipantPOMapper">
   <resultMap id="BaseResultMap" type="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
-    <id column="id" jdbcType="BIGINT" property="id" />
-    <result column="room_id" jdbcType="BIGINT" property="roomId" />
-    <result column="user_id" jdbcType="BIGINT" property="userId" />
+    <id column="room_id" jdbcType="BIGINT" property="roomId" />
+    <id column="user_id" jdbcType="BIGINT" property="userId" />
     <result column="role" jdbcType="TINYINT" property="role" />
     <result column="status" jdbcType="TINYINT" property="status" />
     <result column="audio_muted" jdbcType="BIT" property="audioMuted" />
@@ -15,35 +14,34 @@
     <result column="updated_time" jdbcType="TIMESTAMP" property="updatedTime" />
   </resultMap>
   <sql id="Base_Column_List">
-    id, room_id, user_id, `role`, `status`, audio_muted, video_muted, joined_at, left_at, 
+    room_id, user_id, `role`, `status`, audio_muted, video_muted, joined_at, left_at, 
     created_time, updated_time
   </sql>
-  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+  <select id="selectByPrimaryKey" parameterType="map" resultMap="BaseResultMap">
     select 
     <include refid="Base_Column_List" />
     from t_room_participant
-    where id = #{id,jdbcType=BIGINT}
+    where room_id = #{roomId,jdbcType=BIGINT}
+      and user_id = #{userId,jdbcType=BIGINT}
   </select>
-  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+  <delete id="deleteByPrimaryKey" parameterType="map">
     delete from t_room_participant
-    where id = #{id,jdbcType=BIGINT}
+    where room_id = #{roomId,jdbcType=BIGINT}
+      and user_id = #{userId,jdbcType=BIGINT}
   </delete>
   <insert id="insert" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
-    insert into t_room_participant (id, room_id, user_id, 
-      `role`, `status`, audio_muted, 
-      video_muted, joined_at, left_at, 
-      created_time, updated_time)
-    values (#{id,jdbcType=BIGINT}, #{roomId,jdbcType=BIGINT}, #{userId,jdbcType=BIGINT}, 
-      #{role,jdbcType=TINYINT}, #{status,jdbcType=TINYINT}, #{audioMuted,jdbcType=BIT}, 
-      #{videoMuted,jdbcType=BIT}, #{joinedAt,jdbcType=TIMESTAMP}, #{leftAt,jdbcType=TIMESTAMP}, 
-      #{createdTime,jdbcType=TIMESTAMP}, #{updatedTime,jdbcType=TIMESTAMP})
+    insert into t_room_participant (room_id, user_id, `role`, 
+      `status`, audio_muted, video_muted, 
+      joined_at, left_at, created_time, 
+      updated_time)
+    values (#{roomId,jdbcType=BIGINT}, #{userId,jdbcType=BIGINT}, #{role,jdbcType=TINYINT}, 
+      #{status,jdbcType=TINYINT}, #{audioMuted,jdbcType=BIT}, #{videoMuted,jdbcType=BIT}, 
+      #{joinedAt,jdbcType=TIMESTAMP}, #{leftAt,jdbcType=TIMESTAMP}, #{createdTime,jdbcType=TIMESTAMP}, 
+      #{updatedTime,jdbcType=TIMESTAMP})
   </insert>
   <insert id="insertSelective" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
     insert into t_room_participant
     <trim prefix="(" suffix=")" suffixOverrides=",">
-      <if test="id != null">
-        id,
-      </if>
       <if test="roomId != null">
         room_id,
       </if>
@@ -76,9 +74,6 @@
       </if>
     </trim>
     <trim prefix="values (" suffix=")" suffixOverrides=",">
-      <if test="id != null">
-        #{id,jdbcType=BIGINT},
-      </if>
       <if test="roomId != null">
         #{roomId,jdbcType=BIGINT},
       </if>
@@ -114,12 +109,6 @@
   <update id="updateByPrimaryKeySelective" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
     update t_room_participant
     <set>
-      <if test="roomId != null">
-        room_id = #{roomId,jdbcType=BIGINT},
-      </if>
-      <if test="userId != null">
-        user_id = #{userId,jdbcType=BIGINT},
-      </if>
       <if test="role != null">
         `role` = #{role,jdbcType=TINYINT},
       </if>
@@ -145,13 +134,12 @@
         updated_time = #{updatedTime,jdbcType=TIMESTAMP},
       </if>
     </set>
-    where id = #{id,jdbcType=BIGINT}
+    where room_id = #{roomId,jdbcType=BIGINT}
+      and user_id = #{userId,jdbcType=BIGINT}
   </update>
   <update id="updateByPrimaryKey" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
     update t_room_participant
-    set room_id = #{roomId,jdbcType=BIGINT},
-      user_id = #{userId,jdbcType=BIGINT},
-      `role` = #{role,jdbcType=TINYINT},
+    set `role` = #{role,jdbcType=TINYINT},
       `status` = #{status,jdbcType=TINYINT},
       audio_muted = #{audioMuted,jdbcType=BIT},
       video_muted = #{videoMuted,jdbcType=BIT},
@@ -159,6 +147,37 @@
       left_at = #{leftAt,jdbcType=TIMESTAMP},
       created_time = #{createdTime,jdbcType=TIMESTAMP},
       updated_time = #{updatedTime,jdbcType=TIMESTAMP}
-    where id = #{id,jdbcType=BIGINT}
+    where room_id = #{roomId,jdbcType=BIGINT}
+      and user_id = #{userId,jdbcType=BIGINT}
   </update>
+  <!-- 根据房间ID和用户ID查询参与者 -->
+  <select id="selectByRoomIdAndUserId" resultType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
+    SELECT *
+    FROM room_participant
+    WHERE room_id = #{roomId}
+      AND user_id = #{userId}
+      AND is_deleted = 0
+      LIMIT 1
+  </select>
+
+  <!-- 统计房间在线人数 -->
+  <select id="countByRoomIdAndStatus" resultType="java.lang.Long">
+    SELECT COUNT(*)
+    FROM room_participant
+    WHERE room_id = #{roomId}
+      AND status = #{status}
+      AND is_deleted = 0
+  </select>
+
+  <!-- 更新参与者状态 -->
+  <update id="updateStatusByRoomIdAndUserId">
+    UPDATE room_participant
+    SET status = #{status},
+        leave_time = #{leaveTime},
+        update_time = NOW()
+    WHERE room_id = #{roomId}
+      AND user_id = #{userId}
+      AND is_deleted = 0
+  </update>
+
 </mapper>

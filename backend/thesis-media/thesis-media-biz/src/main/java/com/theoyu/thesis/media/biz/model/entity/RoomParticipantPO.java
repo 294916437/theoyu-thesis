@@ -12,15 +12,13 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @Builder
 public class RoomParticipantPO {
-    private Long id;
-
     private Long roomId;
 
     private Long userId;
 
-    private Byte role;
+    private Integer role;
 
-    private Byte status;
+    private Integer status;
 
     private Boolean audioMuted;
 
@@ -33,6 +31,5 @@ public class RoomParticipantPO {
     private LocalDateTime createdTime;
 
     private LocalDateTime updatedTime;
-
 
 }

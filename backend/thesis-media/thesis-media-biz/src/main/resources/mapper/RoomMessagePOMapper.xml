@@ -5,14 +5,16 @@
     <id column="id" jdbcType="BIGINT" property="id" />
     <result column="room_id" jdbcType="BIGINT" property="roomId" />
     <result column="sender_id" jdbcType="BIGINT" property="senderId" />
-    <result column="type" jdbcType="TINYINT" property="type" />
+    <result column="message_type" jdbcType="TINYINT" property="messageType" />
+    <result column="content_type" jdbcType="TINYINT" property="contentType" />
     <result column="content_uuid" jdbcType="VARCHAR" property="contentUuid" />
     <result column="is_recalled" jdbcType="BIT" property="isRecalled" />
     <result column="created_time" jdbcType="TIMESTAMP" property="createdTime" />
     <result column="updated_time" jdbcType="TIMESTAMP" property="updatedTime" />
   </resultMap>
   <sql id="Base_Column_List">
-    id, room_id, sender_id, `type`, content_uuid, is_recalled, created_time, updated_time
+    id, room_id, sender_id, message_type, content_type, content_uuid, is_recalled, created_time, 
+    updated_time
   </sql>
   <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
     select 
@@ -26,11 +28,13 @@
   </delete>
   <insert id="insert" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomMessagePO">
     insert into t_room_message (id, room_id, sender_id, 
-      `type`, content_uuid, is_recalled, 
-      created_time, updated_time)
+      message_type, content_type, content_uuid, 
+      is_recalled, created_time, updated_time
+      )
     values (#{id,jdbcType=BIGINT}, #{roomId,jdbcType=BIGINT}, #{senderId,jdbcType=BIGINT}, 
-      #{type,jdbcType=TINYINT}, #{contentUuid,jdbcType=VARCHAR}, #{isRecalled,jdbcType=BIT}, 
-      #{createdTime,jdbcType=TIMESTAMP}, #{updatedTime,jdbcType=TIMESTAMP})
+      #{messageType,jdbcType=TINYINT}, #{contentType,jdbcType=TINYINT}, #{contentUuid,jdbcType=VARCHAR}, 
+      #{isRecalled,jdbcType=BIT}, #{createdTime,jdbcType=TIMESTAMP}, #{updatedTime,jdbcType=TIMESTAMP}
+      )
   </insert>
   <insert id="insertSelective" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomMessagePO">
     insert into t_room_message
@@ -44,8 +48,11 @@
       <if test="senderId != null">
         sender_id,
       </if>
-      <if test="type != null">
-        `type`,
+      <if test="messageType != null">
+        message_type,
+      </if>
+      <if test="contentType != null">
+        content_type,
       </if>
       <if test="contentUuid != null">
         content_uuid,
@@ -70,8 +77,11 @@
       <if test="senderId != null">
         #{senderId,jdbcType=BIGINT},
       </if>
-      <if test="type != null">
-        #{type,jdbcType=TINYINT},
+      <if test="messageType != null">
+        #{messageType,jdbcType=TINYINT},
+      </if>
+      <if test="contentType != null">
+        #{contentType,jdbcType=TINYINT},
       </if>
       <if test="contentUuid != null">
         #{contentUuid,jdbcType=VARCHAR},
@@ -96,8 +106,11 @@
       <if test="senderId != null">
         sender_id = #{senderId,jdbcType=BIGINT},
       </if>
-      <if test="type != null">
-        `type` = #{type,jdbcType=TINYINT},
+      <if test="messageType != null">
+        message_type = #{messageType,jdbcType=TINYINT},
+      </if>
+      <if test="contentType != null">
+        content_type = #{contentType,jdbcType=TINYINT},
       </if>
       <if test="contentUuid != null">
         content_uuid = #{contentUuid,jdbcType=VARCHAR},
@@ -118,7 +131,8 @@
     update t_room_message
     set room_id = #{roomId,jdbcType=BIGINT},
       sender_id = #{senderId,jdbcType=BIGINT},
-      `type` = #{type,jdbcType=TINYINT},
+      message_type = #{messageType,jdbcType=TINYINT},
+      content_type = #{contentType,jdbcType=TINYINT},
       content_uuid = #{contentUuid,jdbcType=VARCHAR},
       is_recalled = #{isRecalled,jdbcType=BIT},
       created_time = #{createdTime,jdbcType=TIMESTAMP},

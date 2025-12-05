@@ -12,10 +12,11 @@
     <result column="current_load" jdbcType="INTEGER" property="currentLoad" />
     <result column="created_time" jdbcType="TIMESTAMP" property="createdTime" />
     <result column="updated_time" jdbcType="TIMESTAMP" property="updatedTime" />
+    <result column="grpc_host" jdbcType="VARCHAR" property="grpcHost" />
   </resultMap>
   <sql id="Base_Column_List">
     id, instance_id, ip_address, grpc_port, http_port, region, `status`, current_load, 
-    created_time, updated_time
+    created_time, updated_time, grpc_host
   </sql>
   <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
     select 
@@ -31,11 +32,11 @@
     insert into t_sfu_node (id, instance_id, ip_address, 
       grpc_port, http_port, region, 
       `status`, current_load, created_time, 
-      updated_time)
+      updated_time, grpc_host)
     values (#{id,jdbcType=BIGINT}, #{instanceId,jdbcType=VARCHAR}, #{ipAddress,jdbcType=VARCHAR}, 
       #{grpcPort,jdbcType=INTEGER}, #{httpPort,jdbcType=INTEGER}, #{region,jdbcType=VARCHAR}, 
       #{status,jdbcType=TINYINT}, #{currentLoad,jdbcType=INTEGER}, #{createdTime,jdbcType=TIMESTAMP}, 
-      #{updatedTime,jdbcType=TIMESTAMP})
+      #{updatedTime,jdbcType=TIMESTAMP}, #{grpcHost,jdbcType=VARCHAR})
   </insert>
   <insert id="insertSelective" parameterType="com.theoyu.thesis.media.biz.model.entity.SfuNodePO">
     insert into t_sfu_node
@@ -70,6 +71,9 @@
       <if test="updatedTime != null">
         updated_time,
       </if>
+      <if test="grpcHost != null">
+        grpc_host,
+      </if>
     </trim>
     <trim prefix="values (" suffix=")" suffixOverrides=",">
       <if test="id != null">
@@ -101,6 +105,9 @@
       </if>
       <if test="updatedTime != null">
         #{updatedTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="grpcHost != null">
+        #{grpcHost,jdbcType=VARCHAR},
       </if>
     </trim>
   </insert>
@@ -134,6 +141,9 @@
       <if test="updatedTime != null">
         updated_time = #{updatedTime,jdbcType=TIMESTAMP},
       </if>
+      <if test="grpcHost != null">
+        grpc_host = #{grpcHost,jdbcType=VARCHAR},
+      </if>
     </set>
     where id = #{id,jdbcType=BIGINT}
   </update>
@@ -147,7 +157,8 @@
       `status` = #{status,jdbcType=TINYINT},
       current_load = #{currentLoad,jdbcType=INTEGER},
       created_time = #{createdTime,jdbcType=TIMESTAMP},
-      updated_time = #{updatedTime,jdbcType=TIMESTAMP}
+      updated_time = #{updatedTime,jdbcType=TIMESTAMP},
+      grpc_host = #{grpcHost,jdbcType=VARCHAR}
     where id = #{id,jdbcType=BIGINT}
   </update>
 </mapper>

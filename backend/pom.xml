@@ -64,6 +64,11 @@
         <canal.version>1.1.8</canal.version>
         <rocketmq-client.version>4.9.4</rocketmq-client.version>
         <grpc.version>3.1.0.RELEASE</grpc.version>
+        <grpc-java.version>1.58.0</grpc-java.version>
+        <protobuf.version>3.24.0</protobuf.version>
+        <protobuf-maven-plugin.version>0.6.1</protobuf-maven-plugin.version>
+        <os-maven-plugin.version>1.7.1</os-maven-plugin.version>
+        <javax.annotation-api.version>1.3.2</javax.annotation-api.version>
     </properties>
 
     <!-- 统一依赖管理 -->
@@ -222,10 +227,37 @@
                 <artifactId>nacos-config-spring-boot-starter</artifactId>
                 <version>${nacos-config.version}</version>
             </dependency>
+            <!-- gRPC 框架 -->
             <dependency>
                 <groupId>net.devh</groupId>
-                <artifactId>grpc-client-spring-boot-starter</artifactId>
+                <artifactId>grpc-server-spring-boot-starter</artifactId>
                 <version>${grpc.version}</version>
+            </dependency>
+            <!-- Protocol Buffers Java -->
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>${protobuf.version}</version>
+            </dependency>
+
+            <!-- gRPC Stub (客户端存根) -->
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-stub</artifactId>
+                <version>${grpc-java.version}</version>
+            </dependency>
+
+            <!-- gRPC Protobuf (序列化支持) -->
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-protobuf</artifactId>
+                <version>${grpc-java.version}</version>
+            </dependency>
+            <!-- Java Annotation API (兼容 gRPC 生成的代码) -->
+            <dependency>
+                <groupId>javax.annotation</groupId>
+                <artifactId>javax.annotation-api</artifactId>
+                <version>${javax.annotation-api.version}</version>
             </dependency>
             <!-- 多线程变量 -->
             <dependency>
@@ -273,8 +305,16 @@
     </dependencyManagement>
 
     <build>
+        <extensions>
+            <extension>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>${os-maven-plugin.version}</version>
+            </extension>
+        </extensions>
         <!-- 统一插件管理 -->
         <pluginManagement>
+
             <plugins>
                 <!-- mybatis代码生成器 -->
                 <plugin>
@@ -326,8 +366,33 @@
                         </annotationProcessorPaths>
                     </configuration>
                 </plugin>
+
+                <!-- ==================== Protobuf Maven 插件 ==================== -->
+                <plugin>
+                    <groupId>org.xolstice.maven.plugins</groupId>
+                    <artifactId>protobuf-maven-plugin</artifactId>
+                    <version>${protobuf-maven-plugin.version}</version>
+                    <configuration>
+                        <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}</protocArtifact>
+                        <pluginId>grpc-java</pluginId>
+                        <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc-java.version}:exe:${os.detected.classifier}</pluginArtifact>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <!-- 编译 proto 文件 -->
+                                <goal>compile</goal>
+                                <!-- 编译 gRPC 服务定义 -->
+                                <goal>compile-custom</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
             </plugins>
         </pluginManagement>
+
+
 
     </build>
     <!-- 第三方仓库 -->

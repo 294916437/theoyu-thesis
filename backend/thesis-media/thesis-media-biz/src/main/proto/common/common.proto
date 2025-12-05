@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.theoyu.thesis.media.biz.grpc.proto";
+option java_outer_classname = "CommonProto";
+
+package sfu.common;
+
+// 通用响应状态
+enum ResponseStatus {
+  SUCCESS = 0;
+  FAILED = 1;
+  UNAUTHORIZED = 2;
+  FORBIDDEN = 3;
+  NOT_FOUND = 4;
+  INTERNAL_ERROR = 5;
+}
+
+// 通用分页请求
+message PageRequest {
+  int32 page = 1;
+  int32 size = 2;
+  string sort_by = 3;
+  bool desc = 4;
+}
+
+// 通用分页响应
+message PageResponse {
+  int32 page = 1;
+  int32 size = 2;
+  int64 total = 3;
+  int32 pages = 4;
+}
+
+// 时间戳
+message Timestamp {
+  int64 seconds = 1;
+  int32 nanos = 2;
+}

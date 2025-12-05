@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.theoyu.thesis.media.biz.grpc.proto";
+option java_outer_classname = "SfuServiceProto";
+
+package sfu;
+
+// ==================== 导入公共定义 ====================
+// import "common/common.proto";
+
+// ==================== 消息定义 ====================
+
+// 房间配置
+message RoomConfig {
+  int32 max_participants = 1;
+  bool enable_recording = 2;
+  repeated string allowed_codecs = 3;
+}
+
+// 房间访问请求
+message RoomAccessRequest {
+  string room_id = 1;
+  string user_id = 2;
+  string token = 3;
+}
+
+// 房间访问响应
+message RoomAccessResponse {
+  bool allowed = 1;
+  string message = 2;
+  RoomConfig config = 3;
+}
+
+// Token 验证请求
+message TokenRequest {
+  string token = 1;
+}
+
+// Token 验证响应
+message TokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string username = 3;
+}
+
+// 参与者事件
+message ParticipantEvent {
+  string room_id = 1;
+  string user_id = 2;
+  string username = 3;
+  int64 timestamp = 4;
+}
+
+// 房间配置请求
+message RoomConfigRequest {
+  string room_id = 1;
+}
+
+// 房间配置响应
+message RoomConfigResponse {
+  int32 max_participants = 1;
+  bool enable_recording = 2;
+  repeated string allowed_codecs = 3;
+}
+
+// 媒体统计请求
+message MediaStatsRequest {
+  string room_id = 1;
+  string peer_id = 2;
+  map<string, string> stats = 3;
+}
+
+// 确认响应
+message AckResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ==================== 服务定义 ====================
+
+service SFUService {
+  // 验证房间访问权限
+  rpc ValidateRoomAccess (RoomAccessRequest) returns (RoomAccessResponse);
+
+  // 验证用户 Token
+  rpc ValidateUserToken (TokenRequest) returns (TokenResponse);
+
+  // 通知参与者加入
+  rpc NotifyParticipantJoined (ParticipantEvent) returns (AckResponse);
+
+  // 通知参与者离开
+  rpc NotifyParticipantLeft (ParticipantEvent) returns (AckResponse);
+
+  // 获取房间配置
+  rpc GetRoomConfig (RoomConfigRequest) returns (RoomConfigResponse);
+
+  // 上报媒体统计
+  rpc ReportMediaStats (MediaStatsRequest) returns (AckResponse);
+}

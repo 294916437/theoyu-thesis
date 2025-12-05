@@ -92,13 +92,15 @@ export class Config {
 		},
 		routerOptions: {
 			mediaCodecs: [
+				// Audio: Opus (PT 111 是标准值)
 				{
 					kind: "audio",
 					mimeType: "audio/opus",
 					clockRate: 48000,
 					channels: 2,
-					preferredPayloadType: 100,
+					preferredPayloadType: 111,
 				},
+				// Video: VP8 (PT 96 是标准值)
 				{
 					kind: "video",
 					mimeType: "video/VP8",
@@ -106,8 +108,9 @@ export class Config {
 					parameters: {
 						"x-google-start-bitrate": 1000,
 					},
-					preferredPayloadType: 100,
+					preferredPayloadType: 96,
 				},
+				// Video: VP9 (PT 98)
 				{
 					kind: "video",
 					mimeType: "video/VP9",
@@ -116,20 +119,9 @@ export class Config {
 						"profile-id": 2,
 						"x-google-start-bitrate": 1000,
 					},
-					preferredPayloadType: 100,
+					preferredPayloadType: 98,
 				},
-				{
-					kind: "video",
-					mimeType: "video/h264",
-					clockRate: 90000,
-					parameters: {
-						"packetization-mode": 1,
-						"profile-level-id": "4d0032",
-						"level-asymmetry-allowed": 1,
-						"x-google-start-bitrate": 1000,
-					},
-					preferredPayloadType: 100,
-				},
+				// Video: h264 Constrained Baseline (最兼容)
 				{
 					kind: "video",
 					mimeType: "video/h264",
@@ -140,7 +132,7 @@ export class Config {
 						"level-asymmetry-allowed": 1,
 						"x-google-start-bitrate": 1000,
 					},
-					preferredPayloadType: 100,
+					preferredPayloadType: 102,
 				},
 			],
 		},

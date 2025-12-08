@@ -34,6 +34,28 @@ public class RedisKeyConstants {
      */
     public static final String MEDIA_STATS_KEY = "media:stats:%s:%s:%s";
 
+    /**
+     * 用户房间创建配额 Key
+     * media:user:room:quota:{userId}
+     */
+    public static final String USER_ROOM_QUOTA_KEY = "media:user:room:quota:%s";
+
+    /**
+     * 房间号唯一性检查 Key
+     * media:room:no:{roomNo}
+     */
+    public static final String ROOM_NO_KEY = "media:room:no:%s";
+
+    /**
+     * 用户房间创建配额过期时间：1小时（用于限流）
+     */
+    public static final long USER_ROOM_QUOTA_EXPIRE_TIME = 60 * 60;
+
+    /**
+     * 房间号缓存过期时间：永久（直到房间删除）
+     */
+    public static final long ROOM_NO_EXPIRE_TIME = -1;
+
     // ==================== SFU 节点相关 ====================
 
     /**

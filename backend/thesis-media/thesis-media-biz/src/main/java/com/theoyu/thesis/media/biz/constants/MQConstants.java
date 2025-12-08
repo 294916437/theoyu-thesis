@@ -29,4 +29,16 @@ public interface MQConstants {
      * 媒体统计上报 Tag
      */
     public static final String TAG_STATS_REPORT = "stats-report";
+
+    /**
+     * 房间创建事件 Tag
+     */
+    public static final String TAG_ROOM_CREATED = "room-created";
+
+    /**
+     * 房间关闭事件 Tag
+     */
+    public static final String TAG_ROOM_CLOSED = "room-closed";
+
+
 }

@@ -61,7 +61,7 @@ export class SignalingHandler {
 		try {
 			const { roomId, userId, username, token } = data;
 
-			// 验证用户权限
+			// 验证房间访问权限（此时房间应该已经在 Spring Cloud 端创建）
 			const validation = await this.grpcClient.validateRoomAccess(roomId, userId, token);
 			if (!validation.allowed) {
 				callback({ error: "Access denied: " + validation.message });
@@ -69,9 +69,14 @@ export class SignalingHandler {
 			}
 
 			// 获取或创建房间
-			const room = await this.roomManager.getOrCreateRoom(roomId);
+			let room = this.roomManager.getRoom(roomId);
 
-			// 检查用户是否已在房间中
+			if (!room) {
+				room = await this.roomManager.createRoomInternal(roomId);
+				this.logger.info(`SFU Room ${roomId} created for first participant`);
+			}
+
+			// 检查用户是否已在房间中（处理重连）
 			const existingPeer = room.getPeer(userId);
 			if (existingPeer) {
 				// 用户已在房间中，关闭旧连接

@@ -16,17 +16,17 @@ export class RoomManager {
 		}
 		return RoomManager.instance;
 	}
-
-	public async getOrCreateRoom(roomId: string): Promise<Room> {
-		let room = this.rooms.get(roomId);
-
-		if (!room) {
-			const mediasoupManager = MediasoupManager.getInstance();
-			const router = await mediasoupManager.createRouter(roomId);
-			room = new Room(roomId, router);
-			this.rooms.set(roomId, room);
-			this.logger.info(`Room ${roomId} created`);
+	// 必须在先通过 Spring Cloud 验证/创建房间后才能调用此方法
+	public async createRoomInternal(roomId: string): Promise<Room> {
+		if (this.rooms.has(roomId)) {
+			throw new Error(`Room ${roomId} already exists`);
 		}
+
+		const mediasoupManager = MediasoupManager.getInstance();
+		const router = await mediasoupManager.createRouter(roomId);
+		const room = new Room(roomId, router);
+		this.rooms.set(roomId, room);
+		this.logger.info(`Room ${roomId} created internally`);
 
 		return room;
 	}

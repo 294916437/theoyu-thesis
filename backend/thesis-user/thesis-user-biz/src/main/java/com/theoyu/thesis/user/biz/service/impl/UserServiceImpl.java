@@ -74,8 +74,6 @@ public class UserServiceImpl implements UserService {
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
     @Resource
-    private UserCountPOMapper userCountPOMapper;
-    @Resource
     private RocketMQTemplate rocketMQTemplate;
     @Resource(name = "taskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
@@ -278,11 +276,6 @@ public class UserServiceImpl implements UserService {
 
         String userRolesKey = RedisKeyConstants.buildUserRoleKey(userId);
         redisTemplate.opsForValue().set(userRolesKey, JsonUtils.toJsonString(roles));
-
-        // 初始化用户计数记录
-        userCountPOMapper.insert(UserCountPO.builder()
-                .userId(userId)
-                .build());
 
         return Response.success(userId);
     }

@@ -16,8 +16,10 @@ public class RoomParticipantPO {
 
     private Long userId;
 
+    // 参会者角色: 1-普通成员, 2-主持人, 3-联席主持
     private Integer role;
 
+    // 状态: 1-在线, 2-离线(中途退出), 3-被移除
     private Integer status;
 
     private Boolean audioMuted;

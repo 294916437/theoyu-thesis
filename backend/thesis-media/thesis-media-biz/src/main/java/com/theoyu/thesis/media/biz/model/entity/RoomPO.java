@@ -23,10 +23,12 @@ public class RoomPO {
 
     private String title;
 
+    // 会议类型: 1-即时会议, 2-预约会议
     private Integer type;
 
     private Integer maxParticipants;
 
+    // 房间状态: 0-预约中, 1-进行中, 2-已结束, 3-已取消
     private Integer status;
 
     private LocalDateTime startTime;

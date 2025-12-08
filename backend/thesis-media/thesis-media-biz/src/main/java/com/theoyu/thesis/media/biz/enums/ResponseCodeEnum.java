@@ -16,6 +16,8 @@ public enum ResponseCodeEnum implements BaseExceptionInterface {
     ROOM_CLOSED("MEDIA-1003", "房间已关闭"),
     ROOM_ACCESS_DENIED("MEDIA-1004", "无权限访问该房间"),
     ROOM_ALREADY_EXISTS("MEDIA-1005", "房间已存在"),
+    ROOM_QUOTA_EXCEEDED("MEDIA-1006", "房间创建数量已达上限"),
+    ROOM_NO_DUPLICATE("MEDIA-1007", "房间号已存在"),
 
     // ==================== 用户相关 20xx ====================
     USER_NOT_FOUND("MEDIA-2001", "用户不存在"),

@@ -4,6 +4,7 @@ import com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public interface RoomParticipantPOMapper {
     int deleteByPrimaryKey(@Param("roomId") Long roomId, @Param("userId") Long userId);
@@ -26,7 +27,15 @@ public interface RoomParticipantPOMapper {
     /**
      * 统计房间在线人数
      */
-    Long countByRoomIdAndStatus(@Param("roomId") Long roomId, @Param("status") Integer status);
+    Integer countByRoomIdAndStatus(@Param("roomId") Long roomId, @Param("status") Integer status);
+
+    /**
+     * 查询房间所有在线参与者
+     */
+    List<RoomParticipantPO> selectByRoomIdAndStatus(
+            @Param("roomId") Long roomId,
+            @Param("status") Integer status
+    );
 
     /**
      * 更新参与者状态
@@ -37,5 +46,18 @@ public interface RoomParticipantPOMapper {
             @Param("status") Integer status,
             @Param("leaveTime") LocalDateTime leaveTime
     );
+
+    /**
+     * 批量更新房间所有在线参与者状态为已离开
+     */
+    int batchUpdateStatusByRoomId(
+            @Param("roomId") Long roomId,
+            @Param("newStatus") Integer newStatus,
+            @Param("oldStatus") Integer oldStatus,
+            @Param("leaveTime") LocalDateTime leaveTime
+    );
+
+
+
 
 }

@@ -207,4 +207,26 @@
       updated_time = #{updatedTime,jdbcType=TIMESTAMP}
     where id = #{id,jdbcType=BIGINT}
   </update>
+  <!-- 统计用户创建的活跃房间数 -->
+  <select id="countActiveRoomsByHostId" resultType="java.lang.Integer">
+    SELECT COUNT(*)
+    FROM t_room
+    WHERE host_id = #{hostId}
+      AND status = 1
+  </select>
+
+  <!-- 根据房间号查询房间 -->
+  <select id="selectByRoomNo" resultMap="BaseResultMap">
+    SELECT <include refid="Base_Column_List" />
+    FROM t_room
+    WHERE room_no = #{roomNo}
+  </select>
+
+  <!-- 更新房间状态 -->
+  <update id="updateStatusById">
+    UPDATE t_room
+    SET status = #{status},
+        updated_time = NOW()
+    WHERE id = #{id}
+  </update>
 </mapper>

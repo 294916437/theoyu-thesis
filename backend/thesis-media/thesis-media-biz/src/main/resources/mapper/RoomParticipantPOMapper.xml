@@ -153,31 +153,48 @@
   <!-- 根据房间ID和用户ID查询参与者 -->
   <select id="selectByRoomIdAndUserId" resultType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
     SELECT *
-    FROM room_participant
+    FROM t_room_participant
     WHERE room_id = #{roomId}
       AND user_id = #{userId}
-      AND is_deleted = 0
-      LIMIT 1
   </select>
 
   <!-- 统计房间在线人数 -->
-  <select id="countByRoomIdAndStatus" resultType="java.lang.Long">
+  <select id="countByRoomIdAndStatus" resultType="java.lang.Integer">
     SELECT COUNT(*)
-    FROM room_participant
+    FROM t_room_participant
     WHERE room_id = #{roomId}
       AND status = #{status}
-      AND is_deleted = 0
   </select>
 
   <!-- 更新参与者状态 -->
   <update id="updateStatusByRoomIdAndUserId">
-    UPDATE room_participant
+    UPDATE t_room_participant
     SET status = #{status},
         leave_time = #{leaveTime},
         update_time = NOW()
     WHERE room_id = #{roomId}
       AND user_id = #{userId}
-      AND is_deleted = 0
   </update>
+
+  <!-- 查询房间在线参与者列表 -->
+  <select id="selectByRoomIdAndStatus" resultMap="BaseResultMap">
+    SELECT <include refid="Base_Column_List" />
+    FROM t_room_participant
+    WHERE room_id = #{roomId}
+    AND status = #{status}
+    ORDER BY joined_at ASC
+  </select>
+
+  <!-- 批量更新房间参与者状态 -->
+  <update id="batchUpdateStatusByRoomId">
+    UPDATE t_room_participant
+    SET status = #{newStatus},
+        left_at = #{leaveTime},
+        updated_time = NOW()
+    WHERE room_id = #{roomId}
+      AND status = #{oldStatus}
+  </update>
+
+
 
 </mapper>

@@ -15,6 +15,7 @@ import com.theoyu.thesis.media.biz.model.mapper.RoomParticipantPOMapper;
 import com.theoyu.thesis.media.biz.model.vo.RoomConfigVO;
 import com.theoyu.thesis.media.biz.rpc.UserRpcService;
 import com.theoyu.thesis.media.biz.rpc.idGeneratorRpcService;
+import com.theoyu.thesis.media.biz.util.RoomCacheHelper;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import jakarta.annotation.Resource;
@@ -97,7 +98,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             }
 
             // 4. 检查房间人数限制
-            Integer participantCount = getParticipantCount(roomId);
+            Integer participantCount = this.roomParticipantPOMapper.countByRoomIdAndStatus(Long.valueOf(roomId), 1);
             if (participantCount >= room.getMaxParticipants()) {
                 sendAccessDeniedResponse(responseObserver, "房间已满");
                 return;
@@ -159,7 +160,8 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             participant.setRoomId(Long.parseLong(roomId));
             participant.setUserId(Long.parseLong(userId));
             participant.setJoinedAt(now);
-            participant.setStatus(1); // 1-在线
+            participant.setRole(1); // 角色: 1-普通成员, 2-主持人, 3-联席主持
+            participant.setStatus(1); // 状态: 1-在线, 2-离线(中途退出), 3-被移除
             participant.setCreatedTime(now);
             participant.setUpdatedTime(now);
 
@@ -446,37 +448,36 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
      * 从缓存或数据库获取房间信息
      */
     private RoomPO getRoomFromCacheOrDB(String roomId) {
-        String roomKey = String.format(RedisKeyConstants.ROOM_INFO_KEY, roomId);
-        RoomPO room = (RoomPO) redisTemplate.opsForValue().get(roomKey);
+        try {
+            String roomKey = String.format(RedisKeyConstants.ROOM_INFO_KEY, roomId);
 
-        if (room == null) {
-            room = roomPOMapper.selectByPrimaryKey(Long.parseLong(roomId));
-            if (room != null) {
-                redisTemplate.opsForValue().set(
-                        roomKey,
-                        room,
-                        RedisKeyConstants.ROOM_INFO_EXPIRE_TIME,
-                        TimeUnit.SECONDS
-                );
+            // 从 Redis Hash 获取
+            Map<Object, Object> hashMap = redisTemplate.opsForHash().entries(roomKey);
+
+            if (!hashMap.isEmpty()) {
+                // 从 Hash 转换为 RoomPO
+                return RoomCacheHelper.hashMapToRoom(hashMap);
             }
+
+            // 缓存未命中，查询数据库
+            RoomPO room = roomPOMapper.selectByPrimaryKey(Long.parseLong(roomId));
+
+            if (room != null) {
+                // 回写缓存
+                Map<String, String> roomHashMap = RoomCacheHelper.roomToHashMap(room);
+                redisTemplate.opsForHash().putAll(roomKey, roomHashMap);
+                redisTemplate.expire(roomKey,
+                        RedisKeyConstants.ROOM_INFO_EXPIRE_TIME,
+                        TimeUnit.SECONDS);
+            }
+
+            return room;
+
+        } catch (Exception e) {
+            log.error("[SFU-gRPC] Failed to get room from cache", e);
+            // 降级：直接查询数据库
+            return roomPOMapper.selectByPrimaryKey(Long.parseLong(roomId));
         }
-
-        return room;
-    }
-
-    /**
-     * 获取房间参与者数量
-     */
-    private Integer getParticipantCount(String roomId) {
-        String participantsKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
-        Long count = redisTemplate.opsForSet().size(participantsKey);
-
-        if (count == null || count == 0) {
-            // 从数据库查询
-            count = roomParticipantPOMapper.countByRoomIdAndStatus(Long.parseLong(roomId), 1);
-        }
-
-        return count.intValue();
     }
 
     /**

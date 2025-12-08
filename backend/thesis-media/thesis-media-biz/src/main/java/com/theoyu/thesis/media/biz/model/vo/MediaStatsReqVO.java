@@ -8,6 +8,7 @@ import java.util.Map;
  * 媒体统计上报请求 VO
  */
 @Data
+
 public class MediaStatsReqVO {
 
     @NotBlank(message = "房间ID不能为空")

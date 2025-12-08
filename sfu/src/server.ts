@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
@@ -9,15 +9,24 @@ import { NacosClient } from "./utils/nacos-client";
 import { GrpcClient } from "./utils/grpc-client";
 import { Logger } from "./utils/logger";
 import { RoomManager } from "./core/room-manager";
+import { GlobalErrorHandler } from "./utils/error-handler";
 
 const logger = new Logger("SFU-Server");
 
 async function startServer() {
 	try {
+		// 初始化全局错误处理器
+		GlobalErrorHandler.getInstance();
 		// 初始化 Express
 		const app = express();
 		app.use(cors(config.server.cors));
 		app.use(express.json());
+
+		// Express 错误处理中间件
+		app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+			logger.error("Express error:", err);
+			res.status(500).json({ error: "Internal Server Error" });
+		});
 
 		// 健康检查接口
 		app.get("/health", (req, res) => {
@@ -32,6 +41,11 @@ async function startServer() {
 		app.get("/api/stats", (req, res) => {
 			const roomManager = RoomManager.getInstance();
 			res.json(roomManager.getRoomStats());
+		});
+
+		// 404 处理
+		app.use((req, res) => {
+			res.status(404).json({ error: "Not Found" });
 		});
 
 		// 创建 HTTP 服务器
@@ -125,17 +139,6 @@ async function startServer() {
 
 		process.on("SIGTERM", () => shutdown("SIGTERM"));
 		process.on("SIGINT", () => shutdown("SIGINT"));
-
-		// 未捕获异常处理
-		process.on("uncaughtException", (error) => {
-			logger.error("Uncaught Exception", error);
-			process.exit(1);
-		});
-
-		process.on("unhandledRejection", (reason, promise) => {
-			logger.error("Unhandled Rejection", { reason, promise });
-			process.exit(1);
-		});
 	} catch (error) {
 		logger.error("Failed to start server", error);
 		process.exit(1);

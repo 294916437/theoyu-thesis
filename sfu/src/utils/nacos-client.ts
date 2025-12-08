@@ -76,7 +76,7 @@ export class NacosClient {
 					this.logger.error("Failed to send heartbeat", error);
 				}
 			}
-		}, 5000); // 每5秒发送一次心跳
+		}, 60000); // 每60s发送一次心跳
 	}
 
 	public async deregisterService(): Promise<void> {
@@ -104,7 +104,7 @@ export class NacosClient {
 	public async close(): Promise<void> {
 		await this.deregisterService();
 		if (this.client) {
-			// TODO:调用关闭方法如果有的话
+			this.client.unSubscribe(config.nacos.serviceName, () => {});
 			this.logger.info("Nacos client closed");
 		}
 	}

@@ -11,6 +11,7 @@ export class SignalingHandler {
 	private roomManager: RoomManager;
 	private grpcClient: GrpcClient;
 	private logger = new Logger("SignalingHandler");
+	private socketToPeerMap: Map<string, { roomId: string; userId: string }> = new Map();
 
 	constructor(io: Server) {
 		this.io = io;
@@ -70,10 +71,18 @@ export class SignalingHandler {
 			// 获取或创建房间
 			const room = await this.roomManager.getOrCreateRoom(roomId);
 
+			// 检查用户是否已在房间中
+			const existingPeer = room.getPeer(userId);
+			if (existingPeer) {
+				// 用户已在房间中，关闭旧连接
+				existingPeer.socket.disconnect();
+				room.removePeer(userId);
+			}
+
 			// 创建 Peer
 			const peer = new Peer(
 				{
-					id: socket.id,
+					id: userId,
 					userId,
 					username,
 					roomId,
@@ -83,6 +92,8 @@ export class SignalingHandler {
 
 			// 添加到房间
 			room.addPeer(peer);
+			// 映射 socket.id 到 peer 信息
+			this.socketToPeerMap.set(socket.id, { roomId, userId });
 
 			// 加入 Socket.io 房间
 			socket.join(roomId);
@@ -146,7 +157,14 @@ export class SignalingHandler {
 		try {
 			const { roomId, producing, consuming } = data;
 			const room = this.roomManager.getRoom(roomId);
-			const peer = room?.getPeer(socket.id);
+
+			const peerInfo = this.socketToPeerMap.get(socket.id);
+			if (!peerInfo) {
+				callback({ error: "Peer info not found" });
+				return;
+			}
+
+			const peer = room?.getPeer(peerInfo.userId);
 
 			if (!room || !peer) {
 				callback({ error: "Room or peer not found" });
@@ -230,7 +248,13 @@ export class SignalingHandler {
 		try {
 			const { roomId, transportId, kind, rtpParameters, appData } = data;
 			const room = this.roomManager.getRoom(roomId);
-			const peer = room?.getPeer(socket.id);
+
+			const peerInfo = this.socketToPeerMap.get(socket.id);
+			if (!peerInfo) {
+				callback({ error: "Peer info not found" });
+				return;
+			}
+			const peer = room?.getPeer(peerInfo.userId);
 
 			if (!room || !peer || !peer.sendTransport) {
 				callback({ error: "Room, peer or transport not found" });
@@ -275,7 +299,14 @@ export class SignalingHandler {
 		try {
 			const { roomId, producerId, rtpCapabilities } = data;
 			const room = this.roomManager.getRoom(roomId);
-			const peer = room?.getPeer(socket.id);
+
+			const peerInfo = this.socketToPeerMap.get(socket.id);
+			if (!peerInfo) {
+				callback({ error: "Peer info not found" });
+				return;
+			}
+
+			const peer = room?.getPeer(peerInfo.userId);
 
 			if (!room || !peer || !peer.recvTransport) {
 				callback({ error: "Room, peer or transport not found" });
@@ -446,15 +477,14 @@ export class SignalingHandler {
 
 	private async handleLeaveRoom(socket: Socket): Promise<void> {
 		try {
-			const rooms = Array.from(socket.rooms);
-			const roomId = rooms.find((room) => room !== socket.id);
-
-			if (!roomId) {
+			const peerInfo = this.socketToPeerMap.get(socket.id);
+			if (!peerInfo) {
 				return;
 			}
 
+			const { roomId, userId } = peerInfo;
 			const room = this.roomManager.getRoom(roomId);
-			const peer = room?.getPeer(socket.id);
+			const peer = room?.getPeer(userId);
 
 			if (room && peer) {
 				// 通知其他参与者
@@ -475,6 +505,7 @@ export class SignalingHandler {
 
 				this.logger.info(`Peer ${peer.id} (${peer.username}) left room ${roomId}`);
 			}
+			this.socketToPeerMap.delete(socket.id);
 		} catch (error) {
 			this.logger.error("Error in leaveRoom", error);
 		}

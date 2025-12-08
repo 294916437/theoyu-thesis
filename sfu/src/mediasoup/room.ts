@@ -17,7 +17,7 @@ export class Room {
 	public addPeer(peer: Peer): void {
 		this.peers.set(peer.id, peer);
 		this.logger.info(
-			`Peer ${peer.id} (${peer.username}) joined. Total peers: ${this.peers.size}`
+			`Peer ${peer.id} (userId: ${peer.userId}, username: ${peer.username}) joined. Total peers: ${this.peers.size}`
 		);
 	}
 

@@ -44,6 +44,7 @@ export class MediasoupManager {
 
 	public async createRouter(roomId: string): Promise<mediasoupTypes.Router> {
 		const worker = this.getNextWorker();
+
 		const router = await worker.createRouter({
 			mediaCodecs: config.mediasoup.routerOptions.mediaCodecs,
 		});

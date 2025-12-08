@@ -54,7 +54,7 @@ export class RoomManager {
 	public removePeerFromRoom(roomId: string, peerId: string): void {
 		const room = this.rooms.get(roomId);
 		if (room) {
-			room.removePeer(peerId);
+			room.removePeer(peerId); // peerId 是 userId
 
 			// 如果房间为空，关闭房间
 			if (room.isEmpty()) {

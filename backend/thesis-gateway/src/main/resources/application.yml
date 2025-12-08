@@ -12,16 +12,16 @@ spring:
         connect-timeout: 10000
         response-timeout: 60s # 增加响应超时时间
       routes:
+        - id: media
+          uri: lb://thesis-media
+          predicates:
+            - Path=/media/**
+          filters:
+            - StripPrefix=1
         - id: oss
           uri: lb://thesis-oss
           predicates:
             - Path=/file/**
-          filters:
-            - StripPrefix=1
-        - id: user-relation
-          uri: lb://thesis-user-relation
-          predicates:
-            - Path=/relation/**
           filters:
             - StripPrefix=1
         - id: user

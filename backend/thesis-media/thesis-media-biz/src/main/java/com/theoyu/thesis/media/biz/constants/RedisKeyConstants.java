@@ -17,6 +17,12 @@ public class RedisKeyConstants {
     public static final String ROOM_CONFIG_KEY = "media:room:config:%s";
 
     /**
+     * 房间自动关闭 Key
+     * media:room:auto-close:{roomId}
+     */
+    public static final String ROOM_AUTO_CLOSE_KEY = "media:room:auto_close:%s";
+
+    /**
      * 房间参与者列表 Key
      * media:room:participants:{roomId}
      */

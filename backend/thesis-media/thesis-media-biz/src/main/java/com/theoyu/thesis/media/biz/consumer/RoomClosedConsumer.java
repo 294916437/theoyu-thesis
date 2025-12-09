@@ -96,12 +96,31 @@ public class RoomClosedConsumer extends BaseRocketMQConsumer implements RocketMQ
      * 处理房间关闭核心逻辑
      */
     private void processRoomClosure(Long roomId, Long hostId, Long timestamp) {
-        // 1. 更新所有在线参与者状态为"已离开"
+        // 1. 检查房间是否需要自动关闭
+        String autoCloseKey = String.format(RedisKeyConstants.ROOM_AUTO_CLOSE_KEY, roomId);
+        Boolean isAutoClose = redisTemplate.hasKey(autoCloseKey);
+
+        if(Boolean.TRUE.equals(isAutoClose)) {
+            // 验证房间确实为空
+            String participantsKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
+            Long participantCount = redisTemplate.opsForSet().size(participantsKey);
+
+            if (participantCount != null && participantCount > 0) {
+                // 房间不为空，取消自动关闭
+                redisTemplate.delete(autoCloseKey);
+                log.info("[RoomClosedConsumer] Auto-close cancelled - room not empty, roomId: {}", roomId);
+                return;
+            }
+
+            log.info("[RoomClosedConsumer] Auto-closing empty room - roomId: {}", roomId);
+        }
+
+        // 2. 更新所有在线参与者状态为"已离开"
         updateParticipantsStatus(roomId);
-        // 2. 清理Redis缓存
+        // 3. 清理Redis缓存
         cleanupRoomCache(roomId);
 
-        // 3. 更新用户房间配额(减少计数)
+        // 4. 更新用户房间配额(减少计数)
         updateUserRoomQuota(hostId);
     }
 

@@ -1,7 +1,7 @@
 package com.theoyu.thesis.media.biz.service.impl;
 
 import com.theoyu.thesis.media.biz.rpc.OssRpcService;
-import com.theoyu.thesis.media.biz.rpc.idGeneratorRpcService;
+import com.theoyu.thesis.media.biz.rpc.IdGeneratorRpcService;
 import com.theoyu.thesis.media.biz.service.MediaService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class MediaServiceImpl implements MediaService {
     @Resource
-    private idGeneratorRpcService idGeneratorRpcService;
+    private IdGeneratorRpcService idGeneratorRpcService;
     @Resource
     private OssRpcService ossRpcService;
     @Resource

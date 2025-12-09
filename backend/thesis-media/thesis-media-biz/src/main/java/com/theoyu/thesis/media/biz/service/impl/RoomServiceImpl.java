@@ -14,7 +14,7 @@ import com.theoyu.thesis.media.biz.model.mapper.RoomPOMapper;
 import com.theoyu.thesis.media.biz.model.mapper.RoomParticipantPOMapper;
 import com.theoyu.thesis.media.biz.model.vo.*;
 import com.theoyu.thesis.media.biz.rpc.UserRpcService;
-import com.theoyu.thesis.media.biz.rpc.idGeneratorRpcService;
+import com.theoyu.thesis.media.biz.rpc.IdGeneratorRpcService;
 import com.theoyu.thesis.media.biz.service.RoomService;
 import com.theoyu.thesis.media.biz.util.RoomCacheHelper;
 import com.theoyu.thesis.user.dto.response.FindUserByIdRspDTO;
@@ -43,7 +43,7 @@ public class RoomServiceImpl implements RoomService {
     private RoomParticipantPOMapper roomParticipantPOMapper;
 
     @Resource
-    private idGeneratorRpcService idGeneratorRpcService;
+    private IdGeneratorRpcService idGeneratorRpcService;
 
     @Resource
     private UserRpcService userRpcService;

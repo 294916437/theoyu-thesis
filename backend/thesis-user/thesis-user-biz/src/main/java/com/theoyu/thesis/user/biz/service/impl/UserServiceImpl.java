@@ -31,7 +31,7 @@ import com.theoyu.thesis.user.biz.model.vo.FindUserProfileReqVO;
 import com.theoyu.thesis.user.biz.model.vo.FindUserProfileRspVO;
 import com.theoyu.thesis.user.biz.model.vo.UpdateUserInfoReqVO;
 import com.theoyu.thesis.user.biz.rpc.OssRpcService;
-import com.theoyu.thesis.user.biz.rpc.idGeneratorRpcService;
+import com.theoyu.thesis.user.biz.rpc.IdGeneratorRpcService;
 import com.theoyu.thesis.user.biz.service.UserService;
 import com.theoyu.thesis.user.dto.request.*;
 import com.theoyu.thesis.user.dto.response.FindUserByIdRspDTO;
@@ -62,7 +62,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class UserServiceImpl implements UserService {
     @Resource
-    private idGeneratorRpcService idGeneratorRpcService;
+    private IdGeneratorRpcService idGeneratorRpcService;
     @Resource
     private UserPOMapper userPOMapper;
     @Resource

@@ -14,7 +14,7 @@ import com.theoyu.thesis.media.biz.model.mapper.RoomPOMapper;
 import com.theoyu.thesis.media.biz.model.mapper.RoomParticipantPOMapper;
 import com.theoyu.thesis.media.biz.model.vo.RoomConfigVO;
 import com.theoyu.thesis.media.biz.rpc.UserRpcService;
-import com.theoyu.thesis.media.biz.rpc.idGeneratorRpcService;
+import com.theoyu.thesis.media.biz.rpc.IdGeneratorRpcService;
 import com.theoyu.thesis.media.biz.util.RoomCacheHelper;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -60,7 +60,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
     private UserRpcService userRpcService;
 
     @Resource
-    private idGeneratorRpcService idGeneratorRpcService;
+    private IdGeneratorRpcService idGeneratorRpcService;
 
     @Resource(name = "taskExecutor")
     private ThreadPoolTaskExecutor taskExecutor;

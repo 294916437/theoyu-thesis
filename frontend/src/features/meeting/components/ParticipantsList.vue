@@ -269,8 +269,8 @@
 </template>
 
 <script setup>
+import { $notify } from '@/plugins/notification'
 import { ref, computed } from 'vue'
-import { useNotification } from '@/composables/useNotification'
 
 const props = defineProps({
 	participants: {
@@ -288,8 +288,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['mute-participant', 'remove-participant', 'pin-participant', 'spotlight-participant'])
-
-const { showSuccess, showError } = useNotification()
 
 const showInviteDialog = ref(false)
 const isMeetingLocked = ref(false)
@@ -332,18 +330,18 @@ const getConnectionIcon = quality => {
 const copyMeetingLink = async () => {
 	try {
 		await navigator.clipboard.writeText(meetingLink.value)
-		showSuccess('会议链接已复制')
+		$notify.success('会议链接已复制')
 	} catch (error) {
-		showError('复制失败')
+		$notify.error('复制失败')
 	}
 }
 
 const copyMeetingId = async () => {
 	try {
 		await navigator.clipboard.writeText(props.meetingId)
-		showSuccess('会议 ID 已复制')
+		$notify.success('会议 ID 已复制')
 	} catch (error) {
-		showError('复制失败')
+		$notify.error('复制失败')
 	}
 }
 
@@ -362,18 +360,18 @@ const shareInvite = () => {
 const handleMuteAll = () => {
 	// 预留API: 全体静音
 	console.log('Mute all participants')
-	showSuccess('已全体静音')
+	$notify.success('已全体静音')
 }
 
 const handleUnmuteAll = () => {
 	// 预留API: 解除全体静音
 	console.log('Unmute all participants')
-	showSuccess('已解除全体静音')
+	$notify.success('已解除全体静音')
 }
 
 const handleLockMeeting = () => {
 	isMeetingLocked.value = !isMeetingLocked.value
-	showSuccess(isMeetingLocked.value ? '会议已锁定' : '会议已解锁')
+	$notify.success(isMeetingLocked.value ? '会议已锁定' : '会议已解锁')
 }
 
 const toggleAudio = () => {

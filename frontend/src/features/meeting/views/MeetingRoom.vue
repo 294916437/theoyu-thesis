@@ -282,14 +282,13 @@ import ScreenShare from '../components/ScreenShare.vue'
 import ParticipantsList from '../components/ParticipantsList.vue'
 import ChatPanel from '../components/ChatPanel.vue'
 import ControlBar from '../components/ControlBar.vue'
-import LoadingOverlay from '@/features/shared/LoadingOverlay.vue'
+import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
 import { useMediaDevices } from '@/composables/useMediaDevices'
 import { useWebRTC } from '@/composables/useWebRTC'
-import { useNotification } from '@/composables/useNotification'
+import { $notify } from '@/plugins/notification'
 
 const route = useRoute()
 const router = useRouter()
-const { showSuccess, showError } = useNotification()
 
 // 会议信息
 const meetingInfo = ref({
@@ -364,7 +363,7 @@ const toggleVideoLayout = () => {
 	const layouts = ['grid', 'spotlight', 'sidebar']
 	const currentIndex = layouts.indexOf(videoLayout.value)
 	videoLayout.value = layouts[(currentIndex + 1) % layouts.length]
-	showSuccess(`已切换到${layouts[(currentIndex + 1) % layouts.length]}布局`)
+	$notify.success(`已切换到${layouts[(currentIndex + 1) % layouts.length]}布局`)
 }
 
 // 显示离开确认对话框
@@ -381,10 +380,10 @@ const confirmLeaveMeeting = async () => {
 
 		router.push('/')
 
-		showSuccess('已离开会议')
+		$notify.success('已离开会议')
 	} catch (error) {
 		console.error('Failed to leave meeting:', error)
-		showError('离开会议失败')
+		$notify.error('离开会议失败')
 
 		// 即使出错也尝试跳转
 		router.push({
@@ -445,7 +444,7 @@ const handleSpotlightParticipant = participantId => {
 const saveSettings = () => {
 	// 预留保存设置API
 	showSettings.value = false
-	showSuccess('设置已保存')
+	$notify.success('设置已保存')
 }
 
 onMounted(async () => {
@@ -455,10 +454,10 @@ onMounted(async () => {
 	try {
 		await enumerateDevices()
 		await joinMeeting(meetingInfo.value.id)
-		showSuccess('已加入会议')
+		$notify.useRoute('已加入会议')
 	} catch (error) {
 		console.error('Failed to join meeting:', error)
-		showError('加入会议失败')
+		$notify.error('加入会议失败')
 	} finally {
 		isLoading.value = false
 	}

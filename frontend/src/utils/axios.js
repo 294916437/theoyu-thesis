@@ -1,6 +1,6 @@
 import axios from 'axios'
-import notification from '@/services/NotificationService'
 import { useUserStore } from '@/stores/user'
+import { $notify } from '@/plugins/notification'
 
 // 创建 Axios 实例
 const instance = axios.create({
@@ -43,7 +43,7 @@ instance.interceptors.response.use(
 
 		if (status === 401) {
 			console.log('====================== 401')
-			notification.info('请先登录')
+			$notify.info('请先登录')
 
 			// 获取 store 实例并清除登录状态
 			const userStore = useUserStore()
@@ -51,7 +51,7 @@ instance.interceptors.response.use(
 		} else {
 			// 显示错误信息
 			const msg = error.response?.data?.message || '请求失败'
-			notification.error(msg)
+			$notify.error(msg)
 		}
 
 		return Promise.reject(error)

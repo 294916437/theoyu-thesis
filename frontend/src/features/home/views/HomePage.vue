@@ -25,10 +25,10 @@
 							<v-list-item
 								v-for="meeting in upcomingMeetings"
 								:key="meeting.id"
-								@click="goToMeetingDetail(meeting.id)"
 								class="meeting-item"
+								@click="goToMeetingDetail(meeting.id)"
 							>
-								<template v-slot:prepend>
+								<template #prepend>
 									<v-icon>mdi-video</v-icon>
 								</template>
 								<v-list-item-title>{{ meeting.title }}</v-list-item-title>
@@ -54,29 +54,28 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useDateFormat } from '@vueuse/core'
-import AppHeader from '@/features/shared/AppHeader.vue'
+import AppHeader from '@/components/layout/AppHeader.vue'
 import WelcomeBanner from '../components/WelcomeBanner.vue'
 import QuickActions from '../components/QuickActions.vue'
 import RecentMeetings from '../components/RecentMeetings.vue'
+import { $notify } from '@/plugins/notification'
 import { useMeetingApi } from '@/composables/useMeetingApi'
-import { useNotification } from '@/composables/useNotification'
+import { formatTime } from '@/utils/formatTime'
 
 const router = useRouter()
 const { fetchUpcomingMeetings, fetchRecentMeetings, createMeeting } = useMeetingApi()
-const { showSuccess, showError } = useNotification()
 
 const userName = ref('用户')
 const upcomingMeetings = ref([])
 const recentMeetings = ref([])
 
 const formatMeetingTime = time => {
-	return useDateFormat(time, 'MM-DD HH:mm').value
+	return formatTime(time)
 }
 
 const handleJoinMeeting = async meetingId => {
 	if (!meetingId) {
-		showError('请输入会议ID')
+		$notify.warning('请输入会议ID')
 		return
 	}
 	router.push(`/meeting/${meetingId}`)
@@ -89,10 +88,10 @@ const handleCreateMeeting = async () => {
 			title: '即时会议',
 			startTime: new Date().toISOString(),
 		})
-		showSuccess('会议创建成功')
+		$notify.success('会议创建成功')
 		router.push(`/meeting/${meeting.id}`)
 	} catch (error) {
-		showError('创建会议失败')
+		$notify.error('创建会议失败')
 	}
 }
 

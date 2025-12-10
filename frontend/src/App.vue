@@ -3,12 +3,23 @@
 		<router-view />
 
 		<!-- 全局通知 -->
-		<NotificationContainer />
+		<GlobalNotification ref="notificationRef" />
 	</v-app>
 </template>
 
 <script setup>
-import NotificationContainer from './features/shared/NotificationContainer.vue'
+import { ref, onMounted } from 'vue'
+import GlobalNotification from './components/common/GlobalNotification.vue'
+import { setNotificationInstance } from '@/plugins/notification'
+
+const notificationRef = ref(null)
+
+onMounted(() => {
+	// 注册通知实例
+	if (notificationRef.value) {
+		setNotificationInstance(notificationRef.value)
+	}
+})
 </script>
 
 <style></style>

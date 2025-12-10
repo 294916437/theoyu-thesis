@@ -281,15 +281,14 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDateFormat, useClipboard } from '@vueuse/core'
 import { useMeetingApi } from '@/composables/useMeetingApi'
-import { useNotification } from '@/composables/useNotification'
 import MeetingStatistics from '../components/MeetingStatistics.vue'
 import MeetingForm from '../components/MeetingForm.vue'
+import { $notify } from '@/plugins/notification'
 
 const route = useRoute()
 const router = useRouter()
 const { copy } = useClipboard()
 const { fetchMeetingDetail, updateMeeting, deleteMeeting } = useMeetingApi()
-const { showSuccess, showError } = useNotification()
 
 const meetingDetail = ref({
 	id: '',
@@ -391,9 +390,9 @@ const getInitials = name => {
 const copyLink = async () => {
 	try {
 		await copy(meetingLink.value)
-		showSuccess('会议链接已复制')
+		$notify('会议链接已复制')
 	} catch (error) {
-		showError('复制失败')
+		$notify('复制失败')
 	}
 }
 
@@ -431,9 +430,9 @@ const handleSave = async updatedMeeting => {
 		await updateMeeting(meetingDetail.value.id, updatedMeeting)
 		Object.assign(meetingDetail.value, updatedMeeting)
 		showEditDialog.value = false
-		showSuccess('会议更新成功')
+		$notify('会议更新成功')
 	} catch (error) {
-		showError('会议更新失败')
+		$notify('会议更新失败')
 	}
 }
 
@@ -441,11 +440,11 @@ const handleDelete = async () => {
 	try {
 		// 预留API调用
 		await deleteMeeting(meetingDetail.value.id)
-		showSuccess('会议已删除')
+		$notify('会议已删除')
 		showDeleteDialog.value = false
 		router.push('/')
 	} catch (error) {
-		showError('删除失败')
+		$notify('删除失败')
 	}
 }
 
@@ -489,7 +488,7 @@ onMounted(async () => {
 		hasTranscript.value = data.hasTranscript
 		recordingSize.value = data.recordingSize
 	} catch (error) {
-		showError('加载会议详情失败')
+		$notify('加载会议详情失败')
 	}
 })
 </script>

@@ -201,8 +201,8 @@
 <script setup>
 import { ref, computed, nextTick, watch } from 'vue'
 import { useDateFormat, useScroll, useThrottleFn } from '@vueuse/core'
-import { useNotification } from '@/composables/useNotification'
 import EmojiPicker from './EmojiPicker.vue'
+import { $notify } from '@/plugins/notification'
 
 const props = defineProps({
 	messages: {
@@ -216,8 +216,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['send-message', 'message-read', 'load-more', 'file-upload'])
-
-const { showSuccess, showError } = useNotification()
 
 const messageContainer = ref(null)
 const fileInput = ref(null)
@@ -328,7 +326,7 @@ const handleFileSelect = async event => {
 
 	// 文件大小限制 10MB
 	if (file.size > 10 * 1024 * 1024) {
-		showError('文件大小不能超过10MB')
+		$notify.error('文件大小不能超过10MB')
 		return
 	}
 
@@ -356,7 +354,7 @@ const handleFileSelect = async event => {
 			}
 		}, 200)
 	} catch (error) {
-		showError('文件上传失败')
+		$notify.error('文件上传失败')
 		uploadProgress.value = 0
 	}
 
@@ -394,7 +392,7 @@ const handleSaveChat = async () => {
 	a.download = `chat-${Date.now()}.txt`
 	a.click()
 	URL.revokeObjectURL(url)
-	showSuccess('聊天记录已保存')
+	$notify.success('聊天记录已保存')
 }
 
 const handleClearChat = () => {

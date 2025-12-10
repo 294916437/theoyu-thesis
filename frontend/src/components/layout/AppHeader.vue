@@ -34,6 +34,11 @@
 			</template>
 		</v-text-field>
 
+		<!-- 私聊页面入口 -->
+		<v-btn icon class="mr-2" @click="router.push('/chat')">
+			<v-icon>mdi-chat</v-icon>
+		</v-btn>
+
 		<!-- 通知 -->
 		<v-menu offset-y>
 			<template #activator="{ props }">
@@ -134,11 +139,10 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTimeAgo } from '@vueuse/core'
-import { useNotification } from '@/composables/useNotification'
+import { $notify } from '@/plugins/notification'
 
 const router = useRouter()
 const emit = defineEmits(['toggle-drawer', 'search'])
-const { showSuccess } = useNotification()
 
 const searchQuery = ref('')
 const user = ref({
@@ -215,7 +219,7 @@ const handleNotificationClick = notification => {
 
 const markAllAsRead = () => {
 	notifications.value.forEach(n => (n.read = true))
-	showSuccess('所有通知已标记为已读')
+	$notify.success('所有通知已标记为已读')
 }
 
 const goToProfile = () => {
@@ -227,10 +231,10 @@ const goToSettings = () => {
 }
 
 const handleLogout = () => {
-	// 预留登出API
+	// TODO:预留登出API
 	localStorage.removeItem('token')
 	router.push('/login')
-	showSuccess('已退出登录')
+	$notify.success('已退出登录')
 }
 </script>
 

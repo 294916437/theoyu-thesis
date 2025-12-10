@@ -31,7 +31,15 @@ const router = createRouter({
 		{
 			path: '/:pathMatch(.*)*',
 			name: 'NotFound',
-			component: () => import('@/features/shared/NotFound.vue'),
+			component: () => import('@/components/common/NotFound.vue'),
+		},
+		{
+			path: '/chat',
+			name: 'ChatCenter',
+			component: () => import('@/features/chat/views/Chat.vue'),
+			meta: {
+				title: '私聊中心',
+			},
 		},
 	],
 

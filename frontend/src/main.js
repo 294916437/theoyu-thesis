@@ -1,5 +1,6 @@
 import '@/assets/styles/main.css'
 import vuetify from './plugins/vuetify'
+import notification from './plugins/notification'
 import { createApp } from 'vue'
 import App from '@/App.vue'
 
@@ -20,5 +21,7 @@ app.use(pinia)
 
 // 应用组件库
 app.use(vuetify)
+// 应用通知插件
+app.use(notification)
 
 app.mount('#app')

@@ -41,6 +41,14 @@ const router = createRouter({
 				title: '私聊中心',
 			},
 		},
+		{
+			path: '/theme-test',
+			name: 'ThemeTest',
+			component: () => import('@/views/ThemeTestPage.vue'),
+			meta: {
+				title: '主题测试',
+			},
+		},
 	],
 
 	scrollBehavior(to, from, savedPosition) {

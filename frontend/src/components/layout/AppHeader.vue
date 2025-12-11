@@ -34,6 +34,9 @@
 			</template>
 		</v-text-field>
 
+		<!-- 主题切换 -->
+		<ThemeToggle />
+
 		<!-- 私聊页面入口 -->
 		<v-btn icon class="mr-2" @click="router.push('/chat')">
 			<v-icon>mdi-chat</v-icon>
@@ -140,6 +143,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTimeAgo } from '@vueuse/core'
 import { $notify } from '@/plugins/notification'
+import ThemeToggle from '@/components/common/ThemeToggle.vue'
 
 const router = useRouter()
 const emit = defineEmits(['toggle-drawer', 'search'])

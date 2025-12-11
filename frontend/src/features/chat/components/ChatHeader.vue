@@ -1,22 +1,44 @@
 <template>
-	<div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-		<div class="flex items-center gap-3">
-			<img :src="user.avatar" :alt="user.nickname" class="w-8 h-8 rounded-full" />
-			<div>
-				<div class="flex items-center gap-1">
-					<span class="font-bold text-sm">{{ user.nickname }}</span>
+	<v-sheet color="surface" class="chat-header px-4 py-3" elevation="1">
+		<div class="d-flex align-center justify-space-between">
+			<div class="d-flex align-center gap-3">
+				<v-avatar :image="conversation.targetUser?.avatar" size="40" color="grey-lighten-2">
+					<v-icon v-if="!conversation.targetUser?.avatar" icon="mdi-account"></v-icon>
+				</v-avatar>
+
+				<div>
+					<h3 class="text-subtitle-1 font-weight-bold">
+						{{ conversation.targetUser?.nickName || '未知用户' }}
+					</h3>
+					<p class="text-caption text-disabled">在线</p>
 				</div>
 			</div>
-		</div>
 
-		<button class="p-2 hover:bg-gray-100 rounded-full transition-colors" aria-label="More options">
-			<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-				<path
-					d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"
-				/>
-			</svg>
-		</button>
-	</div>
+			<div class="d-flex gap-2">
+				<v-btn
+					icon="mdi-video-outline"
+					variant="text"
+					size="small"
+					color="primary"
+					density="comfortable"
+				></v-btn>
+				<v-btn
+					icon="mdi-phone-outline"
+					variant="text"
+					size="small"
+					color="primary"
+					density="comfortable"
+				></v-btn>
+				<v-btn
+					icon="mdi-information-outline"
+					variant="text"
+					size="small"
+					color="primary"
+					density="comfortable"
+				></v-btn>
+			</div>
+		</div>
+	</v-sheet>
 </template>
 
 <script setup>
@@ -27,3 +49,16 @@ defineProps({
 	},
 })
 </script>
+<style scoped>
+.chat-header {
+	border-bottom: 1px solid rgb(var(--v-theme-border));
+}
+
+.gap-3 {
+	gap: 12px;
+}
+
+.gap-2 {
+	gap: 8px;
+}
+</style>

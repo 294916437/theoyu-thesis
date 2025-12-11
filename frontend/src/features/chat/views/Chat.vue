@@ -1,38 +1,70 @@
 <template>
-	<div class="message-container">
-		<!-- 左侧会话列表 -->
-		<ConversationListSkeleton v-if="initialLoadingConversations" :count="5" />
-		<ConversationList
-			v-else
-			:conversations="conversations"
-			:active-id="activeConversationId"
-			@select="handleSelectConversation"
-		/>
+	<v-container fluid class="chat-page pa-0 fill-height">
+		<v-row no-gutters class="fill-height">
+			<!-- 左侧会话列表 -->
+			<v-col cols="12" md="4" lg="3" class="conversation-sidebar">
+				<v-sheet color="surface" class="fill-height d-flex flex-column" elevation="2">
+					<!-- 头部 -->
+					<div class="conversation-header px-4 py-3 border-b">
+						<div class="d-flex align-center justify-space-between">
+							<h2 class="text-h6 font-weight-bold text-primary">私信</h2>
+							<div class="d-flex gap-2">
+								<v-btn icon="mdi-magnify" variant="text" size="large" density="comfortable"></v-btn>
+								<v-btn
+									icon="mdi-plus"
+									variant="text"
+									size="large"
+									density="comfortable"
+									color="primary"
+								></v-btn>
+							</div>
+						</div>
+					</div>
 
-		<!-- 右侧聊天面板 -->
-		<ChatPanel
-			v-if="activeConversation"
-			:conversation="activeConversation"
-			@send-message="handleSendMessage"
-			@load-more="handleLoadMoreMessages"
-		/>
+					<!-- 会话列表区域 -->
+					<div class="flex-1 overflow-y-auto">
+						<ConversationListSkeleton v-if="initialLoadingConversations" :count="5" />
 
-		<!-- 空状态 -->
-		<div v-else class="flex-1 flex items-center justify-center text-gray-500">
-			<div class="text-center">
-				<svg class="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						stroke-width="2"
-						d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-					/>
-				</svg>
-				<p class="text-lg font-medium">选择一个对话开始聊天</p>
-				<p class="text-sm text-gray-400 mt-2">或者创建新的对话</p>
-			</div>
-		</div>
-	</div>
+						<ConversationList
+							v-else
+							:conversations="conversations"
+							:active-id="activeConversationId"
+							@select="handleSelectConversation"
+						/>
+					</div>
+				</v-sheet>
+			</v-col>
+
+			<!-- 右侧聊天面板 -->
+			<v-col cols="12" md="8" lg="9" class="chat-main">
+				<ChatPanel
+					v-if="activeConversation"
+					:conversation="activeConversation"
+					@send-message="handleSendMessage"
+					@load-more="handleLoadMoreMessages"
+				/>
+
+				<!-- 空状态 -->
+				<v-sheet v-else color="background" class="fill-height d-flex align-center justify-center">
+					<div class="empty-state text-center pa-8">
+						<v-icon icon="mdi-message-text-outline" size="80" color="grey-lighten-1"></v-icon>
+						<h3 class="text-h6 mt-4 text-medium-emphasis">选择一个对话开始聊天</h3>
+						<p class="text-body-2 text-disabled mt-2">或者创建新的对话</p>
+						<v-btn
+							color="primary"
+							variant="elevated"
+							class="mt-6"
+							prepend-icon="mdi-plus"
+							rounded="lg"
+							@click="handleCreateConversation"
+						>
+							新建对话
+						</v-btn>
+					</div>
+				</v-sheet>
+			</v-col>
+		</v-row>
+	</v-container>
 </template>
 
 <script setup>
@@ -462,9 +494,61 @@ onUnmounted(() => {
 })
 </script>
 <style scoped>
-.message-container {
-	display: flex;
-	height: calc(100vh - 72px);
-	background-color: var(--color-surface);
+.chat-page {
+	height: calc(100vh - 64px);
+	background-color: rgb(var(--v-theme-background));
+}
+
+.conversation-sidebar {
+	border-right: 1px solid rgb(var(--v-theme-border));
+}
+
+.conversation-header {
+	border-bottom: 1px solid rgb(var(--v-theme-border));
+}
+
+.border-b {
+	border-bottom: 1px solid rgb(var(--v-theme-border));
+}
+
+.gap-2 {
+	gap: 8px;
+}
+
+.overflow-y-auto {
+	overflow-y: auto;
+	overflow-x: hidden;
+}
+
+.overflow-y-auto::-webkit-scrollbar {
+	width: 6px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+	background-color: rgba(var(--v-theme-on-surface), 0.2);
+	border-radius: 3px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+	background-color: rgba(var(--v-theme-on-surface), 0.3);
+}
+
+.empty-state {
+	animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+		transform: translateY(20px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 </style>

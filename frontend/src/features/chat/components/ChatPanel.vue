@@ -1,28 +1,35 @@
 <template>
-	<div class="flex-1 flex flex-col">
+	<v-sheet color="background" class="chat-panel fill-height d-flex flex-column" elevation="0">
 		<!-- 聊天头部 -->
-		<ChatHeader :user="conversation.user" />
+		<ChatHeader :conversation="conversation" />
 
-		<!-- 消息区域 -->
-		<div ref="messagesContainer" class="flex-1 overflow-y-auto px-4 py-4" @scroll="handleScroll">
-			<!-- 加载更多指示器 -->
-			<div v-if="isLoadingMore" class="text-center py-2">
-				<span class="text-sm text-gray-500">加载中...</span>
-			</div>
-
-			<!-- 没有更多消息提示 -->
-			<div v-else-if="!conversation.hasMore && conversation.messages.length > 0" class="text-center py-2">
-				<span class="text-sm text-gray-400">没有更多消息了</span>
+		<!-- 消息列表 -->
+		<div ref="messageListRef" class="message-list-container flex-1 overflow-y-auto px-4 py-3">
+			<!-- 加载更多按钮 -->
+			<div v-if="hasMoreMessages" class="text-center py-3">
+				<v-btn variant="text" size="small" color="primary" prepend-icon="mdi-chevron-up" @click="handleScroll">
+					加载更多消息
+				</v-btn>
 			</div>
 
 			<!-- 消息列表 -->
-			<div class="space-y-2">
-				<MessageBubble
-					v-for="message in conversation.messages"
-					:key="message.id"
-					:message="message"
-					:user="conversation.user"
-				/>
+			<div v-for="(item, index) in messagesWithDividers" :key="item.id || `divider-${index}`">
+				<!-- 日期分隔线 -->
+				<div v-if="item.isDivider" class="message-date-divider my-4">
+					<v-divider></v-divider>
+					<v-chip size="x-small" color="surface-variant" class="date-chip" label>
+						{{ item.date }}
+					</v-chip>
+				</div>
+
+				<!-- 消息气泡 -->
+				<MessageBubble v-else :message="item" />
+			</div>
+
+			<!-- 空状态 -->
+			<div v-if="conversation.messages.length === 0" class="empty-message-state">
+				<v-icon icon="mdi-message-outline" size="48" color="grey-lighten-1"></v-icon>
+				<p class="text-body-2 text-disabled mt-3">暂无消息，开始聊天吧</p>
 			</div>
 		</div>
 
@@ -53,16 +60,17 @@
 			@accept="acceptCall"
 			@reject="rejectCall"
 		/>
-	</div>
+	</v-sheet>
 </template>
 
 <script setup>
-import { ref, nextTick, watch, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
+import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
 import { useUserStore } from '@/stores/user'
 import ChatHeader from './ChatHeader.vue'
 import MessageBubble from './MessageBubble.vue'
 import MessageInput from './MessageInput.vue'
 import { $notify } from '@/plugins/notification'
+import { formatTime } from '@/utils/formatTime'
 
 // 延迟加载视频通话相关组件
 const VideoCall = defineAsyncComponent(() => import('./VideoCall.vue'))
@@ -192,7 +200,7 @@ const handleScroll = async () => {
 		const oldScrollTop = messagesContainer.value.scrollTop
 
 		try {
-			console.log('📜 触发加载更多消息...')
+			console.log('触发加载更多消息...')
 			emit('load-more')
 
 			// 加载完成后，恢复滚动位置（防止跳动）
@@ -204,12 +212,34 @@ const handleScroll = async () => {
 				}
 			})
 		} catch (error) {
-			console.error('❌ 加载更多消息失败:', error)
+			console.error('加载更多消息失败:', error)
 		} finally {
 			isLoadingMore.value = false
 		}
 	}
 }
+// 添加日期分隔线的消息列表
+const messagesWithDividers = computed(() => {
+	const messages = props.conversation.messages || []
+	const result = []
+	let lastDate = null
+
+	messages.forEach(message => {
+		const messageDate = new Date(message.createdTime).toLocaleDateString()
+
+		if (messageDate !== lastDate) {
+			result.push({
+				isDivider: true,
+				date: formatTime(message.createdTime),
+			})
+			lastDate = messageDate
+		}
+
+		result.push(message)
+	})
+
+	return result
+})
 // 清理
 onBeforeUnmount(() => {
 	if (videoCallManager) {
@@ -376,10 +406,13 @@ const endVideoCall = () => {
 }
 
 // 滚动到底部
-const scrollToBottom = () => {
+const scrollToBottom = (smooth = true) => {
 	nextTick(() => {
 		if (messagesContainer.value) {
-			messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+			messagesContainer.value.scrollTo({
+				top: messagesContainer.value.scrollHeight,
+				behavior: smooth ? 'smooth' : 'auto',
+			})
 		}
 	})
 }
@@ -398,3 +431,59 @@ watch(
 	{ immediate: true },
 )
 </script>
+<style scoped>
+.chat-panel {
+	position: relative;
+}
+
+.message-list-container {
+	overflow-y: auto;
+	overflow-x: hidden;
+	scroll-behavior: smooth;
+}
+
+.message-list-container::-webkit-scrollbar {
+	width: 6px;
+}
+
+.message-list-container::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.message-list-container::-webkit-scrollbar-thumb {
+	background-color: rgba(var(--v-theme-on-surface), 0.2);
+	border-radius: 3px;
+}
+
+.message-list-container::-webkit-scrollbar-thumb:hover {
+	background-color: rgba(var(--v-theme-on-surface), 0.3);
+}
+
+.empty-message-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	padding: 48px 24px;
+}
+
+.message-date-divider {
+	position: relative;
+	text-align: center;
+}
+
+.message-date-divider .v-divider {
+	position: absolute;
+	top: 50%;
+	left: 0;
+	right: 0;
+	transform: translateY(-50%);
+}
+
+.date-chip {
+	position: relative;
+	z-index: 1;
+	background-color: rgb(var(--v-theme-surface-variant));
+}
+</style>

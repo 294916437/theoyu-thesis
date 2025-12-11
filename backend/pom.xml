@@ -24,6 +24,7 @@
         <module>thesis-kv</module>
         <module>thesis-id-generator</module>
         <module>thesis-media</module>
+        <module>thesis-chat</module>
     </modules>
 
     <properties>

@@ -14,6 +14,8 @@ public enum  ResponseCodeEnum implements BaseExceptionInterface {
 
     // ----------- 业务异常状态码 -----------
     EXAMPLE_CONTENT_NOT_FOUND("KV-20000", "该示例内容不存在"),
+    MESSAGE_CONTENT_NOT_FOUND("KV-20001", "该消息内容不存在"),
+
 
     ;
 

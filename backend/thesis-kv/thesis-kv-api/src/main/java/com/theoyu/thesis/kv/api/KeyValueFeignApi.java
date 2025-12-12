@@ -26,5 +26,16 @@ public interface KeyValueFeignApi {
     @PostMapping(value = PREFIX + "/example/content/delete")
     Response<?> deleteExampleContent(@RequestBody DeleteExampleContentReqDTO deleteExampleContentReqDTO);
 
+    // ==================== Chat服务相关 ====================
+
+    @PostMapping(PREFIX + "/message/content/add")
+    Response<?> addMessageContent(@RequestBody AddMessageContentReqDTO reqDTO);
+
+    @PostMapping(PREFIX + "/message/content/find")
+    Response<FindMessageContentRspDTO> findMessageContent(@Valid @RequestBody FindMessageContentReqDTO reqDTO);
+
+    @PostMapping(PREFIX + "/message/content/delete")
+    Response<?> deleteMessageContent(@Valid @RequestBody DeleteMessageContentReqDTO reqDTO);
+
 
 }

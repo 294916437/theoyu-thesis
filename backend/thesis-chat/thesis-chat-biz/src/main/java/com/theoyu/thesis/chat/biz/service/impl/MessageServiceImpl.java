@@ -18,7 +18,7 @@ import com.theoyu.thesis.chat.biz.model.vo.*;
 import com.theoyu.thesis.chat.biz.rpc.IdGeneratorRpcService;
 import com.theoyu.thesis.chat.biz.rpc.KVRpcService;
 import com.theoyu.thesis.chat.biz.rpc.UserRpcService;
-import com.theoyu.thesis.chat.biz.service.MessageChatService;
+import com.theoyu.thesis.chat.biz.service.MessagePushService;
 import com.theoyu.thesis.chat.biz.service.MessageService;
 import com.theoyu.thesis.user.dto.response.FindUserByIdRspDTO;
 import jakarta.annotation.Resource;
@@ -49,7 +49,7 @@ public class MessageServiceImpl implements MessageService {
     // 消息发送频率限制：每个用户每秒最多发送3条消息
     private static final int MAX_MESSAGES_PER_SECOND = 3;
     @Resource
-    private MessageChatService messageChatService;
+    private MessagePushService messagePushService;
     @Resource
     private MessagePOMapper messagePOMapper;
     
@@ -258,7 +258,7 @@ public class MessageServiceImpl implements MessageService {
                         .sendTime(message.getCreatedTime())
                         .build();
                 // 推送同实例和在线用户
-                messageChatService.pushMessageToUsers(mqMessage);
+                messagePushService.pushMessageToUsers(mqMessage);
                 // 发送 MQ（用于离线推送和跨实例同步）
                 rocketMQTemplate.syncSend(
                         MQConstants.TOPIC_MESSAGE_SEND + ":" + MQConstants.TAG_MESSAGE_SEND,

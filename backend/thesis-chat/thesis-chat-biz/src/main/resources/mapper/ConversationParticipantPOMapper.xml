@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.theoyu.thesis.chat.biz.model.mapper.ConversationParticipantPOMapper">
+  <resultMap id="BaseResultMap" type="com.theoyu.thesis.chat.biz.model.entity.ConversationParticipantPO">
+    <id column="conversation_id" jdbcType="BIGINT" property="conversationId" />
+    <id column="user_id" jdbcType="BIGINT" property="userId" />
+    <result column="is_active" jdbcType="BIT" property="isActive" />
+    <result column="unread_count" jdbcType="INTEGER" property="unreadCount" />
+    <result column="last_read_message_id" jdbcType="BIGINT" property="lastReadMessageId" />
+    <result column="last_read_time" jdbcType="TIMESTAMP" property="lastReadTime" />
+    <result column="joined_time" jdbcType="TIMESTAMP" property="joinedTime" />
+    <result column="updated_time" jdbcType="TIMESTAMP" property="updatedTime" />
+  </resultMap>
+  <sql id="Base_Column_List">
+    conversation_id, user_id, is_active, unread_count, last_read_message_id, last_read_time, 
+    joined_time, updated_time
+  </sql>
+  <select id="selectByPrimaryKey" parameterType="map" resultMap="BaseResultMap">
+    select 
+    <include refid="Base_Column_List" />
+    from t_conversation_participant
+    where conversation_id = #{conversationId,jdbcType=BIGINT}
+      and user_id = #{userId,jdbcType=BIGINT}
+  </select>
+  <delete id="deleteByPrimaryKey" parameterType="map">
+    delete from t_conversation_participant
+    where conversation_id = #{conversationId,jdbcType=BIGINT}
+      and user_id = #{userId,jdbcType=BIGINT}
+  </delete>
+  <insert id="insert" parameterType="com.theoyu.thesis.chat.biz.model.entity.ConversationParticipantPO">
+    insert into t_conversation_participant (conversation_id, user_id, is_active, 
+      unread_count, last_read_message_id, last_read_time, 
+      joined_time, updated_time)
+    values (#{conversationId,jdbcType=BIGINT}, #{userId,jdbcType=BIGINT}, #{isActive,jdbcType=BIT}, 
+      #{unreadCount,jdbcType=INTEGER}, #{lastReadMessageId,jdbcType=BIGINT}, #{lastReadTime,jdbcType=TIMESTAMP}, 
+      #{joinedTime,jdbcType=TIMESTAMP}, #{updatedTime,jdbcType=TIMESTAMP})
+  </insert>
+  <insert id="insertSelective" parameterType="com.theoyu.thesis.chat.biz.model.entity.ConversationParticipantPO">
+    insert into t_conversation_participant
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="conversationId != null">
+        conversation_id,
+      </if>
+      <if test="userId != null">
+        user_id,
+      </if>
+      <if test="isActive != null">
+        is_active,
+      </if>
+      <if test="unreadCount != null">
+        unread_count,
+      </if>
+      <if test="lastReadMessageId != null">
+        last_read_message_id,
+      </if>
+      <if test="lastReadTime != null">
+        last_read_time,
+      </if>
+      <if test="joinedTime != null">
+        joined_time,
+      </if>
+      <if test="updatedTime != null">
+        updated_time,
+      </if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="conversationId != null">
+        #{conversationId,jdbcType=BIGINT},
+      </if>
+      <if test="userId != null">
+        #{userId,jdbcType=BIGINT},
+      </if>
+      <if test="isActive != null">
+        #{isActive,jdbcType=BIT},
+      </if>
+      <if test="unreadCount != null">
+        #{unreadCount,jdbcType=INTEGER},
+      </if>
+      <if test="lastReadMessageId != null">
+        #{lastReadMessageId,jdbcType=BIGINT},
+      </if>
+      <if test="lastReadTime != null">
+        #{lastReadTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="joinedTime != null">
+        #{joinedTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatedTime != null">
+        #{updatedTime,jdbcType=TIMESTAMP},
+      </if>
+    </trim>
+  </insert>
+  <update id="updateByPrimaryKeySelective" parameterType="com.theoyu.thesis.chat.biz.model.entity.ConversationParticipantPO">
+    update t_conversation_participant
+    <set>
+      <if test="isActive != null">
+        is_active = #{isActive,jdbcType=BIT},
+      </if>
+      <if test="unreadCount != null">
+        unread_count = #{unreadCount,jdbcType=INTEGER},
+      </if>
+      <if test="lastReadMessageId != null">
+        last_read_message_id = #{lastReadMessageId,jdbcType=BIGINT},
+      </if>
+      <if test="lastReadTime != null">
+        last_read_time = #{lastReadTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="joinedTime != null">
+        joined_time = #{joinedTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatedTime != null">
+        updated_time = #{updatedTime,jdbcType=TIMESTAMP},
+      </if>
+    </set>
+    where conversation_id = #{conversationId,jdbcType=BIGINT}
+      and user_id = #{userId,jdbcType=BIGINT}
+  </update>
+  <update id="updateByPrimaryKey" parameterType="com.theoyu.thesis.chat.biz.model.entity.ConversationParticipantPO">
+    update t_conversation_participant
+    set is_active = #{isActive,jdbcType=BIT},
+      unread_count = #{unreadCount,jdbcType=INTEGER},
+      last_read_message_id = #{lastReadMessageId,jdbcType=BIGINT},
+      last_read_time = #{lastReadTime,jdbcType=TIMESTAMP},
+      joined_time = #{joinedTime,jdbcType=TIMESTAMP},
+      updated_time = #{updatedTime,jdbcType=TIMESTAMP}
+    where conversation_id = #{conversationId,jdbcType=BIGINT}
+      and user_id = #{userId,jdbcType=BIGINT}
+  </update>
+  <select id="selectByConversationId" resultMap="BaseResultMap">
+    SELECT
+    <include refid="Base_Column_List" />
+    FROM t_conversation_participant
+    WHERE conversation_id = #{conversationId,jdbcType=BIGINT}
+    AND is_active = 1
+    ORDER BY joined_time ASC
+  </select>
+
+  <select id="selectByConversationIdsAndUserId" resultMap="BaseResultMap">
+    SELECT
+    <include refid="Base_Column_List" />
+    FROM t_conversation_participant
+    WHERE conversation_id IN
+    <foreach collection="conversationIds" item="id" open="(" separator="," close=")">
+      #{id,jdbcType=BIGINT}
+    </foreach>
+    AND user_id = #{userId,jdbcType=BIGINT}
+  </select>
+  <select id="selectByConversationIds" resultMap="BaseResultMap">
+    SELECT
+    <include refid="Base_Column_List" />
+    FROM t_conversation_participant
+    WHERE conversation_id IN
+    <foreach collection="conversationIds" item="id" open="(" separator="," close=")">
+      #{id,jdbcType=BIGINT}
+    </foreach>
+  </select>
+  <!-- 批量插入参与者 -->
+  <insert id="batchInsert" parameterType="java.util.List">
+    INSERT INTO t_conversation_participant
+    (conversation_id, user_id, is_active, unread_count, joined_time, updated_time)
+    VALUES
+    <foreach collection="participants" item="item" separator=",">
+      (#{item.conversationId,jdbcType=BIGINT},
+      #{item.userId,jdbcType=BIGINT},
+      #{item.isActive,jdbcType=BIT},
+      #{item.unreadCount,jdbcType=INTEGER},
+      #{item.joinedTime,jdbcType=TIMESTAMP},
+      #{item.updatedTime,jdbcType=TIMESTAMP})
+    </foreach>
+  </insert>
+  <!-- 软删除参与者 -->
+  <update id="softDeleteParticipant">
+    UPDATE t_conversation_participant
+    SET is_active = 0,
+        updated_time = #{updatedTime,jdbcType=TIMESTAMP}
+    WHERE conversation_id = #{conversationId,jdbcType=BIGINT}
+      AND user_id = #{userId,jdbcType=BIGINT}
+  </update>
+  <!-- 统计活跃参与者数量 -->
+  <select id="countActiveParticipants" resultType="java.lang.Integer">
+    SELECT COUNT(*)
+    FROM t_conversation_participant
+    WHERE conversation_id = #{conversationId,jdbcType=BIGINT}
+      AND is_active = 1
+  </select>
+  <!-- 批量增加未读数（排除发送者） -->
+  <update id="batchIncrementUnreadCount">
+    UPDATE t_conversation_participant
+    SET unread_count = unread_count + 1,
+        updated_time = #{updatedTime,jdbcType=TIMESTAMP}
+    WHERE conversation_id = #{conversationId,jdbcType=BIGINT}
+      AND user_id != #{excludeUserId,jdbcType=BIGINT}
+      AND is_active = 1
+  </update>
+</mapper>

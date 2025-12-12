@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.theoyu.thesis.chat.biz.model.mapper.MessagePOMapper">
+  <resultMap id="BaseResultMap" type="com.theoyu.thesis.chat.biz.model.entity.MessagePO">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="conversation_id" jdbcType="BIGINT" property="conversationId" />
+    <result column="sender_id" jdbcType="BIGINT" property="senderId" />
+    <result column="message_type" jdbcType="TINYINT" property="messageType" />
+    <result column="img_uris" jdbcType="VARCHAR" property="imgUris" />
+    <result column="video_uri" jdbcType="VARCHAR" property="videoUri" />
+    <result column="content_uuid" jdbcType="VARCHAR" property="contentUuid" />
+    <result column="reply_to_message_id" jdbcType="BIGINT" property="replyToMessageId" />
+    <result column="is_deleted" jdbcType="BIT" property="isDeleted" />
+    <result column="created_time" jdbcType="TIMESTAMP" property="createdTime" />
+  </resultMap>
+  <sql id="Base_Column_List">
+    id, conversation_id, sender_id, message_type, img_uris, video_uri, content_uuid, 
+    reply_to_message_id, is_deleted, created_time
+  </sql>
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select 
+    <include refid="Base_Column_List" />
+    from t_message
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from t_message
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+  <insert id="insert" parameterType="com.theoyu.thesis.chat.biz.model.entity.MessagePO">
+    insert into t_message (id, conversation_id, sender_id, 
+      message_type, img_uris, video_uri, 
+      content_uuid, reply_to_message_id, is_deleted, 
+      created_time)
+    values (#{id,jdbcType=BIGINT}, #{conversationId,jdbcType=BIGINT}, #{senderId,jdbcType=BIGINT}, 
+      #{messageType,jdbcType=TINYINT}, #{imgUris,jdbcType=VARCHAR}, #{videoUri,jdbcType=VARCHAR}, 
+      #{contentUuid,jdbcType=VARCHAR}, #{replyToMessageId,jdbcType=BIGINT}, #{isDeleted,jdbcType=BIT}, 
+      #{createdTime,jdbcType=TIMESTAMP})
+  </insert>
+  <insert id="insertSelective" parameterType="com.theoyu.thesis.chat.biz.model.entity.MessagePO">
+    insert into t_message
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        id,
+      </if>
+      <if test="conversationId != null">
+        conversation_id,
+      </if>
+      <if test="senderId != null">
+        sender_id,
+      </if>
+      <if test="messageType != null">
+        message_type,
+      </if>
+      <if test="imgUris != null">
+        img_uris,
+      </if>
+      <if test="videoUri != null">
+        video_uri,
+      </if>
+      <if test="contentUuid != null">
+        content_uuid,
+      </if>
+      <if test="replyToMessageId != null">
+        reply_to_message_id,
+      </if>
+      <if test="isDeleted != null">
+        is_deleted,
+      </if>
+      <if test="createdTime != null">
+        created_time,
+      </if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        #{id,jdbcType=BIGINT},
+      </if>
+      <if test="conversationId != null">
+        #{conversationId,jdbcType=BIGINT},
+      </if>
+      <if test="senderId != null">
+        #{senderId,jdbcType=BIGINT},
+      </if>
+      <if test="messageType != null">
+        #{messageType,jdbcType=TINYINT},
+      </if>
+      <if test="imgUris != null">
+        #{imgUris,jdbcType=VARCHAR},
+      </if>
+      <if test="videoUri != null">
+        #{videoUri,jdbcType=VARCHAR},
+      </if>
+      <if test="contentUuid != null">
+        #{contentUuid,jdbcType=VARCHAR},
+      </if>
+      <if test="replyToMessageId != null">
+        #{replyToMessageId,jdbcType=BIGINT},
+      </if>
+      <if test="isDeleted != null">
+        #{isDeleted,jdbcType=BIT},
+      </if>
+      <if test="createdTime != null">
+        #{createdTime,jdbcType=TIMESTAMP},
+      </if>
+    </trim>
+  </insert>
+  <update id="updateByPrimaryKeySelective" parameterType="com.theoyu.thesis.chat.biz.model.entity.MessagePO">
+    update t_message
+    <set>
+      <if test="conversationId != null">
+        conversation_id = #{conversationId,jdbcType=BIGINT},
+      </if>
+      <if test="senderId != null">
+        sender_id = #{senderId,jdbcType=BIGINT},
+      </if>
+      <if test="messageType != null">
+        message_type = #{messageType,jdbcType=TINYINT},
+      </if>
+      <if test="imgUris != null">
+        img_uris = #{imgUris,jdbcType=VARCHAR},
+      </if>
+      <if test="videoUri != null">
+        video_uri = #{videoUri,jdbcType=VARCHAR},
+      </if>
+      <if test="contentUuid != null">
+        content_uuid = #{contentUuid,jdbcType=VARCHAR},
+      </if>
+      <if test="replyToMessageId != null">
+        reply_to_message_id = #{replyToMessageId,jdbcType=BIGINT},
+      </if>
+      <if test="isDeleted != null">
+        is_deleted = #{isDeleted,jdbcType=BIT},
+      </if>
+      <if test="createdTime != null">
+        created_time = #{createdTime,jdbcType=TIMESTAMP},
+      </if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+  <update id="updateByPrimaryKey" parameterType="com.theoyu.thesis.chat.biz.model.entity.MessagePO">
+    update t_message
+    set conversation_id = #{conversationId,jdbcType=BIGINT},
+      sender_id = #{senderId,jdbcType=BIGINT},
+      message_type = #{messageType,jdbcType=TINYINT},
+      img_uris = #{imgUris,jdbcType=VARCHAR},
+      video_uri = #{videoUri,jdbcType=VARCHAR},
+      content_uuid = #{contentUuid,jdbcType=VARCHAR},
+      reply_to_message_id = #{replyToMessageId,jdbcType=BIGINT},
+      is_deleted = #{isDeleted,jdbcType=BIT},
+      created_time = #{createdTime,jdbcType=TIMESTAMP}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+  <!-- 基于游标分页查询消息列表 -->
+  <select id="selectByConversationIdWithCursor" resultMap="BaseResultMap">
+    SELECT
+    <include refid="Base_Column_List" />
+    FROM t_message
+    WHERE conversation_id = #{conversationId,jdbcType=BIGINT}
+    AND is_deleted = 0
+    <if test="cursor != null">
+      AND id &lt; #{cursor,jdbcType=BIGINT}
+    </if>
+    ORDER BY id
+    LIMIT #{limit,jdbcType=INTEGER}
+  </select>
+
+  <!-- 统计会话消息总数 -->
+  <select id="countByConversationId" resultType="java.lang.Long">
+    SELECT COUNT(*)
+    FROM t_message
+    WHERE conversation_id = #{conversationId,jdbcType=BIGINT}
+      AND is_deleted = 0
+  </select>
+
+  <!-- 批量查询消息 -->
+  <select id="selectByIds" resultMap="BaseResultMap">
+    SELECT
+    <include refid="Base_Column_List" />
+    FROM t_message
+    WHERE id IN
+    <foreach collection="ids" item="id" open="(" separator="," close=")">
+      #{id,jdbcType=BIGINT}
+    </foreach>
+    AND is_deleted = 0
+  </select>
+</mapper>

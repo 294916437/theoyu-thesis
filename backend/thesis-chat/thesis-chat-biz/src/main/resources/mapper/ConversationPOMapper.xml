@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.theoyu.thesis.chat.biz.model.mapper.ConversationPOMapper">
+  <resultMap id="BaseResultMap" type="com.theoyu.thesis.chat.biz.model.entity.ConversationPO">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="conversation_type" jdbcType="TINYINT" property="conversationType" />
+    <result column="title" jdbcType="VARCHAR" property="title" />
+    <result column="last_message_id" jdbcType="BIGINT" property="lastMessageId" />
+    <result column="last_message_time" jdbcType="TIMESTAMP" property="lastMessageTime" />
+    <result column="created_time" jdbcType="TIMESTAMP" property="createdTime" />
+    <result column="updated_time" jdbcType="TIMESTAMP" property="updatedTime" />
+  </resultMap>
+  <sql id="Base_Column_List">
+    id, conversation_type, title, last_message_id, last_message_time, created_time, updated_time
+  </sql>
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select 
+    <include refid="Base_Column_List" />
+    from t_conversation
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from t_conversation
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+  <insert id="insert" parameterType="com.theoyu.thesis.chat.biz.model.entity.ConversationPO">
+    insert into t_conversation (id, conversation_type, title, 
+      last_message_id, last_message_time, created_time, 
+      updated_time)
+    values (#{id,jdbcType=BIGINT}, #{conversationType,jdbcType=TINYINT}, #{title,jdbcType=VARCHAR}, 
+      #{lastMessageId,jdbcType=BIGINT}, #{lastMessageTime,jdbcType=TIMESTAMP}, #{createdTime,jdbcType=TIMESTAMP}, 
+      #{updatedTime,jdbcType=TIMESTAMP})
+  </insert>
+  <insert id="insertSelective" parameterType="com.theoyu.thesis.chat.biz.model.entity.ConversationPO">
+    insert into t_conversation
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        id,
+      </if>
+      <if test="conversationType != null">
+        conversation_type,
+      </if>
+      <if test="title != null">
+        title,
+      </if>
+      <if test="lastMessageId != null">
+        last_message_id,
+      </if>
+      <if test="lastMessageTime != null">
+        last_message_time,
+      </if>
+      <if test="createdTime != null">
+        created_time,
+      </if>
+      <if test="updatedTime != null">
+        updated_time,
+      </if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        #{id,jdbcType=BIGINT},
+      </if>
+      <if test="conversationType != null">
+        #{conversationType,jdbcType=TINYINT},
+      </if>
+      <if test="title != null">
+        #{title,jdbcType=VARCHAR},
+      </if>
+      <if test="lastMessageId != null">
+        #{lastMessageId,jdbcType=BIGINT},
+      </if>
+      <if test="lastMessageTime != null">
+        #{lastMessageTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="createdTime != null">
+        #{createdTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatedTime != null">
+        #{updatedTime,jdbcType=TIMESTAMP},
+      </if>
+    </trim>
+  </insert>
+  <update id="updateByPrimaryKeySelective" parameterType="com.theoyu.thesis.chat.biz.model.entity.ConversationPO">
+    update t_conversation
+    <set>
+      <if test="conversationType != null">
+        conversation_type = #{conversationType,jdbcType=TINYINT},
+      </if>
+      <if test="title != null">
+        title = #{title,jdbcType=VARCHAR},
+      </if>
+      <if test="lastMessageId != null">
+        last_message_id = #{lastMessageId,jdbcType=BIGINT},
+      </if>
+      <if test="lastMessageTime != null">
+        last_message_time = #{lastMessageTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="createdTime != null">
+        created_time = #{createdTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatedTime != null">
+        updated_time = #{updatedTime,jdbcType=TIMESTAMP},
+      </if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+  <update id="updateByPrimaryKey" parameterType="com.theoyu.thesis.chat.biz.model.entity.ConversationPO">
+    update t_conversation
+    set conversation_type = #{conversationType,jdbcType=TINYINT},
+      title = #{title,jdbcType=VARCHAR},
+      last_message_id = #{lastMessageId,jdbcType=BIGINT},
+      last_message_time = #{lastMessageTime,jdbcType=TIMESTAMP},
+      created_time = #{createdTime,jdbcType=TIMESTAMP},
+      updated_time = #{updatedTime,jdbcType=TIMESTAMP}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+  <!-- 基于游标的分页查询 -->
+  <select id="selectByUserIdWithCursor" resultMap="BaseResultMap">
+    SELECT
+    c.id, c.conversation_type, c.title, c.last_message_id,
+    c.last_message_time, c.created_time, c.updated_time
+    FROM t_conversation c
+    INNER JOIN t_conversation_participant cp ON c.id = cp.conversation_id
+    WHERE cp.user_id = #{userId,jdbcType=BIGINT}
+    AND cp.is_active = 1
+    <if test="conversationType != null">
+      AND c.conversation_type = #{conversationType,jdbcType=TINYINT}
+    </if>
+    <if test="cursor != null">
+      AND (c.last_message_time &lt; (
+      SELECT last_message_time FROM t_conversation WHERE id = #{cursor,jdbcType=BIGINT}
+      ) OR (c.last_message_time = (
+      SELECT last_message_time FROM t_conversation WHERE id = #{cursor,jdbcType=BIGINT}
+      ) AND c.id &lt; #{cursor,jdbcType=BIGINT}))
+    </if>
+    ORDER BY c.last_message_time DESC, c.id DESC
+    LIMIT #{limit,jdbcType=INTEGER}
+  </select>
+
+  <!-- 查询两个用户之间是否已存在单聊会话 -->
+  <select id="selectPrivateConversationByUserIds" resultMap="BaseResultMap">
+    SELECT
+    <include refid="Base_Column_List" />
+    FROM t_conversation c
+    WHERE c.conversation_type = 1
+    AND EXISTS (
+    SELECT 1 FROM t_conversation_participant cp1
+    WHERE cp1.conversation_id = c.id
+    AND cp1.user_id = #{userId1,jdbcType=BIGINT}
+    AND cp1.is_active = 1
+    )
+    AND EXISTS (
+    SELECT 1 FROM t_conversation_participant cp2
+    WHERE cp2.conversation_id = c.id
+    AND cp2.user_id = #{userId2,jdbcType=BIGINT}
+    AND cp2.is_active = 1
+    )
+    AND (
+    SELECT COUNT(*) FROM t_conversation_participant cp
+    WHERE cp.conversation_id = c.id AND cp.is_active = 1
+    ) = 2
+    LIMIT 1
+  </select>
+  <!-- 更新会话的最后一条消息 -->
+  <update id="updateLastMessage">
+    UPDATE t_conversation
+    SET last_message_id = #{lastMessageId,jdbcType=BIGINT},
+        last_message_time = #{lastMessageTime,jdbcType=TIMESTAMP},
+        updated_time = #{updatedTime,jdbcType=TIMESTAMP}
+    WHERE id = #{id,jdbcType=BIGINT}
+  </update>
+</mapper>

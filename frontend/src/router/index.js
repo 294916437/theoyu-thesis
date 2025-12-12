@@ -12,6 +12,22 @@ const router = createRouter({
 			},
 		},
 		{
+			path: '/user/login',
+			name: 'Login',
+			component: () => import('@/features/user/views/LoginPage.vue'),
+			meta: {
+				title: '用户登陆页面',
+			},
+		},
+		{
+			path: '/user/profile',
+			name: 'Profile',
+			component: () => import('@/features/user/views/ProfilePage.vue'),
+			meta: {
+				title: '用户资料',
+			},
+		},
+		{
 			path: '/meeting/:id',
 			name: 'MeetingRoom',
 			component: () => import('@/features/meeting/views/MeetingRoom.vue'),
@@ -58,6 +74,7 @@ const router = createRouter({
 			return { top: 0 }
 		}
 	},
+	// TODO: 添加路由守卫
 })
 
 export default router

@@ -227,11 +227,11 @@ const markAllAsRead = () => {
 }
 
 const goToProfile = () => {
-	router.push('/profile')
+	router.push('/user/profile')
 }
 
 const goToSettings = () => {
-	router.push('/settings')
+	router.push('/user/settings')
 }
 
 const handleLogout = () => {

@@ -3,6 +3,7 @@ package com.theoyu.thesis.user.api;
 import com.theoyu.framework.common.response.Response;
 import com.theoyu.thesis.user.constants.ApiConstants;
 import com.theoyu.thesis.user.dto.request.*;
+import com.theoyu.thesis.user.dto.response.CheckUserOnlineRspDTO;
 import com.theoyu.thesis.user.dto.response.FindUserByIdRspDTO;
 import com.theoyu.thesis.user.dto.response.FindUserByPhoneRspDTO;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -56,6 +57,35 @@ public interface  UserFeignApi {
      */
     @PostMapping(value = PREFIX + "/findByIds")
     Response<List<FindUserByIdRspDTO>> findByIds(@RequestBody FindUsersByIdsReqDTO findUsersByIdsReqDTO);
+    /**
+     * 设置用户在线状态
+     *
+     * @param setUserOnlineReqDTO
+     * @return
+     */
+    @PostMapping(value = PREFIX + "/online/set")
+    Response<?> setUserOnline(@RequestBody SetUserOnlineReqDTO setUserOnlineReqDTO);
+
+    /**
+     * 设置用户离线状态
+     *
+     * @param setUserOfflineReqDTO
+     * @return
+     */
+    @PostMapping(value = PREFIX + "/offline/set")
+    Response<?> setUserOffline(@RequestBody SetUserOfflineReqDTO setUserOfflineReqDTO);
+
+    /**
+     * 检查用户是否在线
+     *
+     * @param checkUserOnlineReqDTO
+     * @return
+     */
+    @PostMapping(value = PREFIX + "/online/check")
+    Response<CheckUserOnlineRspDTO> checkUserOnline(@RequestBody CheckUserOnlineReqDTO checkUserOnlineReqDTO);
+
+
+
 
 
 }

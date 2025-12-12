@@ -28,6 +28,12 @@ public class RedisKeyConstants {
      * 角色对应的权限集合 KEY 前缀
      */
     private static final String ROLE_PERMISSIONS_KEY_PREFIX = "role:permissions:";
+    /**
+     * 用户在线状态 Key 前缀
+     * Key: user:online:{userId}
+     * Value: timestamp
+     */
+    public static final String USER_ONLINE_PREFIX = "user:online:";
 
     /**
      * 构建角色对应的权限集合 KEY
@@ -53,6 +59,12 @@ public class RedisKeyConstants {
      */
     public static String buildUserProfileKey(Long userId) {
         return USER_PROFILE_KEY_PREFIX + userId;
+    }
+    /**
+     * 构建用户在线状态 Key
+     */
+    public static String buildUserOnlineKey(Long userId) {
+        return USER_ONLINE_PREFIX + userId;
     }
 
 }

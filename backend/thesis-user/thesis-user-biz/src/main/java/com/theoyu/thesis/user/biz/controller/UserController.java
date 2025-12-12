@@ -5,8 +5,10 @@ import com.theoyu.framework.logger.aspect.ApiOperationLog;
 import com.theoyu.thesis.user.biz.model.vo.FindUserProfileReqVO;
 import com.theoyu.thesis.user.biz.model.vo.FindUserProfileRspVO;
 import com.theoyu.thesis.user.biz.model.vo.UpdateUserInfoReqVO;
+import com.theoyu.thesis.user.biz.service.UserOnlineService;
 import com.theoyu.thesis.user.biz.service.UserService;
 import com.theoyu.thesis.user.dto.request.*;
+import com.theoyu.thesis.user.dto.response.CheckUserOnlineRspDTO;
 import com.theoyu.thesis.user.dto.response.FindUserByIdRspDTO;
 import com.theoyu.thesis.user.dto.response.FindUserByPhoneRspDTO;
 import jakarta.annotation.Resource;
@@ -26,6 +28,8 @@ import java.util.List;
 public class UserController {
     @Resource
     private UserService userService;
+    @Resource
+    private UserOnlineService userOnlineService;
 
     /**
      * 用户信息修改
@@ -70,5 +74,40 @@ public class UserController {
     public Response<FindUserProfileRspVO> findUserProfile(@Validated @RequestBody FindUserProfileReqVO findUserProfileReqVO) {
         return userService.findUserProfile(findUserProfileReqVO);
     }
+    /**
+     * 设置用户在线状态
+     */
+    @PostMapping("/online/set")
+    @ApiOperationLog(description = "设置用户在线状态")
+    public Response<?> setUserOnline(@Validated @RequestBody SetUserOnlineReqDTO setUserOnlineReqDTO) {
+        userOnlineService.setUserOnline(setUserOnlineReqDTO.getUserId());
+        return Response.success();
+    }
+
+    /**
+     * 设置用户离线状态
+     */
+    @PostMapping("/offline/set")
+    @ApiOperationLog(description = "设置用户离线状态")
+    public Response<?> setUserOffline(@Validated @RequestBody SetUserOfflineReqDTO setUserOfflineReqDTO) {
+        userOnlineService.setUserOffline(setUserOfflineReqDTO.getUserId());
+        return Response.success();
+    }
+
+    /**
+     * 检查用户是否在线
+     */
+    @PostMapping("/online/check")
+    @ApiOperationLog(description = "检查用户是否在线")
+    public Response<CheckUserOnlineRspDTO> checkUserOnline(@Validated @RequestBody CheckUserOnlineReqDTO checkUserOnlineReqDTO) {
+        boolean online = userOnlineService.isUserOnline(checkUserOnlineReqDTO.getUserId());
+        CheckUserOnlineRspDTO rspDTO = CheckUserOnlineRspDTO.builder()
+                .userId(checkUserOnlineReqDTO.getUserId())
+                .online(online)
+                .build();
+        return Response.success(rspDTO);
+    }
+
+
 
 }

@@ -12,6 +12,12 @@ spring:
         connect-timeout: 10000
         response-timeout: 60s # 增加响应超时时间
       routes:
+        - id: message
+          uri: lb://thesis-chat
+          predicates:
+            - Path=/message/**
+          filters:
+            - StripPrefix=1
         - id: media
           uri: lb://thesis-media
           predicates:

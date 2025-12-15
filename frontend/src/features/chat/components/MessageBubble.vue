@@ -60,16 +60,6 @@
 					<div v-else-if="message.messageType === 3" class="message-video">
 						<video :src="message.videoUri" controls class="video-player"></video>
 					</div>
-
-					<!-- 发送中状态 -->
-					<v-progress-circular
-						v-if="message.sending"
-						indeterminate
-						size="16"
-						width="2"
-						color="white"
-						class="ml-2"
-					></v-progress-circular>
 				</div>
 
 				<div class="message-meta mt-1 d-flex align-center justify-end gap-1">

@@ -1,39 +1,41 @@
 <template>
 	<v-sheet color="background" class="chat-panel fill-height d-flex flex-column" elevation="0">
 		<!-- 聊天头部 -->
-		<ChatHeader :conversation="conversation" />
+		<ChatHeader :user="conversation.user" />
 
-		<!-- 消息列表 -->
-		<div ref="messageListRef" class="message-list-container flex-1 overflow-y-auto px-4 py-3">
+		<!-- 消息列表 - 关键修改点 -->
+		<div ref="messageListRef" class="message-list-container">
+			<!-- 空状态 - 使用绝对定位 -->
+			<div v-if="conversation.messages.length === 0" class="empty-message-state">
+				<v-icon icon="mdi-message-outline" size="64" color="grey-lighten-1"></v-icon>
+				<p class="text-body-1 text-disabled mt-4">暂无消息，开始聊天吧</p>
+			</div>
+
 			<!-- 加载更多按钮 -->
-			<div v-if="hasMoreMessages" class="text-center py-3">
+			<div v-else-if="conversation.hasMore" class="text-center py-3">
 				<v-btn variant="text" size="small" color="primary" prepend-icon="mdi-chevron-up" @click="handleScroll">
 					加载更多消息
 				</v-btn>
 			</div>
 
-			<!-- 消息列表 -->
-			<div v-for="(item, index) in messagesWithDividers" :key="item.id || `divider-${index}`">
-				<!-- 日期分隔线 -->
-				<div v-if="item.isDivider" class="message-date-divider my-4">
-					<v-divider></v-divider>
-					<v-chip size="x-small" color="surface-variant" class="date-chip" label>
-						{{ item.date }}
-					</v-chip>
+			<!-- 消息列表内容 -->
+			<div v-if="conversation.messages.length > 0" class="message-list-content px-4 py-3">
+				<div v-for="(item, index) in messagesWithDividers" :key="item.id || `divider-${index}`">
+					<!-- 日期分隔线 -->
+					<div v-if="item.isDivider" class="message-date-divider my-4">
+						<v-divider></v-divider>
+						<v-chip size="small" color="surface-variant" class="date-chip" label>
+							{{ item.date }}
+						</v-chip>
+					</div>
+
+					<!-- 消息气泡 -->
+					<MessageBubble v-else :message="item" :user="conversation.user" />
 				</div>
-
-				<!-- 消息气泡 -->
-				<MessageBubble v-else :message="item" />
-			</div>
-
-			<!-- 空状态 -->
-			<div v-if="conversation.messages.length === 0" class="empty-message-state">
-				<v-icon icon="mdi-message-outline" size="48" color="grey-lighten-1"></v-icon>
-				<p class="text-body-2 text-disabled mt-3">暂无消息，开始聊天吧</p>
 			</div>
 		</div>
 
-		<!-- 消息输入框 -->
+		<!-- 消息输入框 - 始终固定在底部 -->
 		<MessageInput @send="handleSend" @video-call="handleVideoCall" />
 
 		<!-- 视频对话框 -->
@@ -434,14 +436,42 @@ watch(
 <style scoped>
 .chat-panel {
 	position: relative;
+	height: 100%;
 }
 
+/* 消息列表容器*/
 .message-list-container {
+	flex: 1;
+	min-height: 0;
 	overflow-y: auto;
 	overflow-x: hidden;
-	scroll-behavior: smooth;
+	position: relative;
+	background-color: rgb(var(--v-theme-background));
 }
 
+/* 消息列表内容 */
+.message-list-content {
+	min-height: 100%;
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-end; /* 消息从底部开始排列 */
+}
+
+/* 空状态 */
+.empty-message-state {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	padding: 48px 24px;
+	pointer-events: none;
+}
+
+/* 滚动条样式 */
 .message-list-container::-webkit-scrollbar {
 	width: 6px;
 }
@@ -451,26 +481,20 @@ watch(
 }
 
 .message-list-container::-webkit-scrollbar-thumb {
-	background-color: rgba(var(--v-theme-on-surface), 0.2);
+	background-color: rgba(var(--v-theme-on-surface), 0.15);
 	border-radius: 3px;
+	transition: background-color 0.2s;
 }
 
 .message-list-container::-webkit-scrollbar-thumb:hover {
-	background-color: rgba(var(--v-theme-on-surface), 0.3);
+	background-color: rgba(var(--v-theme-on-surface), 0.25);
 }
 
-.empty-message-state {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	height: 100%;
-	padding: 48px 24px;
-}
-
+/* 日期分隔线 */
 .message-date-divider {
 	position: relative;
 	text-align: center;
+	margin: 16px 0;
 }
 
 .message-date-divider .v-divider {
@@ -484,6 +508,6 @@ watch(
 .date-chip {
 	position: relative;
 	z-index: 1;
-	background-color: rgb(var(--v-theme-surface-variant));
+	font-size: 0.75rem;
 }
 </style>

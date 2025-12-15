@@ -532,6 +532,7 @@ public class UserServiceImpl implements UserService {
                 .nickname(userPO.getNickname())
                 .userAppId(userPO.getUserId())
                 .sex(userPO.getSex())
+                .phone(userPO.getPhone())
                 .introduction(userPO.getIntroduction())
                 .build();
 

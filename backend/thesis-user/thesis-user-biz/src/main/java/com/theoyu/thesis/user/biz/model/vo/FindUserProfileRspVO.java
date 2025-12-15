@@ -29,7 +29,7 @@ public class FindUserProfileRspVO {
     private String nickname;
 
     /**
-     * 小哈书 ID
+     * AppId
      */
     private String userAppId;
 
@@ -37,6 +37,10 @@ public class FindUserProfileRspVO {
      * 性别
      */
     private Integer sex;
+    /**
+     * 手机号码
+     */
+    private String phone;
 
     /**
      * 岁数
@@ -53,31 +57,4 @@ public class FindUserProfileRspVO {
      */
     private String introduction;
 
-    /**
-     * 关注数
-     */
-    private String followingTotal = "0";
-
-    /**
-     * 粉丝数
-     */
-    private String fansTotal = "0";
-
-    /**
-     * 点赞与收藏总数
-     */
-    private String likeAndCollectTotal = "0";
-
-    /**
-     * 笔记总数
-     */
-    private String noteTotal = "0";
-    /**
-     * 点赞总数
-     */
-    private String likeTotal = "0";
-    /**
-     * 收藏总数
-     */
-    private String collectTotal = "0";
 }

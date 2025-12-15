@@ -20,7 +20,6 @@ export const useUserStore = defineStore(
 
 		const setProfile = newProfile => {
 			profile.value = newProfile
-			console.log('用户Profile:', profile.value)
 		}
 
 		const setToken = newToken => {
@@ -46,7 +45,7 @@ export const useUserStore = defineStore(
 	},
 	{
 		// 开启持久化
-		key: 'oursphere-user',
+		key: 'thesis-user',
 		storage: localStorage,
 		persist: true,
 	},

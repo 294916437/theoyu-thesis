@@ -102,10 +102,10 @@
 			<template #activator="{ props }">
 				<v-btn v-bind="props" variant="text" class="user-menu-btn">
 					<v-avatar size="32" color="primary">
-						<v-img v-if="user.avatar" :src="user.avatar"></v-img>
-						<span v-else class="text-white">{{ userInitial }}</span>
+						<v-img v-if="userStore.profile.avatar" :src="userStore.profile.avatar"></v-img>
+						<v-img v-else src="@/assets/image/default-avatar.png"></v-img>
 					</v-avatar>
-					<span v-if="!$vuetify.display.mobile" class="ml-2">{{ user.name }}</span>
+					<span v-if="!$vuetify.display.mobile" class="ml-2">{{ userStore.profile.nickname }}</span>
 					<v-icon v-if="!$vuetify.display.mobile" right>mdi-chevron-down</v-icon>
 				</v-btn>
 			</template>
@@ -142,18 +142,16 @@
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTimeAgo } from '@vueuse/core'
+import { useUserStore } from '@/stores/user'
 import { $notify } from '@/plugins/notification'
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
+import { logout } from '@/features/user/auth'
 
 const router = useRouter()
+const userStore = useUserStore()
 const emit = defineEmits(['toggle-drawer', 'search'])
 
 const searchQuery = ref('')
-const user = ref({
-	name: '张三',
-	email: 'zhangsan@example.com',
-	avatar: '',
-})
 
 const notifications = ref([
 	{
@@ -176,10 +174,6 @@ const notifications = ref([
 
 const unreadNotifications = computed(() => {
 	return notifications.value.filter(n => !n.read).length
-})
-
-const userInitial = computed(() => {
-	return user.value.name.charAt(0).toUpperCase()
 })
 
 const formatTime = time => {
@@ -234,11 +228,13 @@ const goToSettings = () => {
 	router.push('/user/settings')
 }
 
-const handleLogout = () => {
-	// TODO:预留登出API
-	localStorage.removeItem('token')
-	router.push('/login')
-	$notify.success('已退出登录')
+const handleLogout = async () => {
+	const res = await logout()
+	if (res.success) {
+		userStore.logout()
+		$notify.success('退出登录成功')
+		router.push('/login')
+	}
 }
 </script>
 

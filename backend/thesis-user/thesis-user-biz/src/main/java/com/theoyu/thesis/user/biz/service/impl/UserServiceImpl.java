@@ -533,6 +533,7 @@ public class UserServiceImpl implements UserService {
                 .userAppId(userPO.getUserId())
                 .sex(userPO.getSex())
                 .phone(userPO.getPhone())
+                .backgroundImage(userPO.getBackgroundImg())
                 .introduction(userPO.getIntroduction())
                 .build();
 

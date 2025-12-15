@@ -53,6 +53,11 @@ public class FindUserProfileRspVO {
     private LocalDate birthday;
 
     /**
+     * 背景图片
+     */
+    private String backgroundImage;
+
+    /**
      * 个人介绍
      */
     private String introduction;

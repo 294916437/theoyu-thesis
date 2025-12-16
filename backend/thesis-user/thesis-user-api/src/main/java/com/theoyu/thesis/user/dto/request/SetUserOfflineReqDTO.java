@@ -19,10 +19,4 @@ public class SetUserOfflineReqDTO {
     @NotNull(message = "用户 ID 不能为空")
     private Long userId;
 
-    /**
-     * 会话 ID
-     */
-    @NotBlank(message = "会话 ID 不能为空")
-    private String sessionId;
-
 }

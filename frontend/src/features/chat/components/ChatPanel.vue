@@ -39,12 +39,32 @@
 		<v-sheet color="surface" class="message-input-container" elevation="2">
 			<!-- 隐藏的文件选择器 -->
 			<input ref="fileInputRef" type="file" accept="image/*" style="display: none" @change="handleFileChange" />
+			<!-- 隐藏的视频选择器 -->
+			<input
+				ref="videoInputRef"
+				type="file"
+				accept="video/mp4,video/webm,video/ogg"
+				style="display: none"
+				@change="handleVideoFileChange"
+			/>
 			<div class="input-wrapper">
 				<!-- 左侧功能按钮 -->
 				<div class="input-actions">
 					<v-btn icon="mdi-video" variant="text" size="default" color="primary" @click="handleVideoCall">
 						<v-icon size="22"></v-icon>
 					</v-btn>
+					<v-btn
+						icon="mdi-video-plus"
+						variant="text"
+						size="default"
+						color="primary"
+						:loading="uploadingVideo"
+						:disabled="uploadingVideo"
+						@click="handleAddVideo"
+					>
+						<v-icon size="22"></v-icon>
+					</v-btn>
+
 					<v-btn
 						icon="mdi-image"
 						variant="text"
@@ -53,9 +73,6 @@
 						:disabled="uploadingImage"
 						@click="handleAddMedia"
 					>
-						<v-icon size="22"></v-icon>
-					</v-btn>
-					<v-btn icon="mdi-emoticon-happy-outline" variant="text" size="default" color="primary">
 						<v-icon size="22"></v-icon>
 					</v-btn>
 				</div>
@@ -142,11 +159,17 @@ const props = defineProps({
 const emit = defineEmits(['send-message', 'load-more'])
 const messageText = ref('')
 const userStore = useUserStore()
+// 文件选择器
 const fileInputRef = ref(null)
 const uploadingImage = ref(false)
+// 视频选择器
+const videoInputRef = ref(null)
+const uploadingVideo = ref(false)
+// 消息列表引用
 const messagesContainer = ref(null)
 const isLoadingMore = ref(false)
 const scrollThreshold = 100
+// 视频通话状态
 const isVideoCallActive = ref(false)
 const localStream = ref(null)
 const remoteStream = ref(null)
@@ -156,6 +179,13 @@ const callState = ref('idle')
 
 let videoCallManager = null
 let signalingService = null
+
+// 视频配置
+const VIDEO_CONFIG = {
+	maxSize: 50 * 1024 * 1024, // 50MB
+	maxDuration: 300, // 5分钟
+	acceptTypes: ['video/mp4', 'video/webm', 'video/ogg'],
+}
 
 const currentUserId = userStore.userId
 
@@ -378,6 +408,94 @@ const handleImageUpload = async file => {
 	} finally {
 		uploadingImage.value = false
 	}
+}
+// 打开视频选择器
+const handleAddVideo = () => {
+	if (uploadingVideo.value) {
+		$notify.warning('视频正在上传中，请稍候')
+		return
+	}
+	videoInputRef.value?.click()
+}
+
+// 处理视频文件选择
+const handleVideoFileChange = async event => {
+	const file = event.target.files?.[0]
+
+	if (!file) {
+		return
+	}
+
+	// 验证文件类型
+	if (!VIDEO_CONFIG.acceptTypes.includes(file.type)) {
+		$notify.error('请选择支持的视频格式 (MP4/WebM/OGG)')
+		event.target.value = ''
+		return
+	}
+
+	// 验证文件大小
+	if (file.size > VIDEO_CONFIG.maxSize) {
+		$notify.error('视频大小不能超过 50MB')
+		event.target.value = ''
+		return
+	}
+
+	// 开始上传
+	await handleVideoUpload(file)
+
+	// 清空文件选择器
+	event.target.value = ''
+}
+
+// 上传视频
+const handleVideoUpload = async file => {
+	uploadingVideo.value = true
+
+	try {
+		// 创建 FormData
+		const formData = new FormData()
+		formData.append('file', file)
+
+		console.log('开始上传视频:', file.name)
+
+		// 调用上传接口
+		const response = await uploadFile(formData)
+
+		if (response.success && response.data) {
+			const videoUrl = response.data
+
+			console.log('视频上传成功:', videoUrl)
+
+			// 发送视频消息
+			await handleSendVideoMessage(videoUrl)
+
+			$notify.success('视频发送成功')
+		} else {
+			throw new Error(response.message || '上传失败')
+		}
+	} catch (error) {
+		console.error('视频上传失败:', error)
+		$notify.error('视频上传失败: ' + error.message)
+	} finally {
+		uploadingVideo.value = false
+	}
+}
+
+// 发送视频消息
+const handleSendVideoMessage = async videoUrl => {
+	if (!videoUrl) {
+		console.warn('视频URL为空')
+		return
+	}
+
+	emit('send-message', {
+		type: 'video',
+		videoUri: videoUrl,
+	})
+
+	nextTick(() => {
+		scrollToBottom()
+	})
 }
 // 发送消息
 const handleSendTextMessage = () => {

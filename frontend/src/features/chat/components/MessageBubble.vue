@@ -57,7 +57,7 @@
 					</div>
 
 					<!-- 视频消息 -->
-					<div v-else-if="message.messageType === 3" class="message-video">
+					<div v-else-if="message.messageType === 4" class="message-video">
 						<video :src="message.videoUri" controls class="video-player"></video>
 					</div>
 				</div>
@@ -77,6 +77,7 @@
 
 <script setup>
 import { formatTime } from '@/utils/formatTime'
+import { defineAsyncComponent } from 'vue'
 
 defineProps({
 	message: {
@@ -88,6 +89,7 @@ defineProps({
 		required: true,
 	},
 })
+const VideoPlayer = defineAsyncComponent(() => import('@components/common/VideoPlayer.vue'))
 </script>
 <style scoped>
 .message-bubble-wrapper {

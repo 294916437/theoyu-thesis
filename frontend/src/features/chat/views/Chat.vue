@@ -389,13 +389,18 @@ const handleSendMessage = async messageData => {
 	}
 
 	try {
-		const { type, content, imageUris } = messageData
+		const { type, content, imageUris, videoUri } = messageData
 
 		// 根据类型发送不同的消息
 		if (type === 'text') {
 			messageService.sendTextMessage(activeConversationId.value, content)
 		} else if (type === 'image') {
 			messageService.sendImageMessage(activeConversationId.value, imageUris)
+		} else if (type === 'video') {
+			messageService.sendVideoMessage(activeConversationId.value, videoUri)
+		} else {
+			console.warn('未知的消息类型:', type)
+			return
 		}
 
 		// 乐观更新UI
@@ -405,9 +410,10 @@ const handleSendMessage = async messageData => {
 			senderId: currentUserId,
 			senderNickname: userStore.profile.nickname,
 			senderAvatar: userStore.profile.avatar,
-			messageType: type === 'text' ? 1 : 2, // 1=文本, 2=图片
+			messageType: type === 'text' ? 1 : type === 'image' ? 2 : 4, // 1=文本, 2=图片, 3=视频
 			content: type === 'text' ? content : '',
 			imgUris: type === 'image' ? imageUris : [],
+			videoUri: type === 'video' ? videoUri : '',
 			createdTime: new Date().toISOString(),
 			isSelf: true,
 		}
@@ -419,7 +425,7 @@ const handleSendMessage = async messageData => {
 		// 更新会话列表
 		const conversation = conversations.value.find(c => c.id === activeConversationId.value)
 		if (conversation) {
-			conversation.lastMessageContent = type === 'text' ? content : '[图片]'
+			conversation.lastMessageContent = type === 'text' ? content : type === 'image' ? '[图片]' : '[视频]'
 			conversation.lastMessageTime = new Date().toISOString()
 
 			const index = conversations.value.indexOf(conversation)

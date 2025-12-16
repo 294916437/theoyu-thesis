@@ -377,9 +377,9 @@ const handleSelectConversation = async id => {
 /**
  * 发送消息（通过 WebSocket）
  */
-const handleSendMessage = async text => {
-	if (!activeConversationId.value || !text.trim()) {
-		console.warn('会话ID或消息内容为空')
+const handleSendMessage = async messageData => {
+	if (!activeConversationId.value) {
+		console.warn('会话ID为空')
 		return
 	}
 
@@ -389,23 +389,27 @@ const handleSendMessage = async text => {
 	}
 
 	try {
-		console.log('通过 WebSocket 发送消息:', text)
+		const { type, content, imageUris } = messageData
 
-		// 通过 WebSocket 发送消息
-		messageService.sendTextMessage(activeConversationId.value, text)
+		// 根据类型发送不同的消息
+		if (type === 'text') {
+			messageService.sendTextMessage(activeConversationId.value, content)
+		} else if (type === 'image') {
+			messageService.sendImageMessage(activeConversationId.value, imageUris)
+		}
 
-		// 乐观更新UI：立即添加消息到列表（标记为发送中）
+		// 乐观更新UI
 		const tempMessage = {
-			id: Date.now(), // 临时ID
+			id: Date.now(),
 			conversationId: activeConversationId.value,
 			senderId: currentUserId,
-			senderNickname: userStore.userInfo?.nickName || '我',
-			senderAvatar: userStore.userInfo?.avatar || '',
-			messageType: 1,
-			content: text,
+			senderNickname: userStore.profile.nickname,
+			senderAvatar: userStore.profile.avatar,
+			messageType: type === 'text' ? 1 : 2, // 1=文本, 2=图片
+			content: type === 'text' ? content : '',
+			imgUris: type === 'image' ? imageUris : [],
 			createdTime: new Date().toISOString(),
 			isSelf: true,
-			sending: true, // 标记为发送中
 		}
 
 		const messages = conversationMessagesMap.value.get(activeConversationId.value) || []
@@ -415,10 +419,9 @@ const handleSendMessage = async text => {
 		// 更新会话列表
 		const conversation = conversations.value.find(c => c.id === activeConversationId.value)
 		if (conversation) {
-			conversation.lastMessageContent = text
+			conversation.lastMessageContent = type === 'text' ? content : '[图片]'
 			conversation.lastMessageTime = new Date().toISOString()
 
-			// 将该会话移到列表顶部
 			const index = conversations.value.indexOf(conversation)
 			if (index > 0) {
 				conversations.value.splice(index, 1)

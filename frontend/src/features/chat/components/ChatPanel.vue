@@ -1,5 +1,5 @@
 <template>
-	<v-sheet color="background" class="chat-panel fill-height d-flex flex-column" elevation="0">
+	<v-sheet color="background" class="chat-panel fill-height" elevation="0">
 		<!-- 聊天头部 -->
 		<ChatHeader :user="conversation.user" />
 
@@ -36,7 +36,62 @@
 		</div>
 
 		<!-- 消息输入框 - 始终固定在底部 -->
-		<MessageInput @send="handleSend" @video-call="handleVideoCall" />
+		<v-sheet color="surface" class="message-input-container" elevation="2">
+			<!-- 隐藏的文件选择器 -->
+			<input ref="fileInputRef" type="file" accept="image/*" style="display: none" @change="handleFileChange" />
+			<div class="input-wrapper">
+				<!-- 左侧功能按钮 -->
+				<div class="input-actions">
+					<v-btn icon="mdi-video" variant="text" size="default" color="primary" @click="handleVideoCall">
+						<v-icon size="22"></v-icon>
+					</v-btn>
+					<v-btn
+						icon="mdi-image"
+						variant="text"
+						size="default"
+						color="primary"
+						:disabled="uploadingImage"
+						@click="handleAddMedia"
+					>
+						<v-icon size="22"></v-icon>
+					</v-btn>
+					<v-btn icon="mdi-emoticon-happy-outline" variant="text" size="default" color="primary">
+						<v-icon size="22"></v-icon>
+					</v-btn>
+				</div>
+
+				<!-- 输入框 -->
+				<div class="input-field-wrapper">
+					<v-textarea
+						v-model="messageText"
+						placeholder="发送一条消息..."
+						variant="solo"
+						flat
+						hide-details
+						auto-grow
+						rows="1"
+						max-rows="4"
+						bg-color="surface-variant"
+						rounded="xl"
+						class="flex-1"
+						@keydown.enter.exact.prevent="handleSend"
+					></v-textarea>
+				</div>
+
+				<!-- 发送按钮 -->
+				<v-btn
+					icon
+					size="large"
+					color="primary"
+					elevation="0"
+					class="send-btn"
+					:disabled="!messageText.trim()"
+					@click="handleSendTextMessage"
+				>
+					<v-icon size="24">mdi-send</v-icon>
+				</v-btn>
+			</div>
+		</v-sheet>
 
 		<!-- 视频对话框 -->
 		<VideoCall
@@ -70,9 +125,9 @@ import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, defineAsync
 import { useUserStore } from '@/stores/user'
 import ChatHeader from './ChatHeader.vue'
 import MessageBubble from './MessageBubble.vue'
-import MessageInput from './MessageInput.vue'
 import { $notify } from '@/plugins/notification'
 import { formatTime } from '@/utils/formatTime'
+import { uploadFile } from '@/api/file'
 
 // 延迟加载视频通话相关组件
 const VideoCall = defineAsyncComponent(() => import('./VideoCall.vue'))
@@ -85,7 +140,10 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['send-message', 'load-more'])
+const messageText = ref('')
 const userStore = useUserStore()
+const fileInputRef = ref(null)
+const uploadingImage = ref(false)
 const messagesContainer = ref(null)
 const isLoadingMore = ref(false)
 const scrollThreshold = 100
@@ -251,10 +309,100 @@ onBeforeUnmount(() => {
 		signalingService.disconnect()
 	}
 })
+// 打开文件选择器
+const handleAddMedia = () => {
+	if (uploadingImage.value) {
+		$notify.warning('图片正在上传中，请稍候')
+		return
+	}
+	fileInputRef.value?.click()
+}
+// 处理文件选择
+const handleFileChange = async event => {
+	const file = event.target.files?.[0]
 
+	if (!file) {
+		return
+	}
+
+	// 验证文件类型
+	if (!file.type.startsWith('image/')) {
+		$notify.error('请选择图片文件')
+		event.target.value = '' // 清空选择
+		return
+	}
+
+	// 验证文件大小 (限制 10MB)
+	const maxSize = 10 * 1024 * 1024
+	if (file.size > maxSize) {
+		$notify.error('图片大小不能超过 10MB')
+		event.target.value = ''
+		return
+	}
+
+	// 开始上传
+	await handleImageUpload(file)
+
+	// 清空文件选择器，允许重复选择同一文件
+	event.target.value = ''
+}
+// 上传图片
+const handleImageUpload = async file => {
+	uploadingImage.value = true
+
+	try {
+		// 创建 FormData
+		const formData = new FormData()
+		formData.append('file', file)
+
+		console.log('开始上传图片:', file.name)
+
+		// 调用上传接口
+		const response = await uploadFile(formData)
+
+		if (response.success && response.data) {
+			const imageUrl = response.data
+
+			console.log('图片上传成功:', imageUrl)
+
+			// 发送图片消息
+			await handleSendImageMessage(imageUrl)
+
+			$notify.success('图片发送成功')
+		} else {
+			throw new Error(response.message || '上传失败')
+		}
+	} catch (error) {
+		console.error('图片上传失败:', error)
+		$notify.error('图片上传失败: ' + error.message)
+	} finally {
+		uploadingImage.value = false
+	}
+}
 // 发送消息
-const handleSend = text => {
-	emit('send-message', text)
+const handleSendTextMessage = () => {
+	if (!messageText.value.trim()) return
+	emit('send-message', {
+		type: 'text',
+		content: messageText.value,
+	})
+	messageText.value = ''
+	nextTick(() => {
+		scrollToBottom()
+	})
+}
+// 发送图片消息
+const handleSendImageMessage = async imageUrl => {
+	if (!imageUrl) {
+		console.warn('图片URL为空')
+		return
+	}
+
+	emit('send-message', {
+		type: 'image',
+		imageUris: [imageUrl],
+	})
+
 	nextTick(() => {
 		scrollToBottom()
 	})
@@ -437,6 +585,8 @@ watch(
 .chat-panel {
 	position: relative;
 	height: 100%;
+	display: flex;
+	flex-direction: column;
 }
 
 /* 消息列表容器*/
@@ -469,6 +619,55 @@ watch(
 	text-align: center;
 	padding: 48px 24px;
 	pointer-events: none;
+}
+/* 消息输入容器 */
+.message-input-container {
+	border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+	padding: 12px 16px;
+	background-color: rgb(var(--v-theme-surface));
+}
+
+.input-wrapper {
+	display: flex;
+	align-items: flex-end;
+	gap: 12px;
+	max-width: 1200px;
+	margin: 0 auto;
+}
+
+.input-actions {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+.input-field-wrapper {
+	flex: 1;
+	min-width: 0;
+}
+
+.send-btn {
+	flex-shrink: 0;
+	border-radius: 50%;
+	transition: all 0.2s;
+}
+
+.send-btn:not(:disabled):hover {
+	transform: scale(1.05);
+}
+
+.send-btn:disabled {
+	opacity: 0.5;
+}
+
+@media (max-width: 960px) {
+	.input-wrapper {
+		padding: 0;
+	}
+
+	.input-actions {
+		gap: 0;
+	}
 }
 
 /* 滚动条样式 */

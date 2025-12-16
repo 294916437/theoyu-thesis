@@ -1,150 +1,11 @@
-<template>
-	<v-sheet color="background" class="chat-panel fill-height" elevation="0">
-		<!-- 聊天头部 -->
-		<ChatHeader :user="conversation.user" />
-
-		<!-- 消息列表 - 关键修改点 -->
-		<div ref="messageListRef" class="message-list-container">
-			<!-- 空状态 - 使用绝对定位 -->
-			<div v-if="conversation.messages.length === 0" class="empty-message-state">
-				<v-icon icon="mdi-message-outline" size="64" color="grey-lighten-1"></v-icon>
-				<p class="text-body-1 text-disabled mt-4">暂无消息，开始聊天吧</p>
-			</div>
-
-			<!-- 加载更多按钮 -->
-			<div v-else-if="conversation.hasMore" class="text-center py-3">
-				<v-btn variant="text" size="small" color="primary" prepend-icon="mdi-chevron-up" @click="handleScroll">
-					加载更多消息
-				</v-btn>
-			</div>
-
-			<!-- 消息列表内容 -->
-			<div v-if="conversation.messages.length > 0" class="message-list-content px-4 py-3">
-				<div v-for="(item, index) in messagesWithDividers" :key="item.id || `divider-${index}`">
-					<!-- 日期分隔线 -->
-					<div v-if="item.isDivider" class="message-date-divider my-4">
-						<v-divider></v-divider>
-						<v-chip size="small" color="surface-variant" class="date-chip" label>
-							{{ item.date }}
-						</v-chip>
-					</div>
-
-					<!-- 消息气泡 -->
-					<MessageBubble v-else :message="item" :user="conversation.user" />
-				</div>
-			</div>
-		</div>
-
-		<!-- 消息输入框 - 始终固定在底部 -->
-		<v-sheet color="surface" class="message-input-container" elevation="2">
-			<!-- 隐藏的文件选择器 -->
-			<input ref="fileInputRef" type="file" accept="image/*" style="display: none" @change="handleFileChange" />
-			<!-- 隐藏的视频选择器 -->
-			<input
-				ref="videoInputRef"
-				type="file"
-				accept="video/mp4,video/webm,video/ogg"
-				style="display: none"
-				@change="handleVideoFileChange"
-			/>
-			<div class="input-wrapper">
-				<!-- 左侧功能按钮 -->
-				<div class="input-actions">
-					<v-btn icon="mdi-video" variant="text" size="default" color="primary" @click="handleVideoCall">
-						<v-icon size="22"></v-icon>
-					</v-btn>
-					<v-btn
-						icon="mdi-video-plus"
-						variant="text"
-						size="default"
-						color="primary"
-						:loading="uploadingVideo"
-						:disabled="uploadingVideo"
-						@click="handleAddVideo"
-					>
-						<v-icon size="22"></v-icon>
-					</v-btn>
-
-					<v-btn
-						icon="mdi-image"
-						variant="text"
-						size="default"
-						color="primary"
-						:disabled="uploadingImage"
-						@click="handleAddMedia"
-					>
-						<v-icon size="22"></v-icon>
-					</v-btn>
-				</div>
-
-				<!-- 输入框 -->
-				<div class="input-field-wrapper">
-					<v-textarea
-						v-model="messageText"
-						placeholder="发送一条消息..."
-						variant="solo"
-						flat
-						hide-details
-						auto-grow
-						rows="1"
-						max-rows="4"
-						bg-color="surface-variant"
-						rounded="xl"
-						class="flex-1"
-						@keydown.enter.exact.prevent="handleSend"
-					></v-textarea>
-				</div>
-
-				<!-- 发送按钮 -->
-				<v-btn
-					icon
-					size="large"
-					color="primary"
-					elevation="0"
-					class="send-btn"
-					:disabled="!messageText.trim()"
-					@click="handleSendTextMessage"
-				>
-					<v-icon size="24">mdi-send</v-icon>
-				</v-btn>
-			</div>
-		</v-sheet>
-
-		<!-- 视频对话框 -->
-		<VideoCall
-			:is-active="isVideoCallActive"
-			:local-stream="localStream"
-			:remote-stream="remoteStream"
-			:remote-name="conversation.user.name"
-			:call-state="callState"
-			:show-duration="true"
-			:initial-audio-muted="false"
-			:initial-video-muted="false"
-			@end="endVideoCall"
-			@toggle-audio="handleToggleAudio"
-			@toggle-video="handleToggleVideo"
-			@state-change="handleStateChange"
-			@error="handleVideoError"
-		/>
-
-		<!-- 来电通知 -->
-		<IncomingCallNotification
-			v-if="incomingCall"
-			:caller-name="incomingCall.callerName"
-			@accept="acceptCall"
-			@reject="rejectCall"
-		/>
-	</v-sheet>
-</template>
-
 <script setup>
-import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, defineAsyncComponent } from 'vue'
+import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, defineAsyncComponent, onUnmounted } from 'vue'
 import { useUserStore } from '@/stores/user'
-import ChatHeader from './ChatHeader.vue'
 import MessageBubble from './MessageBubble.vue'
 import { $notify } from '@/plugins/notification'
 import { formatTime } from '@/utils/formatTime'
 import { uploadFile } from '@/api/file'
+import { getUserOnlineStatus, setUserOnlineStatus, setUserOfflineStatus } from '@/features/user/user'
 
 // 延迟加载视频通话相关组件
 const VideoCall = defineAsyncComponent(() => import('./VideoCall.vue'))
@@ -155,7 +16,8 @@ const props = defineProps({
 		required: true,
 	},
 })
-
+// 对方用户在线状态
+const targetUserOnlineStatus = ref('未知状态')
 const emit = defineEmits(['send-message', 'load-more'])
 const messageText = ref('')
 const userStore = useUserStore()
@@ -186,6 +48,16 @@ const VIDEO_CONFIG = {
 	maxDuration: 300, // 5分钟
 	acceptTypes: ['video/mp4', 'video/webm', 'video/ogg'],
 }
+
+// 计算用户在线状态显示文本
+const userOnlineStatus = computed(() => {
+	return targetUserOnlineStatus.value ? '在线' : '离线'
+})
+
+// 计算在线状态颜色
+const userOnlineStatusColor = computed(() => {
+	return targetUserOnlineStatus.value ? 'success' : 'grey'
+})
 
 const currentUserId = userStore.userId
 
@@ -461,7 +333,7 @@ const handleVideoUpload = async file => {
 		// 调用上传接口
 		const response = await uploadFile(formData)
 
-		if (response.success && response.data) {
+		if (response.success) {
 			const videoUrl = response.data
 
 			console.log('视频上传成功:', videoUrl)
@@ -539,7 +411,7 @@ const handleVideoCall = async () => {
 	}
 
 	try {
-		console.log('📞 发起视频通话')
+		console.log('发起视频通话')
 		callState.value = 'calling'
 		const result = await videoCallManager.startCall(props.conversation.user.userId)
 		localStream.value = result.localStream
@@ -548,7 +420,7 @@ const handleVideoCall = async () => {
 		watchRemoteStream()
 		watchCallState()
 	} catch (error) {
-		console.error('❌ 视频通话失败:', error)
+		console.error('视频通话失败:', error)
 		callState.value = 'ended'
 		$notify.error('无法发起视频通话: ' + error.message)
 	}
@@ -684,12 +556,31 @@ const scrollToBottom = (smooth = true) => {
 		}
 	})
 }
+const fetchUserOnlineStatus = async () => {
+	try {
+		const res = await getUserOnlineStatus(props.conversation.user.userId)
+		if (res.success) {
+			return res.data.online
+		}
+		return false
+	} catch (error) {
+		console.error('获取用户在线状态异常:', error)
+		return false
+	}
+}
 // 组件挂载时立即初始化视频通话功能
 onMounted(async () => {
+	// 初始化视频通话功能
 	await initVideoCall()
-	console.log('成功初始化视频通话功能')
+	// 设置自己的状态为在线
+	setUserOnlineStatus(userStore.userId)
+	// 获取对方用户在线状态
+	targetUserOnlineStatus.value = await fetchUserOnlineStatus()
 })
-
+onUnmounted(() => {
+	// 设置自己的状态为离线
+	setUserOfflineStatus(userStore.userId)
+})
 // 监听消息变化，自动滚动
 watch(
 	() => props.conversation?.messages.length,
@@ -699,12 +590,192 @@ watch(
 	{ immediate: true },
 )
 </script>
+<template>
+	<v-sheet color="background" class="chat-panel fill-height" elevation="0">
+		<!-- 聊天头部 -->
+		<v-sheet color="surface" class="chat-header px-4 py-3" elevation="1">
+			<div class="d-flex align-center justify-space-between">
+				<div class="d-flex align-center ga-3">
+					<v-avatar :image="conversation.user.avatar" size="44" color="grey-lighten-2">
+						<v-icon v-if="!conversation.user.avatar" icon="mdi-account" size="24"></v-icon>
+					</v-avatar>
+
+					<div>
+						<h3 class="text-subtitle-1 font-weight-bold">
+							{{ conversation.user.nickname }}
+						</h3>
+						<!-- 在线状态文本 -->
+						<div class="d-flex align-center ga-1">
+							<v-icon
+								:icon="targetUserOnlineStatus ? 'mdi-circle' : 'mdi-circle-outline'"
+								:color="userOnlineStatusColor"
+								size="12"
+							></v-icon>
+							<p class="text-caption text-medium-emphasis">{{ userOnlineStatus }}</p>
+						</div>
+					</div>
+				</div>
+
+				<div class="d-flex ga-2">
+					<v-btn
+						icon="mdi-video-outline"
+						variant="text"
+						size="default"
+						color="primary"
+						@click="handleVideoCall"
+					>
+						<v-icon size="22"></v-icon>
+					</v-btn>
+					<v-btn icon="mdi-information-outline" variant="text" size="default" color="primary">
+						<v-icon size="22"></v-icon>
+					</v-btn>
+				</div>
+			</div>
+		</v-sheet>
+
+		<!-- 消息列表 -->
+		<div ref="messageListRef" class="message-list-container">
+			<!-- 空状态 -->
+			<div v-if="conversation.messages.length === 0" class="empty-message-state">
+				<v-icon icon="mdi-message-outline" size="64" color="grey-lighten-1"></v-icon>
+				<p class="text-body-1 text-disabled mt-4">暂无消息，开始聊天吧</p>
+			</div>
+
+			<!-- 加载更多按钮 -->
+			<div v-else-if="conversation.hasMore" class="text-center py-3">
+				<v-btn variant="text" size="small" color="primary" prepend-icon="mdi-chevron-up" @click="handleScroll">
+					加载更多消息
+				</v-btn>
+			</div>
+
+			<!-- 消息列表内容 -->
+			<div v-if="conversation.messages.length > 0" class="message-list-content px-4 py-3">
+				<div v-for="(item, index) in messagesWithDividers" :key="item.id || `divider-${index}`">
+					<!-- 日期分隔线 -->
+					<div v-if="item.isDivider" class="message-date-divider my-4">
+						<v-divider></v-divider>
+						<v-chip size="small" color="surface-variant" class="date-chip" label>
+							{{ item.date }}
+						</v-chip>
+					</div>
+
+					<!-- 消息气泡 -->
+					<MessageBubble v-else :message="item" :user="conversation.user" />
+				</div>
+			</div>
+		</div>
+
+		<!-- 消息输入框 - 始终固定在底部 -->
+		<v-sheet color="surface" class="message-input-container" elevation="2">
+			<!-- 隐藏的文件选择器 -->
+			<input ref="fileInputRef" type="file" accept="image/*" style="display: none" @change="handleFileChange" />
+			<!-- 隐藏的视频选择器 -->
+			<input
+				ref="videoInputRef"
+				type="file"
+				accept="video/mp4,video/webm,video/ogg"
+				style="display: none"
+				@change="handleVideoFileChange"
+			/>
+			<div class="input-wrapper">
+				<!-- 左侧功能按钮 -->
+				<div class="input-actions">
+					<v-btn
+						icon="mdi-video-image"
+						variant="text"
+						size="default"
+						color="primary"
+						:loading="uploadingVideo"
+						:disabled="uploadingVideo"
+						@click="handleAddVideo"
+					>
+						<v-icon size="22"></v-icon>
+					</v-btn>
+
+					<v-btn
+						icon="mdi-image"
+						variant="text"
+						size="default"
+						color="primary"
+						:disabled="uploadingImage"
+						@click="handleAddMedia"
+					>
+						<v-icon size="22"></v-icon>
+					</v-btn>
+				</div>
+
+				<!-- 输入框 -->
+				<div class="input-field-wrapper">
+					<v-textarea
+						v-model="messageText"
+						placeholder="发送一条消息..."
+						variant="solo"
+						flat
+						hide-details
+						auto-grow
+						rows="1"
+						max-rows="4"
+						bg-color="surface-variant"
+						rounded="xl"
+						class="flex-1"
+						@keydown.enter.exact.prevent="handleSendTextMessage"
+					></v-textarea>
+				</div>
+
+				<!-- 发送按钮 -->
+				<v-btn
+					icon
+					size="large"
+					color="primary"
+					elevation="0"
+					class="send-btn"
+					:disabled="!messageText.trim()"
+					@click="handleSendTextMessage"
+				>
+					<v-icon size="24">mdi-send</v-icon>
+				</v-btn>
+			</div>
+		</v-sheet>
+
+		<!-- 视频对话框 -->
+		<VideoCall
+			:is-active="isVideoCallActive"
+			:local-stream="localStream"
+			:remote-stream="remoteStream"
+			:remote-name="conversation.user.name"
+			:call-state="callState"
+			:show-duration="true"
+			:initial-audio-muted="false"
+			:initial-video-muted="false"
+			@end="endVideoCall"
+			@toggle-audio="handleToggleAudio"
+			@toggle-video="handleToggleVideo"
+			@state-change="handleStateChange"
+			@error="handleVideoError"
+		/>
+
+		<!-- 来电通知 -->
+		<IncomingCallNotification
+			v-if="incomingCall"
+			:caller-name="incomingCall.callerName"
+			@accept="acceptCall"
+			@reject="rejectCall"
+		/>
+	</v-sheet>
+</template>
+
 <style scoped>
 .chat-panel {
 	position: relative;
 	height: 100%;
 	display: flex;
 	flex-direction: column;
+}
+/* 聊天头部样式 */
+.chat-header {
+	border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+	min-height: 72px;
+	flex-shrink: 0;
 }
 
 /* 消息列表容器*/

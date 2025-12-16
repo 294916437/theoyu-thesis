@@ -1,7 +1,7 @@
 <template>
 	<div :class="['message-bubble-wrapper', { 'message-bubble-wrapper--self': message.isSelf }]">
 		<!-- 对方消息 -->
-		<div v-if="!message.isSelf" class="d-flex align-start gap-2 mb-3">
+		<div v-if="!message.isSelf" class="d-flex align-start ga-2 mb-3">
 			<v-avatar :image="message.senderAvatar" size="32" color="grey-lighten-2">
 				<v-icon v-if="!message.senderAvatar" icon="mdi-account" size="20"></v-icon>
 			</v-avatar>
@@ -14,43 +14,10 @@
 					<!-- 图片消息 -->
 					<div v-else-if="message.messageType === 2" class="message-images">
 						<v-img
-							v-for="(img, idx) in message.imgUris"
+							v-for="(url, idx) in message.imgUris"
 							:key="idx"
-							:src="img"
-							max-width="200"
-							rounded="lg"
-							cover
-							class="message-image"
-						></v-img>
-					</div>
-
-					<!-- 视频消息 -->
-					<div v-else-if="message.messageType === 3" class="message-video">
-						<video :src="message.videoUri" controls class="video-player"></video>
-					</div>
-				</div>
-
-				<div class="message-meta mt-1">
-					<span class="text-caption text-disabled">{{ formatMessageTime(message.createdTime) }}</span>
-				</div>
-			</div>
-		</div>
-
-		<!-- 自己的消息 -->
-		<div v-else class="d-flex align-start justify-end gap-2 mb-3">
-			<div class="message-content text-right">
-				<div class="message-bubble message-bubble--outgoing">
-					<!-- 文本消息 -->
-					<p v-if="message.messageType === 1" class="message-text">{{ message.content }}</p>
-
-					<!-- 图片消息 -->
-					<div v-else-if="message.messageType === 2" class="message-images">
-						<v-img
-							v-for="(img, idx) in message.imgUris"
-							:key="idx"
-							:src="img"
-							max-width="200"
-							rounded="lg"
+							:src="url"
+							width="180"
 							cover
 							class="message-image"
 						></v-img>
@@ -62,7 +29,39 @@
 					</div>
 				</div>
 
-				<div class="message-meta mt-1 d-flex align-center justify-end gap-1">
+				<div class="message-meta mt-1">
+					<span class="text-caption text-disabled">{{ formatTime(message.createdTime) }}</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- 自己的消息 -->
+		<div v-else class="d-flex align-start justify-end ga-2 mb-3">
+			<div class="message-content text-right">
+				<div class="message-bubble message-bubble--outgoing">
+					<!-- 文本消息 -->
+					<p v-if="message.messageType === 1" class="message-text">{{ message.content }}</p>
+
+					<!-- 图片消息 -->
+					<div v-else-if="message.messageType === 2" class="message-images">
+						<v-img
+							v-for="(img, idx) in message.imgUris"
+							:key="idx"
+							:src="img"
+							width="180"
+							aspect-ratio="16/9"
+							cover
+							class="message-image"
+						></v-img>
+					</div>
+
+					<!-- 视频消息 -->
+					<div v-else-if="message.messageType === 4" class="message-video">
+						<video :src="message.videoUri" controls class="video-player"></video>
+					</div>
+				</div>
+
+				<div class="message-meta mt-1 d-flex align-center justify-end ga-1">
 					<span class="text-caption text-disabled">{{ formatTime(message.createdTime) }}</span>
 					<v-icon v-if="!message.sending" icon="mdi-check-all" size="14" color="primary"></v-icon>
 				</div>
@@ -89,7 +88,7 @@ defineProps({
 		required: true,
 	},
 })
-const VideoPlayer = defineAsyncComponent(() => import('@components/common/VideoPlayer.vue'))
+const VideoPlayer = defineAsyncComponent(() => import('@/components/common/VideoPlayer.vue'))
 </script>
 <style scoped>
 .message-bubble-wrapper {
@@ -162,13 +161,5 @@ const VideoPlayer = defineAsyncComponent(() => import('@components/common/VideoP
 .message-meta {
 	display: flex;
 	align-items: center;
-}
-
-.gap-1 {
-	gap: 4px;
-}
-
-.gap-2 {
-	gap: 8px;
 }
 </style>

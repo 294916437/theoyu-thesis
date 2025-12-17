@@ -5,7 +5,7 @@ import MessageBubble from './MessageBubble.vue'
 import { $notify } from '@/plugins/notification'
 import { formatTime } from '@/utils/formatTime'
 import { uploadFile } from '@/api/file'
-import { getUserOnlineStatus, setUserOnlineStatus, setUserOfflineStatus } from '@/features/user/user'
+import { getUserOnlineStatus, setUserOnlineStatus, setUserOfflineStatus } from '@/api/user'
 
 // 延迟加载视频通话相关组件
 const VideoCall = defineAsyncComponent(() => import('./VideoCall.vue'))

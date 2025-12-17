@@ -145,7 +145,7 @@ import { useTimeAgo } from '@vueuse/core'
 import { useUserStore } from '@/stores/user'
 import { $notify } from '@/plugins/notification'
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
-import { logout } from '@/features/user/auth'
+import { logout } from '@/api/auth'
 
 const router = useRouter()
 const userStore = useUserStore()

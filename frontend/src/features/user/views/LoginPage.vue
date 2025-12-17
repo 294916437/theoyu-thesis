@@ -4,8 +4,8 @@ import { useRouter } from 'vue-router'
 import PhoneInput from '../components/PhoneInput.vue'
 import VerificationCodeInput from '../components/VerificationCodeInput.vue'
 import { $notify } from '@/plugins/notification'
-import { getVerificationCode, login } from '../auth'
-import { getUserProfile } from '../user'
+import { getVerificationCode, login } from '@/api/auth'
+import { getUserProfile } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()

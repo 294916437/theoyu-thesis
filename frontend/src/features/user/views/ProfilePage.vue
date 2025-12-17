@@ -206,7 +206,7 @@ import { useCloned } from '@vueuse/core'
 import { useDateFormat } from '@vueuse/core'
 import { $notify } from '@/plugins/notification'
 import { useUserStore } from '@/stores/user'
-import { getUserProfile, updateUserProfile } from '../user'
+import { getUserProfile, updateUserProfile } from '@/api/user'
 import { uploadFile } from '@/api/file'
 
 // 导入默认图片

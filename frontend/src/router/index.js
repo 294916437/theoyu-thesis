@@ -1,76 +1,102 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import MainLayout from '@/components/layout/MainLayout.vue'
+import BlankLayout from '@/components/layout/BlankLayout.vue'
 import { useUserStore } from '@/stores/user'
+
+const routes = [
+	// 使用主布局
+	{
+		path: '/',
+		component: MainLayout,
+		children: [
+			{
+				path: '',
+				name: 'Home',
+				component: () => import('@/features/home/views/HomePage.vue'),
+				meta: {
+					title: '首页',
+					requiresAuth: true,
+				},
+			},
+			{
+				path: 'meeting/detail/:id',
+				name: 'MeetingDetail',
+				component: () => import('@/features/meeting/views/MeetingDetail.vue'),
+				meta: {
+					title: '会议详情',
+					requiresAuth: true,
+				},
+			},
+			{
+				path: 'chat',
+				name: 'ChatCenter',
+				component: () => import('@/features/chat/views/Chat.vue'),
+				meta: {
+					title: '私聊中心',
+					requiresAuth: true,
+				},
+			},
+			{
+				path: 'user/profile',
+				name: 'Profile',
+				component: () => import('@/features/user/views/ProfilePage.vue'),
+				meta: {
+					title: '个人资料',
+					requiresAuth: true,
+				},
+			},
+			{
+				path: 'theme-test',
+				name: 'ThemeTest',
+				component: () => import('@/views/ThemeTestPage.vue'),
+				meta: {
+					title: '主题测试',
+				},
+				showDrawer: true,
+			},
+		],
+	},
+	// 使用空白布局
+	{
+		path: '/',
+		component: BlankLayout,
+		children: [
+			{
+				path: 'meeting/:id',
+				name: 'MeetingRoom',
+				component: () => import('@/features/meeting/views/MeetingRoom.vue'),
+				meta: {
+					title: '会议房间',
+					showHeader: false,
+					requiresAuth: true,
+				},
+			},
+
+			{
+				path: '/user/login',
+				name: 'Login',
+				component: () => import('@/features/user/views/LoginPage.vue'),
+				meta: {
+					title: '用户登陆页面',
+					showHeader: false,
+				},
+			},
+			{
+				path: '/:pathMatch(.*)*',
+				name: 'NotFound',
+				component: () => import('@/components/common/NotFound.vue'),
+				meta: {
+					title: '页面未找到',
+					showHeader: false,
+				},
+			},
+		],
+	},
+]
 
 const router = createRouter({
 	history: createWebHistory(),
-	routes: [
-		{
-			path: '/',
-			name: 'Home',
-			component: () => import('@/features/home/views/HomePage.vue'),
-			meta: {
-				title: '首页',
-				requiresAuth: true,
-			},
-		},
-		{
-			path: '/user/login',
-			name: 'Login',
-			component: () => import('@/features/user/views/LoginPage.vue'),
-			meta: {
-				title: '用户登陆页面',
-			},
-		},
-		{
-			path: '/user/profile',
-			name: 'Profile',
-			component: () => import('@/features/user/views/ProfilePage.vue'),
-			meta: {
-				title: '用户资料',
-				requiresAuth: true,
-			},
-		},
-		{
-			path: '/meeting/:id',
-			name: 'MeetingRoom',
-			component: () => import('@/features/meeting/views/MeetingRoom.vue'),
-			meta: {
-				title: '会议室',
-				requiresAuth: true,
-			},
-		},
-		{
-			path: '/meeting/detail/:id',
-			name: 'MeetingDetail',
-			component: () => import('@/features/meeting/views/MeetingDetail.vue'),
-			meta: {
-				title: '会议详情',
-				requiresAuth: true,
-			},
-		},
-		{
-			path: '/:pathMatch(.*)*',
-			name: 'NotFound',
-			component: () => import('@/components/common/NotFound.vue'),
-		},
-		{
-			path: '/chat',
-			name: 'ChatCenter',
-			component: () => import('@/features/chat/views/Chat.vue'),
-			meta: {
-				title: '私聊中心',
-				requiresAuth: true,
-			},
-		},
-		{
-			path: '/theme-test',
-			name: 'ThemeTest',
-			component: () => import('@/views/ThemeTestPage.vue'),
-			meta: {
-				title: '主题测试',
-			},
-		},
-	],
+	routes: routes,
 
 	scrollBehavior(to, from, savedPosition) {
 		if (savedPosition) {
@@ -82,12 +108,6 @@ const router = createRouter({
 })
 router.beforeEach((to, from, next) => {
 	const userStore = useUserStore()
-
-	// 设置页面标题
-	if (to.meta.title) {
-		document.title = to.meta.title
-	}
-
 	// 检查是否需要认证
 	if (to.meta.requiresAuth) {
 		// 未登录，重定向到登录页

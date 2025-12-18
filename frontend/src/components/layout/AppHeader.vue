@@ -1,38 +1,13 @@
 <template>
-	<v-app-bar :elevation="2" color="white" class="app-header">
+	<v-app-bar :elevation="2" class="app-header">
 		<v-app-bar-nav-icon v-if="$vuetify.display.mobile" @click="emit('toggle-drawer')"></v-app-bar-nav-icon>
 
 		<!-- Logo -->
-		<v-toolbar-title class="d-flex align-center">
-			<v-icon color="primary" size="large" class="mr-2">mdi-video-account</v-icon>
-			<span class="text-h6 font-weight-bold gradient-text">视频会议平台</span>
+		<v-toolbar-title class="d-flex align-center" @click="router.push('/')">
+			<span class="logo-text">蔚蓝天空</span>
 		</v-toolbar-title>
 
 		<v-spacer></v-spacer>
-
-		<!-- 搜索框 -->
-		<v-text-field
-			v-if="!$vuetify.display.mobile"
-			v-model="searchQuery"
-			density="compact"
-			variant="outlined"
-			placeholder="搜索会议..."
-			prepend-inner-icon="mdi-magnify"
-			hide-details
-			class="search-field mr-4"
-			style="max-width: 300px"
-			@keyup.enter="handleSearch"
-		>
-			<template #append-inner>
-				<v-btn
-					v-if="searchQuery"
-					icon="mdi-close"
-					size="x-small"
-					variant="text"
-					@click="searchQuery = ''"
-				></v-btn>
-			</template>
-		</v-text-field>
 
 		<!-- 主题切换 -->
 		<ThemeToggle />
@@ -51,13 +26,14 @@
 						:model-value="unreadNotifications > 0"
 						color="error"
 						overlap
+						class="theme-badge"
 					>
 						<v-icon>mdi-bell</v-icon>
 					</v-badge>
 				</v-btn>
 			</template>
 
-			<v-card max-width="400" max-height="500">
+			<v-card max-width="400" max-height="500" class="notification-card">
 				<v-card-title class="d-flex align-center justify-space-between">
 					<span>通知</span>
 					<v-btn v-if="notifications.length > 0" variant="text" size="small" @click="markAllAsRead">
@@ -151,8 +127,6 @@ const router = useRouter()
 const userStore = useUserStore()
 const emit = defineEmits(['toggle-drawer', 'search'])
 
-const searchQuery = ref('')
-
 const notifications = ref([
 	{
 		id: 1,
@@ -200,13 +174,6 @@ const getNotificationIcon = type => {
 	return icons[type] || 'mdi-bell'
 }
 
-const handleSearch = () => {
-	if (searchQuery.value.trim()) {
-		emit('search', searchQuery.value.trim())
-		router.push({ path: '/search', query: { q: searchQuery.value.trim() } })
-	}
-}
-
 const handleNotificationClick = notification => {
 	notification.read = true
 	// 根据通知类型跳转
@@ -240,30 +207,107 @@ const handleLogout = async () => {
 
 <style scoped>
 .app-header {
-	border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+	background: rgb(var(--v-theme-surface));
+	border-bottom: 1px solid rgb(var(--v-theme-border));
+	transition:
+		background-color 0.3s ease,
+		border-color 0.3s ease;
 }
 
-.gradient-text {
-	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.title-text {
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+	background-clip: text;
+	font-weight: bold;
+	font-size: large;
+	transition: background-position 0.5s ease;
+	cursor: pointer;
+}
+.logo-text {
+	background: linear-gradient(
+		135deg,
+		rgb(var(--v-theme-secondary)) 0%,
+		rgb(var(--v-theme-primary)) 50%,
+		rgb(var(--v-theme-primary-darken-1)) 100%
+	);
+	/* 文字裁剪效果 */
+	-webkit-text-fill-color: transparent;
+	background-clip: text;
+
+	font-weight: bold;
+	font-size: 1.25rem; /* 或 large */
+
+	background-position: 0 0;
+	transition: background-position 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+
+	cursor: pointer;
+}
+
+.v-theme--dark .logo-text {
+	background: linear-gradient(
+		135deg,
+		rgb(var(--v-theme-secondary)) 0%,
+		rgb(var(--v-theme-primary)) 50%,
+		rgb(var(--v-theme-primary-lighten-1)) 100%
+	);
 	-webkit-background-clip: text;
 	-webkit-text-fill-color: transparent;
 	background-clip: text;
 }
-
-.search-field :deep(.v-field) {
-	border-radius: 20px;
+.logo-text:hover {
+	background-position: 100% 0;
 }
 
 .notification-list {
 	max-height: 400px;
 	overflow-y: auto;
 }
-
 .notification-list .v-list-item.unread {
-	background-color: rgba(102, 126, 234, 0.05);
+	background-color: rgba(var(--v-theme-primary), 0.05);
+}
+.notification-card {
+	background: rgb(var(--v-theme-surface));
+	color: rgb(var(--v-theme-on-surface));
+}
+
+.notification-card :deep(.v-icon) {
+	color: rgb(var(--v-theme-on-surface-variant));
+}
+
+.v-theme--dark .notification-list .v-list-item.unread {
+	background-color: rgba(var(--v-theme-primary), 0.15);
 }
 
 .user-menu-btn {
 	text-transform: none;
+	color: rgb(var(--v-theme-on-surface)) !important;
+}
+
+.app-header :deep(.v-btn) {
+	color: rgb(var(--v-theme-on-surface));
+}
+
+.app-header :deep(.v-toolbar-title) {
+	color: rgb(var(--v-theme-on-surface));
+}
+.app-header :deep(.v-btn--icon) {
+	color: rgb(var(--v-theme-on-surface));
+}
+
+.v-theme--dark .app-header :deep(.v-badge__badge) {
+	background: rgb(var(--v-theme-error)) !important;
+	color: rgb(var(--v-theme-on-error));
+}
+
+.v-theme--dark :deep(.v-list-item:hover) {
+	background: rgba(var(--v-theme-primary), 0.1);
+}
+
+.app-header :deep(.v-divider) {
+	border-color: rgb(var(--v-theme-divider));
+}
+.theme-badge :deep(.v-badge__badge) {
+	font-weight: 600;
+	border: 2px solid rgb(var(--v-theme-surface));
 }
 </style>

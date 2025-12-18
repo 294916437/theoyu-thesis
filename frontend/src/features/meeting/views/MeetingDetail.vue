@@ -495,8 +495,8 @@ onMounted(async () => {
 
 <style scoped>
 .meeting-detail-page {
-	padding-top: 24px;
-	padding-bottom: 24px;
+	padding-top: 12px;
+	padding-bottom: 12px;
 }
 
 .info-item {

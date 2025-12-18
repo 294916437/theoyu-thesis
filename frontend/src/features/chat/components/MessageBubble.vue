@@ -76,7 +76,6 @@
 
 <script setup>
 import { formatTime } from '@/utils/formatTime'
-import { defineAsyncComponent } from 'vue'
 
 defineProps({
 	message: {
@@ -88,7 +87,6 @@ defineProps({
 		required: true,
 	},
 })
-const VideoPlayer = defineAsyncComponent(() => import('@/components/common/VideoPlayer.vue'))
 </script>
 <style scoped>
 .message-bubble-wrapper {

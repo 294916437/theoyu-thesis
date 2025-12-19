@@ -12,7 +12,7 @@ const routes = [
 			{
 				path: '',
 				name: 'Home',
-				component: () => import('@/features/home/views/HomePage.vue'),
+				component: () => import('@/features/meeting/views/MeetingHome.vue'),
 				meta: {
 					title: '首页',
 					requiresAuth: true,

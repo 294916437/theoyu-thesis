@@ -24,14 +24,14 @@ export function useMeetingApi() {
 			// 模拟数据
 			return [
 				{
-					id: 'meeting-1',
+					id: '1',
 					title: '项目进度会议',
 					startTime: new Date(Date.now() + 3600000).toISOString(),
 					duration: 60,
 					participantCount: 5,
 				},
 				{
-					id: 'meeting-2',
+					id: '2',
 					title: '技术讨论',
 					startTime: new Date(Date.now() + 7200000).toISOString(),
 					duration: 90,
@@ -62,7 +62,7 @@ export function useMeetingApi() {
 
 			return [
 				{
-					id: 'meeting-3',
+					id: '3',
 					title: '团队周会',
 					startTime: new Date(Date.now() - 86400000).toISOString(),
 					duration: 45,
@@ -71,7 +71,7 @@ export function useMeetingApi() {
 					color: 'primary',
 				},
 				{
-					id: 'meeting-4',
+					id: '4',
 					title: '客户演示',
 					startTime: new Date(Date.now() - 172800000).toISOString(),
 					duration: 120,

@@ -1,7 +1,7 @@
 <template>
 	<v-container fluid class="home-page pa-0">
 		<!-- 顶部英雄区域 -->
-		<HeroSection :user-name="userName" @join-meeting="handleJoinMeeting" @create-meeting="handleCreateMeeting" />
+		<HeroSection :user-name="userName" @join-meeting="handleJoinMeeting" @create-meeting="openCreateDialog" />
 
 		<v-container class="py-8">
 			<v-row>
@@ -76,6 +76,9 @@
 				</v-col>
 			</v-row>
 		</v-container>
+
+		<!-- 创建会议对话框 -->
+		<CreateMeetingDialog v-model="showCreateDialog" @submit="handleCreateMeeting" />
 	</v-container>
 </template>
 
@@ -85,6 +88,7 @@ import { useRouter } from 'vue-router'
 import { useAsyncState, useDateFormat, useNow } from '@vueuse/core'
 import HeroSection from '../components/HeroSection.vue'
 import RecentMeetings from '../components/RecentMeetings.vue'
+import CreateMeetingDialog from '../components/CreateMeetingDialog.vue'
 import { $notify } from '@/plugins/notification'
 import { useMeetingApi } from '@/composables/useMeetingApi'
 
@@ -94,6 +98,9 @@ const now = useNow({ interval: 60000 }) // 每分钟更新一次
 
 // 用户信息
 const userName = ref('用户')
+
+// 创建会议对话框状态
+const showCreateDialog = ref(false)
 
 // 即将开始的会议
 const {
@@ -155,24 +162,35 @@ const getMeetingColor = index => {
 	return colors[index % colors.length]
 }
 
-// 加入会议
+// 打开创建会议对话框
+const openCreateDialog = () => {
+	showCreateDialog.value = true
+}
+
+// 加入会议(默认先查看会议详情)
 const handleJoinMeeting = async meetingId => {
 	if (!meetingId || !meetingId.trim()) {
 		$notify.warning('请输入会议ID')
 		return
 	}
-	router.push(`/meeting/${meetingId.trim()}`)
+	router.push(`/meeting/detail/${meetingId.trim()}`)
 }
 
 // 创建会议
-const handleCreateMeeting = async () => {
+const handleCreateMeeting = async meetingData => {
 	try {
-		const meeting = await createMeeting({
-			title: '即时会议',
-			startTime: new Date().toISOString(),
-		})
+		// TODO: 调用后端API创建会议
+		// const meeting = await createMeeting(meetingData)
+		// 打印表单数据
+		console.log(meetingData)
+
 		$notify.success('会议创建成功')
-		router.push(`/meeting/${meeting.id}`)
+
+		// 跳转到会议页面
+		// router.push(`/meeting/detail/${meeting.id}`)
+
+		// 刷新会议列表
+		await Promise.all([loadUpcomingMeetings(), loadRecentMeetings()])
 	} catch (error) {
 		$notify.error('创建会议失败')
 		console.error('Create meeting error:', error)

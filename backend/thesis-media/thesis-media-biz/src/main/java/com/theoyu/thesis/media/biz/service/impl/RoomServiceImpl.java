@@ -4,6 +4,7 @@ import cn.hutool.core.util.RandomUtil;
 import com.alibaba.fastjson.JSON;
 import com.theoyu.framework.common.exception.BusinessException;
 import com.theoyu.framework.context.holder.LoginUserContextHolder;
+import com.theoyu.framework.common.utils.MapUtils;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
 import com.theoyu.thesis.media.biz.enums.ResponseCodeEnum;
@@ -16,7 +17,6 @@ import com.theoyu.thesis.media.biz.model.vo.*;
 import com.theoyu.thesis.media.biz.rpc.UserRpcService;
 import com.theoyu.thesis.media.biz.rpc.IdGeneratorRpcService;
 import com.theoyu.thesis.media.biz.service.RoomService;
-import com.theoyu.thesis.media.biz.util.RoomCacheHelper;
 import com.theoyu.thesis.user.dto.response.FindUserByIdRspDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -286,7 +286,7 @@ public class RoomServiceImpl implements RoomService {
             String roomKey = String.format(RedisKeyConstants.ROOM_INFO_KEY, room.getId());
 
             // 将 RoomPO 转换为 Hash Map
-            Map<String, String> hashMap = RoomCacheHelper.roomToHashMap(room);
+            Map<String, String> hashMap = MapUtils.objectToStringMap(room);
 
             // 存储到 Redis Hash
             redisTemplate.opsForHash().putAll(roomKey, hashMap);
@@ -331,7 +331,7 @@ public class RoomServiceImpl implements RoomService {
             }
 
             // 从 Hash Map 转换为 RoomPO
-            return RoomCacheHelper.hashMapToRoom(hashMap);
+            return MapUtils.mapToObject(hashMap,RoomPO.class);
 
         } catch (Exception e) {
             log.error("[RoomService] Failed to get room from cache - roomId: {}", roomId, e);

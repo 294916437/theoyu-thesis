@@ -3,6 +3,7 @@ package com.theoyu.thesis.media.biz.grpc;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson.JSON;
+import com.theoyu.framework.common.utils.MapUtils;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
 import com.theoyu.thesis.media.biz.grpc.proto.*;
@@ -15,7 +16,6 @@ import com.theoyu.thesis.media.biz.model.mapper.RoomParticipantPOMapper;
 import com.theoyu.thesis.media.biz.model.vo.RoomConfigVO;
 import com.theoyu.thesis.media.biz.rpc.UserRpcService;
 import com.theoyu.thesis.media.biz.rpc.IdGeneratorRpcService;
-import com.theoyu.thesis.media.biz.util.RoomCacheHelper;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import jakarta.annotation.Resource;
@@ -456,7 +456,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
 
             if (!hashMap.isEmpty()) {
                 // 从 Hash 转换为 RoomPO
-                return RoomCacheHelper.hashMapToRoom(hashMap);
+                return MapUtils.mapToObject(hashMap, RoomPO.class);
             }
 
             // 缓存未命中，查询数据库
@@ -464,7 +464,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
 
             if (room != null) {
                 // 回写缓存
-                Map<String, String> roomHashMap = RoomCacheHelper.roomToHashMap(room);
+                Map<String, String> roomHashMap = MapUtils.objectToStringMap(room);
                 redisTemplate.opsForHash().putAll(roomKey, roomHashMap);
                 redisTemplate.expire(roomKey,
                         RedisKeyConstants.ROOM_INFO_EXPIRE_TIME,

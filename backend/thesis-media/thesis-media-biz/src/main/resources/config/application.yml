@@ -17,3 +17,7 @@ grpc:
     # 启用 keep-alive
     permit-keep-alive-without-calls: true
     permit-keep-alive-time: 300s
+
+sfu:
+  server:
+    url: ws://localhost:3000

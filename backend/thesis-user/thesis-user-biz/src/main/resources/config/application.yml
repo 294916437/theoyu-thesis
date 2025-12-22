@@ -17,6 +17,3 @@ mybatis:
 
 
 
-sfu:
-  server:
-    url: ws://localhost:3000

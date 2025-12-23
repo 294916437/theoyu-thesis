@@ -1,61 +1,118 @@
 <template>
-	<div v-if="isActive" class="video-call-overlay">
-		<div class="video-call-container">
-			<!-- 远程视频 -->
-			<video ref="remoteVideo" autoplay playsinline class="remote-video" />
+	<v-dialog v-model="isActive" fullscreen persistent :scrim="false" transition="dialog-bottom-transition">
+		<v-card class="video-call-card" elevation="0">
+			<!-- 远程视频区域 -->
+			<div class="video-container">
+				<video ref="remoteVideo" autoplay playsinline class="remote-video" />
 
-			<!-- 本地视频（画中画） -->
-			<video ref="localVideo" autoplay playsinline muted class="local-video" />
+				<!-- 远程视频占位符 -->
+				<v-overlay v-if="!remoteStream" :model-value="true" contained class="video-placeholder" persistent>
+					<div class="d-flex flex-column align-center">
+						<v-avatar color="primary" size="120" class="mb-4">
+							<v-icon size="64" color="white"> mdi-account </v-icon>
+						</v-avatar>
+						<v-chip color="primary" variant="flat" size="large">
+							{{ callStatusText }}
+						</v-chip>
+					</div>
+				</v-overlay>
 
-			<!-- 通话信息 -->
-			<div class="call-info">
-				<div class="user-name">{{ remoteName }}</div>
-				<div class="call-status" :class="callStatusClass">
-					{{ callStatusText }}
+				<!-- 本地视频(画中画) -->
+				<v-card class="local-video-card" elevation="8" rounded="lg">
+					<video ref="localVideo" autoplay playsinline muted class="local-video" />
+
+					<!-- 本地视频占位符 -->
+					<v-overlay
+						v-if="!localStream || isVideoMuted"
+						:model-value="true"
+						contained
+						class="local-placeholder"
+					>
+						<v-avatar color="secondary" size="48">
+							<v-icon size="24" color="white"> mdi-account-outline </v-icon>
+						</v-avatar>
+					</v-overlay>
+				</v-card>
+
+				<!-- 通话信息面板 -->
+				<v-card class="call-info-card" elevation="4" rounded="lg">
+					<v-card-text class="pa-4">
+						<div class="text-h6 font-weight-bold text-white mb-1">
+							{{ remoteName }}
+						</div>
+						<v-chip :color="getStatusColor()" variant="flat" size="small" class="mb-2">
+							<v-icon start :icon="getStatusIcon()" size="small" />
+							{{ callStatusText }}
+						</v-chip>
+						<div v-if="showDuration && props.callState === 'connected'" class="text-body-2 text-white">
+							<v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
+							{{ formattedDuration }}
+						</div>
+					</v-card-text>
+				</v-card>
+
+				<!-- 控制按钮栏 -->
+				<div class="controls-wrapper">
+					<v-card class="controls-card" elevation="8" rounded="pill">
+						<v-card-text class="pa-2 d-flex align-center justify-center ga-3">
+							<!-- 音频控制 -->
+							<v-tooltip location="top" :text="isAudioMuted ? '开启麦克风' : '关闭麦克风'">
+								<template #activator="{ props: tooltipProps }">
+									<v-btn
+										v-bind="tooltipProps"
+										:color="isAudioMuted ? 'error' : 'primary'"
+										:variant="isAudioMuted ? 'flat' : 'tonal'"
+										icon
+										size="large"
+										@click="toggleAudio"
+									>
+										<v-icon>
+											{{ isAudioMuted ? 'mdi-microphone-off' : 'mdi-microphone' }}
+										</v-icon>
+									</v-btn>
+								</template>
+							</v-tooltip>
+
+							<!-- 视频控制 -->
+							<v-tooltip location="top" :text="isVideoMuted ? '开启摄像头' : '关闭摄像头'">
+								<template #activator="{ props: tooltipProps }">
+									<v-btn
+										v-bind="tooltipProps"
+										:color="isVideoMuted ? 'error' : 'primary'"
+										:variant="isVideoMuted ? 'flat' : 'tonal'"
+										icon
+										size="large"
+										@click="toggleVideo"
+									>
+										<v-icon>
+											{{ isVideoMuted ? 'mdi-video-off' : 'mdi-video' }}
+										</v-icon>
+									</v-btn>
+								</template>
+							</v-tooltip>
+
+							<!-- 结束通话 -->
+							<v-tooltip location="top" text="结束通话">
+								<template #activator="{ props: tooltipProps }">
+									<v-btn
+										v-bind="tooltipProps"
+										color="error"
+										variant="flat"
+										icon
+										size="x-large"
+										class="end-call-btn"
+										@click="endCall"
+									>
+										<v-icon size="large"> mdi-phone-hangup </v-icon>
+									</v-btn>
+								</template>
+							</v-tooltip>
+						</v-card-text>
+					</v-card>
 				</div>
-				<div v-if="showDuration" class="call-duration">{{ formattedDuration }}</div>
 			</div>
-
-			<!-- 控制按钮 -->
-			<div class="controls">
-				<button class="control-btn" :class="{ active: !isAudioMuted }" @click="toggleAudio">
-					<svg v-if="!isAudioMuted" class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-						<path
-							d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"
-						/>
-						<path
-							d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"
-						/>
-					</svg>
-					<svg v-else class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-						<path
-							d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"
-						/>
-					</svg>
-				</button>
-
-				<button class="control-btn" :class="{ active: !isVideoMuted }" @click="toggleVideo">
-					<svg v-if="!isVideoMuted" class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-						<path
-							d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"
-						/>
-					</svg>
-					<svg v-else class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-						<path
-							d="M21 6.5l-4 4V7c0-.55-.45-1-1-1H9.82L21 17.18V6.5zM3.27 2L2 3.27 4.73 6H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.21 0 .39-.08.54-.18L19.73 21 21 19.73 3.27 2z"
-						/>
-					</svg>
-				</button>
-				<button class="control-btn end-call" @click="endCall">
-					<svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-						<path
-							d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.68-1.36-2.66-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"
-						/>
-					</svg>
-				</button>
-			</div>
-		</div>
-	</div>
+		</v-card>
+	</v-dialog>
 </template>
 
 <script setup>
@@ -145,6 +202,28 @@ const formattedDuration = computed(() => {
 	return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 })
 
+// 获取状态图标
+const getStatusIcon = () => {
+	const iconMap = {
+		idle: 'mdi-clock-outline',
+		calling: 'mdi-phone-ring',
+		connected: 'mdi-phone-in-talk',
+		ended: 'mdi-phone-hangup',
+	}
+	return iconMap[props.callState] || 'mdi-help-circle'
+}
+
+// 获取状态颜色
+const getStatusColor = () => {
+	const colorMap = {
+		idle: 'grey',
+		calling: 'info',
+		connected: 'success',
+		ended: 'error',
+	}
+	return colorMap[props.callState] || 'grey'
+}
+
 // 通话状态文本
 const callStatusText = computed(() => {
 	const statusMap = {
@@ -154,15 +233,6 @@ const callStatusText = computed(() => {
 		ended: '已结束',
 	}
 	return statusMap[props.callState] || '未知状态'
-})
-
-// 通话状态样式类
-const callStatusClass = computed(() => {
-	return {
-		'status-calling': props.callState === 'calling',
-		'status-connected': props.callState === 'connected',
-		'status-ended': props.callState === 'ended',
-	}
 })
 
 /**
@@ -213,13 +283,13 @@ const stopDurationTimer = () => {
 watch(
 	() => props.localStream,
 	async newStream => {
-		// ✅ 等待 DOM 更新完成
+		// 等待 DOM 更新完成
 		await nextTick()
 
 		if (localVideo.value) {
 			if (newStream) {
 				localVideo.value.srcObject = newStream
-				// ✅ 手动触发播放（某些浏览器需要）
+				// 手动触发播放（某些浏览器需要）
 				await localVideo.value.play()
 			} else {
 				localVideo.value.srcObject = null
@@ -323,179 +393,143 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.video-call-overlay {
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
+.video-call-card {
 	background: #000;
-	z-index: 9999;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.video-call-container {
-	position: relative;
 	width: 100%;
 	height: 100%;
 }
 
+.video-container {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+}
+
+/* 远程视频 */
 .remote-video {
 	width: 100%;
 	height: 100%;
 	object-fit: cover;
-	background: #1a1a1a;
+	background: rgb(var(--v-theme-surface-variant));
+}
+
+/* 视频占位符 */
+.video-placeholder {
+	background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgb(var(--v-theme-secondary)) 100%);
+}
+
+/* 本地视频卡片 */
+.local-video-card {
+	position: absolute;
+	top: 24px;
+	right: 24px;
+	width: 240px;
+	height: 180px;
+	overflow: hidden;
+	z-index: 10;
+	background: rgb(var(--v-theme-surface-variant));
+	border: 2px solid rgba(255, 255, 255, 0.2);
 }
 
 .local-video {
-	position: absolute;
-	top: 20px;
-	right: 20px;
-	width: 200px;
-	height: 150px;
+	width: 100%;
+	height: 100%;
 	object-fit: cover;
-	border-radius: 8px;
-	border: 2px solid #fff;
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-	background: #2a2a2a;
-	z-index: 10;
+}
+
+.local-placeholder {
+	background: rgba(var(--v-theme-surface-variant), 0.8);
+	backdrop-filter: blur(8px);
 }
 
 /* 移动端适配 */
-@media (max-width: 640px) {
-	.local-video {
+@media (max-width: 600px) {
+	.local-video-card {
 		width: 120px;
 		height: 90px;
-		top: 10px;
-		right: 10px;
+		top: 16px;
+		right: 16px;
 	}
 }
 
-.call-info {
+/* 通话信息卡片 */
+.call-info-card {
 	position: absolute;
-	top: 20px;
-	left: 20px;
-	color: #fff;
-	text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+	top: 24px;
+	left: 24px;
+	background: rgba(var(--v-theme-surface), 0.15);
+	backdrop-filter: blur(16px);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	z-index: 10;
+	max-width: 280px;
+}
+
+@media (max-width: 600px) {
+	.call-info-card {
+		top: 16px;
+		left: 16px;
+		max-width: calc(100% - 160px);
+	}
+}
+
+/* 控制按钮包装器 */
+.controls-wrapper {
+	position: absolute;
+	bottom: 48px;
+	left: 50%;
+	transform: translateX(-50%);
 	z-index: 10;
 }
 
-.user-name {
-	font-size: 1.5rem;
-	font-weight: 600;
-	margin-bottom: 4px;
+.controls-card {
+	background: rgba(var(--v-theme-surface), 0.15);
+	backdrop-filter: blur(20px);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	padding: 4px;
 }
 
-.call-status {
-	font-size: 0.9rem;
-	opacity: 0.9;
-	margin-bottom: 4px;
-	padding: 2px 8px;
-	border-radius: 4px;
-	display: inline-block;
+@media (max-width: 600px) {
+	.controls-wrapper {
+		bottom: 24px;
+	}
 }
 
-.status-calling,
-.status-ringing {
-	background: rgba(59, 130, 246, 0.3);
-	animation: pulse 1.5s ease-in-out infinite;
+/* 结束通话按钮特殊样式 */
+.end-call-btn {
+	box-shadow: 0 4px 12px rgba(var(--v-theme-error), 0.4) !important;
 }
 
-.status-connected {
-	background: rgba(34, 197, 94, 0.3);
+.end-call-btn:hover {
+	box-shadow: 0 6px 16px rgba(var(--v-theme-error), 0.5) !important;
 }
 
-.status-ended {
-	background: rgba(239, 68, 68, 0.3);
+/* 动画效果 */
+.call-info-card,
+.local-video-card,
+.controls-card {
+	animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+@keyframes slideIn {
+	from {
+		opacity: 0;
+		transform: translateY(20px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+/* 脉动动画(呼叫中状态) */
 @keyframes pulse {
 	0%,
 	100% {
 		opacity: 1;
 	}
 	50% {
-		opacity: 0.5;
+		opacity: 0.6;
 	}
-}
-
-.call-duration {
-	font-size: 1rem;
-	font-weight: 500;
-	opacity: 0.9;
-}
-
-.controls {
-	position: absolute;
-	bottom: 40px;
-	left: 50%;
-	transform: translateX(-50%);
-	display: flex;
-	gap: 20px;
-	z-index: 10;
-}
-
-@media (max-width: 640px) {
-	.controls {
-		gap: 12px;
-		bottom: 20px;
-	}
-}
-
-.control-btn {
-	width: 60px;
-	height: 60px;
-	border-radius: 50%;
-	background: rgba(255, 255, 255, 0.2);
-	backdrop-filter: blur(10px);
-	border: 2px solid rgba(255, 255, 255, 0.3);
-	color: #fff;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;
-	transition: all 0.3s ease;
-}
-
-@media (max-width: 640px) {
-	.control-btn {
-		width: 50px;
-		height: 50px;
-	}
-}
-
-.control-btn:hover {
-	background: rgba(255, 255, 255, 0.3);
-	transform: scale(1.1);
-}
-
-.control-btn:active {
-	transform: scale(0.95);
-}
-
-.control-btn.active {
-	background: rgb(59 130 246);
-	border-color: rgb(59 130 246);
-}
-
-.control-btn.end-call {
-	background: rgb(239 68 68);
-	border-color: rgb(239 68 68);
-}
-
-.control-btn.end-call:hover {
-	background: rgb(220 38 38);
-}
-
-/* 禁用状态样式 */
-.control-btn:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
-}
-
-.control-btn:disabled:hover {
-	transform: none;
 }
 </style>

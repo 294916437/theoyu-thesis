@@ -14,7 +14,7 @@
 					:model-value="conversation.unreadCount > 0"
 					color="error"
 					offset-x="-8"
-					offset-y="-8"
+					offset-y="-2"
 				>
 					<v-avatar :image="conversation.targetUser?.avatar" size="48" color="grey-lighten-2">
 						<v-icon v-if="!conversation.targetUser?.avatar" icon="mdi-account" size="32"></v-icon>
@@ -33,9 +33,6 @@
 			<template #append>
 				<div class="d-flex flex-column align-end" style="min-width: 60px">
 					<span class="text-caption text-disabled">{{ formatTime(conversation.lastMessageTime) }}</span>
-					<v-chip v-if="conversation.unreadCount > 0" color="error" size="x-small" class="mt-1" label>
-						{{ conversation.unreadCount > 99 ? '99+' : conversation.unreadCount }}
-					</v-chip>
 				</div>
 			</template>
 		</v-list-item>

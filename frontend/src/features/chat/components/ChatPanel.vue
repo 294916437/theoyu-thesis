@@ -739,7 +739,7 @@ watch(
 
 		<!-- 视频对话框 -->
 		<VideoCall
-			:is-active="isVideoCallActive"
+			v-model:is-active="isVideoCallActive"
 			:local-stream="localStream"
 			:remote-stream="remoteStream"
 			:remote-name="conversation.user.name"

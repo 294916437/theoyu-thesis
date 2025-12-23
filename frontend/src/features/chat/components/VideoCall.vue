@@ -1,50 +1,52 @@
 <template>
-	<v-dialog v-model="isActive" fullscreen persistent :scrim="false" transition="dialog-bottom-transition">
+	<v-dialog v-model="dialogModel" fullscreen persistent :scrim="false" transition="dialog-bottom-transition">
 		<v-card class="video-call-card" elevation="0">
 			<!-- 远程视频区域 -->
 			<div class="video-container">
-				<video ref="remoteVideo" autoplay playsinline class="remote-video" />
+				<!-- 远程视频层 -->
+				<div class="remote-video-wrapper">
+					<!-- 远程视频元素 -->
+					<video ref="remoteVideo" autoplay playsinline class="remote-video" />
 
-				<!-- 远程视频占位符 -->
-				<v-overlay v-if="!remoteStream" :model-value="true" contained class="video-placeholder" persistent>
-					<div class="d-flex flex-column align-center">
-						<v-avatar color="primary" size="120" class="mb-4">
-							<v-icon size="64" color="white"> mdi-account </v-icon>
-						</v-avatar>
-						<v-chip color="primary" variant="flat" size="large">
-							{{ callStatusText }}
-						</v-chip>
+					<!-- 远程视频占位符 -->
+					<div v-if="!props.remoteStream" class="remote-video-placeholder">
+						<div class="d-flex flex-column align-center">
+							<v-avatar color="primary" size="120" class="mb-4">
+								<v-icon size="64" color="white"> mdi-account </v-icon>
+							</v-avatar>
+							<v-chip color="primary" variant="flat" size="large">
+								{{ callStatusText }}
+							</v-chip>
+						</div>
 					</div>
-				</v-overlay>
+				</div>
 
 				<!-- 本地视频(画中画) -->
 				<v-card class="local-video-card" elevation="8" rounded="lg">
 					<video ref="localVideo" autoplay playsinline muted class="local-video" />
 
 					<!-- 本地视频占位符 -->
-					<v-overlay
-						v-if="!localStream || isVideoMuted"
-						:model-value="true"
-						contained
-						class="local-placeholder"
-					>
+					<div v-if="!props.localStream || isVideoMuted" class="local-video-placeholder">
 						<v-avatar color="secondary" size="48">
 							<v-icon size="24" color="white"> mdi-account-outline </v-icon>
 						</v-avatar>
-					</v-overlay>
+					</div>
 				</v-card>
 
 				<!-- 通话信息面板 -->
 				<v-card class="call-info-card" elevation="4" rounded="lg">
 					<v-card-text class="pa-4">
 						<div class="text-h6 font-weight-bold text-white mb-1">
-							{{ remoteName }}
+							{{ props.remoteName }}
 						</div>
 						<v-chip :color="getStatusColor()" variant="flat" size="small" class="mb-2">
 							<v-icon start :icon="getStatusIcon()" size="small" />
 							{{ callStatusText }}
 						</v-chip>
-						<div v-if="showDuration && props.callState === 'connected'" class="text-body-2 text-white">
+						<div
+							v-if="props.showDuration && props.callState === 'connected'"
+							class="text-body-2 text-white"
+						>
 							<v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
 							{{ formattedDuration }}
 						</div>
@@ -168,6 +170,8 @@ const props = defineProps({
  * Emits 定义
  */
 const emit = defineEmits({
+	// 更新激活状态
+	'update:isActive': value => typeof value === 'boolean',
 	// 结束通话
 	end: null,
 	// 切换音频（参数：是否启用音频）
@@ -190,6 +194,11 @@ const isVideoMuted = ref(props.initialVideoMuted)
 const callDuration = ref(0)
 const durationInterval = ref(null)
 
+// 双向绑定 isActive
+const dialogModel = computed({
+	get: () => props.isActive,
+	set: value => emit('update:isActive', value),
+})
 // 格式化通话时长
 const formattedDuration = computed(() => {
 	const hours = Math.floor(callDuration.value / 3600)
@@ -407,6 +416,14 @@ onBeforeUnmount(() => {
 }
 
 /* 远程视频 */
+.remote-video-wrapper {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	z-index: 1; /* 最底层 */
+}
 .remote-video {
 	width: 100%;
 	height: 100%;
@@ -415,8 +432,17 @@ onBeforeUnmount(() => {
 }
 
 /* 视频占位符 */
-.video-placeholder {
+.remote-video-placeholder {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
 	background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgb(var(--v-theme-secondary)) 100%);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 2; /* 在视频之上，但在其他 UI 之下 */
 }
 
 /* 本地视频卡片 */
@@ -438,9 +464,17 @@ onBeforeUnmount(() => {
 	object-fit: cover;
 }
 
-.local-placeholder {
+.local-video-placeholder {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
 	background: rgba(var(--v-theme-surface-variant), 0.8);
 	backdrop-filter: blur(8px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
 /* 移动端适配 */

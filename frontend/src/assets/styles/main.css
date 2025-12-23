@@ -9,26 +9,52 @@
 html,
 body {
 	font-family: 'Roboto', sans-serif;
-	overflow-x: hidden;
+	overflow: hidden;
 }
 
-/* 自定义滚动条 */
+/* ==================== 自定义滚动条 ==================== */
+
+/* 浅色主题滚动条 */
 ::-webkit-scrollbar {
 	width: 8px;
 	height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-	background: #f1f1f1;
-}
-
-::-webkit-scrollbar-thumb {
-	background: #888;
+	background: transparent;
 	border-radius: 4px;
 }
 
+::-webkit-scrollbar-thumb {
+	background: rgba(57, 102, 162, 0.2); /* primary 色系，20% 不透明度 */
+	border-radius: 4px;
+	transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 ::-webkit-scrollbar-thumb:hover {
-	background: #555;
+	background: rgba(57, 102, 162, 0.35); /* hover 时加深 */
+}
+
+::-webkit-scrollbar-thumb:active {
+	background: rgba(57, 102, 162, 0.5); /* active 时更深 */
+}
+
+/* 滚动条角落 */
+::-webkit-scrollbar-corner {
+	background: transparent;
+}
+
+/* 暗色主题滚动条 */
+.v-theme--dark ::-webkit-scrollbar-thumb {
+	background: rgba(81, 128, 184, 0.3); /* 暗色模式使用更亮的 primary */
+}
+
+.v-theme--dark ::-webkit-scrollbar-thumb:hover {
+	background: rgba(81, 128, 184, 0.45);
+}
+
+.v-theme--dark ::-webkit-scrollbar-thumb:active {
+	background: rgba(81, 128, 184, 0.6);
 }
 
 /* 过渡动画 */

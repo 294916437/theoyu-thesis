@@ -13,22 +13,7 @@ export function getUserProfile(userId) {
 /**
  * 更新用户资料
  */
-export function updateUserProfile(data) {
-	// 创建 FormData 对象用于文件上传
-	const formData = new FormData()
-
-	// 如果有头像文件，添加到表单
-	if (data.avatar && data.avatar instanceof File) {
-		formData.append('avatar', data.avatar)
-	}
-
-	// 添加其他字段
-	if (data.nickname) formData.append('nickname', data.nickname)
-	if (data.userId) formData.append('userId', data.userId)
-	if (data.sex !== undefined && data.sex !== null) formData.append('sex', data.sex)
-	if (data.birthday) formData.append('birthday', data.birthday)
-	if (data.introduction) formData.append('introduction', data.introduction)
-
+export function updateUserProfile(formData) {
 	return axios.post(`${API_PREFIX}/update`, formData, {
 		headers: {
 			'Content-Type': 'multipart/form-data',

@@ -9,13 +9,6 @@
 						<!-- 背景图编辑按钮 -->
 						<transition name="fade">
 							<div v-if="isEditing" class="background-edit-btn">
-								<input
-									ref="backgroundInputRef"
-									type="file"
-									accept="image/*"
-									style="display: none"
-									@change="handleBackgroundChange"
-								/>
 								<v-btn
 									icon="mdi-camera"
 									color="white"
@@ -23,7 +16,7 @@
 									elevation="4"
 									class="edit-btn"
 									:loading="uploadingBackground"
-									@click="backgroundInputRef?.click()"
+									@click="openBackgroundDialog"
 								/>
 							</div>
 						</transition>
@@ -57,7 +50,7 @@
 								:model-value="true"
 								contained
 								class="align-center justify-center avatar-overlay"
-								@click="avatarInputRef?.click()"
+								@click="openAvatarDialog"
 							>
 								<div class="avatar-edit-content">
 									<v-progress-circular v-if="uploadingAvatar" indeterminate color="white" size="32" />
@@ -68,15 +61,6 @@
 								</div>
 							</v-overlay>
 						</v-avatar>
-
-						<!-- 隐藏的文件上传输入 -->
-						<input
-							ref="avatarInputRef"
-							type="file"
-							accept="image/*"
-							style="display: none"
-							@change="handleAvatarChange"
-						/>
 					</div>
 
 					<div class="nickname-wrapper">
@@ -201,22 +185,30 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { useCloned } from '@vueuse/core'
-import { useDateFormat } from '@vueuse/core'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useCloned, useFileDialog, useObjectUrl, useDateFormat } from '@vueuse/core'
 import { $notify } from '@/plugins/notification'
 import { useUserStore } from '@/stores/user'
 import { getUserProfile, updateUserProfile } from '@/api/user'
-import { uploadFile } from '@/api/file'
 
 // 导入默认图片
 import defaultAvatar from '@/assets/image/default-avatar.png'
 import defaultBackground from '@/assets/image/default-background.jpg'
 
+// ==================== 基础配置 ====================
+
 const userStore = useUserStore()
 const formRef = ref(null)
 
-// 用户信息
+// 文件大小限制
+const FILE_SIZE_LIMITS = {
+	avatar: 1024 * 1024, // 1MB
+	background: 5 * 1024 * 1024, // 5MB
+}
+
+// ==================== 用户信息数据 ====================
+
+// 用户信息（服务器数据）
 const userProfile = reactive({
 	nickname: '',
 	avatar: '',
@@ -229,162 +221,119 @@ const userProfile = reactive({
 // 编辑状态
 const isEditing = ref(false)
 const saving = ref(false)
-const uploadingAvatar = ref(false)
-const uploadingBackground = ref(false)
 
-// 文件上传 refs
-const avatarInputRef = ref(null)
-const backgroundInputRef = ref(null)
-
-// 编辑表单
+// 使用 useCloned 深拷贝用户信息用于编辑
 const { cloned: editForm, sync } = useCloned(userProfile)
 
-// 计算属性 - 头像 URL
-const avatarUrl = computed(() => {
-	if (isEditing.value && editForm.value.avatar) {
-		return editForm.value.avatar
+// ==================== 文件处理（头像） ====================
+
+// 头像文件
+const avatarFile = ref(null)
+
+// 头像文件选择器
+const {
+	files: avatarFiles,
+	open: openAvatarDialog,
+	reset: resetAvatarDialog,
+	onChange: onAvatarChange,
+} = useFileDialog({
+	accept: 'image/*',
+	multiple: false,
+})
+
+// 头像预览 URL（自动管理内存）
+const avatarPreviewUrl = useObjectUrl(() => avatarFile.value)
+
+// 监听头像文件选择
+onAvatarChange(fileList => {
+	if (!fileList || fileList.length === 0) return
+
+	const file = fileList[0]
+
+	// 验证文件大小
+	if (file.size > FILE_SIZE_LIMITS.avatar) {
+		$notify.warning('头像文件大小不能超过 1MB')
+		resetAvatarDialog()
+		return
 	}
+
+	// 验证文件类型
+	if (!file.type.startsWith('image/')) {
+		$notify.warning('请选择图片文件')
+		resetAvatarDialog()
+		return
+	}
+
+	// 保存文件对象
+	avatarFile.value = file
+	$notify.success('头像已选择，请保存以应用更改')
+})
+
+// 计算头像显示 URL
+const avatarUrl = computed(() => {
+	// 编辑模式下优先显示预览
+	if (isEditing.value && avatarPreviewUrl.value) {
+		return avatarPreviewUrl.value
+	}
+	// 否则显示服务器 URL 或默认头像
 	return userProfile.avatar || defaultAvatar
 })
 
-// 计算属性 - 背景图 URL
-const backgroundUrl = computed(() => {
-	if (isEditing.value && editForm.value.backgroundImg) {
-		return editForm.value.backgroundImg
+// ==================== 文件处理（背景图） ====================
+
+// 背景图文件
+const backgroundFile = ref(null)
+
+// 背景图文件选择器
+const {
+	files: backgroundFiles,
+	open: openBackgroundDialog,
+	reset: resetBackgroundDialog,
+	onChange: onBackgroundChange,
+} = useFileDialog({
+	accept: 'image/*',
+	multiple: false,
+})
+
+// 背景图预览 URL（自动管理内存）
+const backgroundPreviewUrl = useObjectUrl(() => backgroundFile.value)
+
+// 监听背景图文件选择
+onBackgroundChange(fileList => {
+	if (!fileList || fileList.length === 0) return
+
+	const file = fileList[0]
+
+	// 验证文件大小
+	if (file.size > FILE_SIZE_LIMITS.background) {
+		$notify.warning('背景图文件大小不能超过 5MB')
+		resetBackgroundDialog()
+		return
 	}
+
+	// 验证文件类型
+	if (!file.type.startsWith('image/')) {
+		$notify.warning('请选择图片文件')
+		resetBackgroundDialog()
+		return
+	}
+
+	// 保存文件对象
+	backgroundFile.value = file
+	$notify.success('背景图已选择，请保存以应用更改')
+})
+
+// 计算背景图显示 URL
+const backgroundUrl = computed(() => {
+	// 编辑模式下优先显示预览
+	if (isEditing.value && backgroundPreviewUrl.value) {
+		return backgroundPreviewUrl.value
+	}
+	// 否则显示服务器 URL 或默认背景
 	return userProfile.backgroundImg || defaultBackground
 })
 
-// 计算属性 - 显示昵称
-const displayNickname = computed(() => {
-	if (isEditing.value && editForm.value.nickname) {
-		return editForm.value.nickname
-	}
-	return userProfile.nickname || '用户昵称'
-})
-
-// 验证规则
-const rules = {
-	required: value => !!value || '此字段不能为空',
-	nickname: value => {
-		if (!value) return true
-		if (value.length < 2) return '昵称至少2个字符'
-		if (value.length > 20) return '昵称最多20个字符'
-		return true
-	},
-	introduction: value => {
-		if (!value) return true
-		if (value.length > 200) return '简介最多200个字符'
-		return true
-	},
-}
-
-// 格式化性别
-const formatSex = sex => {
-	const sexMap = { 0: '保密', 1: '男', 2: '女' }
-	return sexMap[sex] || '未设置'
-}
-
-// 格式化生日
-const formatBirthday = birthday => {
-	if (!birthday) return '未设置'
-	const formatted = useDateFormat(birthday, 'YYYY年MM月DD日')
-	return formatted.value
-}
-
-// 处理头像文件选择
-const handleAvatarChange = async event => {
-	const file = event.target.files?.[0]
-	if (!file) return
-
-	// 验证文件大小 (1MB)
-	if (file.size > 1024 * 1024) {
-		$notify.warning('头像文件大小不能超过 1MB')
-		return
-	}
-
-	// 验证文件类型
-	if (!file.type.startsWith('image/')) {
-		$notify.warning('请选择图片文件')
-		return
-	}
-
-	uploadingAvatar.value = true
-
-	try {
-		// 上传文件
-		const formData = new FormData()
-		formData.append('file', file)
-
-		const response = await uploadFile(formData)
-
-		if (!response.success) {
-			throw new Error(response.message || '上传失败')
-		}
-
-		// 获取文件 URL
-		const fileUrl = response.data.url
-		editForm.value.avatar = fileUrl
-
-		$notify.success('头像上传成功')
-	} catch (error) {
-		console.error('上传头像失败:', error)
-		$notify.error(error.message || '上传头像失败，请重试')
-	} finally {
-		uploadingAvatar.value = false
-		// 清空 input，允许重复选择同一文件
-		if (avatarInputRef.value) {
-			avatarInputRef.value.value = ''
-		}
-	}
-}
-
-// 处理背景图文件选择
-const handleBackgroundChange = async event => {
-	const file = event.target.files?.[0]
-	if (!file) return
-
-	// 验证文件大小 (5MB)
-	if (file.size > 5 * 1024 * 1024) {
-		$notify.warning('背景图文件大小不能超过 5MB')
-		return
-	}
-
-	// 验证文件类型
-	if (!file.type.startsWith('image/')) {
-		$notify.warning('请选择图片文件')
-		return
-	}
-
-	uploadingBackground.value = true
-
-	try {
-		// 上传文件
-		const formData = new FormData()
-		formData.append('file', file)
-
-		const response = await uploadFile(formData)
-
-		if (!response.success) {
-			throw new Error(response.message || '上传失败')
-		}
-
-		// 获取文件 URL
-		const fileUrl = response.data.url
-		editForm.value.backgroundImg = fileUrl
-
-		$notify.success('背景图上传成功')
-	} catch (error) {
-		console.error('上传背景图失败:', error)
-		$notify.error(error.message || '上传背景图失败，请重试')
-	} finally {
-		uploadingBackground.value = false
-		// 清空 input
-		if (backgroundInputRef.value) {
-			backgroundInputRef.value.value = ''
-		}
-	}
-}
+// ==================== 编辑操作 ====================
 
 // 开始编辑
 const startEdit = () => {
@@ -395,14 +344,21 @@ const startEdit = () => {
 // 取消编辑
 const cancelEdit = () => {
 	isEditing.value = false
-	sync() // 重置编辑表单
+
+	// 清除文件选择
+	avatarFile.value = null
+	backgroundFile.value = null
+	resetAvatarDialog()
+	resetBackgroundDialog()
+
+	// 重置编辑表单
+	sync()
 }
 
 // 保存个人信息
 const saveProfile = async () => {
 	// 验证表单
-	// eslint-disable-next-line no-unsafe-optional-chaining
-	const { valid } = await formRef.value?.validate()
+	const { valid } = await formRef.value.validate()
 	if (!valid) {
 		$notify.warning('请检查表单填写是否正确')
 		return
@@ -411,27 +367,28 @@ const saveProfile = async () => {
 	saving.value = true
 
 	try {
-		// 准备提交数据
-		const submitData = {
-			userId: userStore.userId,
-			nickname: editForm.value.nickname,
-			sex: editForm.value.sex,
-			birthday: editForm.value.birthday,
-			introduction: editForm.value.introduction,
+		// 使用 FormData 提交
+		const formData = new FormData()
+
+		// 添加基础信息
+		formData.append('userId', userStore.userId)
+		formData.append('nickname', editForm.value.nickname)
+		formData.append('sex', editForm.value.sex)
+		formData.append('birthday', editForm.value.birthday)
+		formData.append('introduction', editForm.value.introduction || '')
+
+		// 添加头像文件（如果有选择）
+		if (avatarFile.value) {
+			formData.append('avatar', avatarFile.value)
 		}
 
-		// 如果头像有变化，添加头像 URL
-		if (editForm.value.avatar !== userProfile.avatar) {
-			submitData.avatar = editForm.value.avatar
-		}
-
-		// 如果背景图有变化，添加背景图 URL
-		if (editForm.value.backgroundImg !== userProfile.backgroundImg) {
-			submitData.backgroundImg = editForm.value.backgroundImg
+		// 添加背景图文件（如果有选择）
+		if (backgroundFile.value) {
+			formData.append('backgroundImg', backgroundFile.value)
 		}
 
 		// 调用更新接口
-		const response = await updateUserProfile(submitData)
+		const response = await updateUserProfile(formData)
 
 		if (!response.success) {
 			throw new Error(response.message || '保存失败')
@@ -447,7 +404,13 @@ const saveProfile = async () => {
 			userStore.setProfile(profileRes.data)
 		}
 
+		// 清理状态
 		isEditing.value = false
+		avatarFile.value = null
+		backgroundFile.value = null
+		resetAvatarDialog()
+		resetBackgroundDialog()
+
 		$notify.success('保存成功')
 	} catch (error) {
 		console.error('保存个人信息失败:', error)
@@ -456,6 +419,54 @@ const saveProfile = async () => {
 		saving.value = false
 	}
 }
+
+// ==================== 计算属性 ====================
+
+// 显示昵称
+const displayNickname = computed(() => {
+	if (isEditing.value && editForm.value.nickname) {
+		return editForm.value.nickname
+	}
+	return userProfile.nickname || '用户昵称'
+})
+
+// 是否正在上传（用于 UI 加载状态）
+const uploadingAvatar = computed(() => saving.value && avatarFile.value !== null)
+const uploadingBackground = computed(() => saving.value && backgroundFile.value !== null)
+
+// ==================== 工具函数 ====================
+
+// 格式化性别
+const formatSex = sex => {
+	const sexMap = { 0: '保密', 1: '男', 2: '女' }
+	return sexMap[sex] || '未设置'
+}
+
+// 格式化生日
+const formatBirthday = birthday => {
+	if (!birthday) return '未设置'
+	const formatted = useDateFormat(birthday, 'YYYY年MM月DD日')
+	return formatted.value
+}
+
+// ==================== 表单验证规则 ====================
+
+const rules = {
+	required: value => !!value || '此字段不能为空',
+	nickname: value => {
+		if (!value) return true
+		if (value.length < 2) return '昵称至少2个字符'
+		if (value.length > 20) return '昵称最多20个字符'
+		return true
+	},
+	introduction: value => {
+		if (!value) return true
+		if (value.length > 200) return '简介最多200个字符'
+		return true
+	},
+}
+
+// ==================== 初始化 ====================
 
 // 初始化用户信息
 const initProfile = async () => {

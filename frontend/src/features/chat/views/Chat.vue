@@ -1,14 +1,14 @@
 <template>
-	<v-container fluid class="chat-page pa-0 fill-height">
+	<v-container fluid class="chat-page pa-0">
 		<v-row no-gutters class="fill-height">
 			<!-- 左侧会话列表 -->
 			<v-col cols="12" md="4" lg="3" class="conversation-sidebar">
-				<v-sheet color="surface" class="fill-height d-flex flex-column" elevation="2">
+				<v-sheet color="surface" class="d-flex flex-column" elevation="2">
 					<!-- 头部 -->
 					<div class="conversation-header px-4 py-3 border-b">
 						<div class="d-flex align-center justify-space-between">
 							<h2 class="text-h6 font-weight-bold text-primary">私信</h2>
-							<div class="d-flex gap-2">
+							<div class="d-flex ga-2">
 								<v-btn icon="mdi-magnify" variant="text" size="large" density="comfortable"></v-btn>
 								<v-btn
 									icon="mdi-plus"
@@ -36,7 +36,7 @@
 			</v-col>
 
 			<!-- 右侧聊天面板 -->
-			<v-col cols="12" md="8" lg="9" class="chat-main">
+			<v-col cols="12" md="8" lg="9" class="chat-main fill-height">
 				<ChatPanel
 					v-if="activeConversation"
 					:conversation="activeConversation"
@@ -504,12 +504,13 @@ onUnmounted(() => {
 </script>
 <style scoped>
 .chat-page {
-	height: calc(100vh - 64px);
 	background-color: rgb(var(--v-theme-background));
 }
 
 .conversation-sidebar {
+	height: calc(100vh - 64px);
 	border-right: 1px solid rgb(var(--v-theme-border));
+	overflow: hidden;
 }
 
 .conversation-header {
@@ -520,10 +521,8 @@ onUnmounted(() => {
 	border-bottom: 1px solid rgb(var(--v-theme-border));
 }
 
-.gap-2 {
-	gap: 8px;
+.chat-main {
 }
-
 .overflow-y-auto {
 	overflow-y: auto;
 	overflow-x: hidden;

@@ -151,28 +151,29 @@ const handleScroll = async () => {
 		return
 	}
 
-	const { scrollTop } = messagesContainer.value
+	const { scrollTop, scrollHeight } = messagesContainer.value
 
 	// 当滚动到接近顶部时，加载更多历史消息
 	if (scrollTop < scrollThreshold && props.conversation.hasMore) {
 		isLoadingMore.value = true
 
-		// 记录当前滚动位置和内容高度
-		const oldScrollHeight = messagesContainer.value.scrollHeight
-		const oldScrollTop = messagesContainer.value.scrollTop
+		// 记录当前滚动位置
+		const oldScrollHeight = scrollHeight
+		const oldScrollTop = scrollTop
 
 		try {
 			console.log('触发加载更多消息...')
 			emit('load-more')
 
-			// 加载完成后，恢复滚动位置（防止跳动）
-			nextTick(() => {
-				if (messagesContainer.value) {
-					const newScrollHeight = messagesContainer.value.scrollHeight
-					const heightDiff = newScrollHeight - oldScrollHeight
-					messagesContainer.value.scrollTop = oldScrollTop + heightDiff
-				}
-			})
+			// 等待 DOM 更新后恢复滚动位置
+			await nextTick()
+
+			if (messagesContainer.value) {
+				const newScrollHeight = messagesContainer.value.scrollHeight
+				const heightDiff = newScrollHeight - oldScrollHeight
+				// 恢复滚动位置，防止跳动
+				messagesContainer.value.scrollTop = oldScrollTop + heightDiff
+			}
 		} catch (error) {
 			console.error('加载更多消息失败:', error)
 		} finally {
@@ -591,7 +592,7 @@ watch(
 )
 </script>
 <template>
-	<v-sheet color="background" class="chat-panel fill-height" elevation="0">
+	<v-sheet color="background" class="chat-panel" elevation="0">
 		<!-- 聊天头部 -->
 		<v-sheet color="surface" class="chat-header px-4 py-3" elevation="1">
 			<div class="d-flex align-center justify-space-between">
@@ -634,22 +635,28 @@ watch(
 		</v-sheet>
 
 		<!-- 消息列表 -->
-		<div ref="messageListRef" class="message-list-container">
+		<div ref="messagesContainer" class="message-list-container" @scroll="handleScroll">
 			<!-- 空状态 -->
 			<div v-if="conversation.messages.length === 0" class="empty-message-state">
 				<v-icon icon="mdi-message-outline" size="64" color="grey-lighten-1"></v-icon>
 				<p class="text-body-1 text-disabled mt-4">暂无消息，开始聊天吧</p>
 			</div>
 
-			<!-- 加载更多按钮 -->
-			<div v-else-if="conversation.hasMore" class="text-center py-3">
-				<v-btn variant="text" size="small" color="primary" prepend-icon="mdi-chevron-up" @click="handleScroll">
-					加载更多消息
-				</v-btn>
-			</div>
-
 			<!-- 消息列表内容 -->
-			<div v-if="conversation.messages.length > 0" class="message-list-content px-4 py-3">
+			<div v-else class="message-list-content px-4 py-3">
+				<!-- 加载更多按钮 -->
+				<div v-if="conversation.hasMore" class="text-center py-3">
+					<v-btn
+						variant="text"
+						size="small"
+						color="primary"
+						prepend-icon="mdi-chevron-up"
+						:loading="isLoadingMore"
+						@click="handleScroll"
+					>
+						加载更多消息
+					</v-btn>
+				</div>
 				<div v-for="(item, index) in messagesWithDividers" :key="item.id || `divider-${index}`">
 					<!-- 日期分隔线 -->
 					<div v-if="item.isDivider" class="message-date-divider my-4">
@@ -766,10 +773,10 @@ watch(
 
 <style scoped>
 .chat-panel {
-	position: relative;
-	height: 100%;
 	display: flex;
 	flex-direction: column;
+	position: relative;
+	height: calc(100vh - 64px); /* 减去顶部导航栏 */
 }
 /* 聊天头部样式 */
 .chat-header {
@@ -790,7 +797,7 @@ watch(
 
 /* 消息列表内容 */
 .message-list-content {
-	min-height: 100%;
+	overflow-y: scroll;
 	display: flex;
 	flex-direction: column;
 	justify-content: flex-end; /* 消息从底部开始排列 */
@@ -814,6 +821,7 @@ watch(
 	border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
 	padding: 12px 16px;
 	background-color: rgb(var(--v-theme-surface));
+	flex-shrink: 0;
 }
 
 .input-wrapper {

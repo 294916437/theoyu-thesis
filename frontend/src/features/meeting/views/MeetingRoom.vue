@@ -274,7 +274,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn } from '@vueuse/core'
 import VideoGrid from '../components/VideoGrid.vue'
@@ -285,10 +285,14 @@ import ControlBar from '../components/ControlBar.vue'
 import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
 import { useMediaDevices } from '@/composables/useMediaDevices'
 import { useWebRTC } from '@/composables/useWebRTC'
+import { useMeetingApi } from '@/composables/useMeetingApi'
 import { $notify } from '@/plugins/notification'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
 const router = useRouter()
+const { fetchMeetingDetail } = useMeetingApi()
+const userStore = useUserStore()
 
 // 会议信息
 const meetingInfo = ref({
@@ -297,15 +301,36 @@ const meetingInfo = ref({
 	startTime: new Date(),
 })
 
+// 用户信息
+const currentUserId = userStore.userId
+const currentUsername = userStore.profile.username
+const authToken = userStore.token
+
 // 媒体设备
 const { cameras, microphones, speakers, selectedCamera, selectedMicrophone, selectedSpeaker, enumerateDevices } =
 	useMediaDevices()
 
 // WebRTC
-const { localStream, participants, screenShare, audioEnabled, videoEnabled, screenSharing, joinMeeting, leaveMeeting } =
-	useWebRTC()
+const {
+	roomId,
+	peerId,
+	localStream,
+	participants,
+	remoteParticipants,
+	audioEnabled,
+	videoEnabled,
+	screenSharing,
+	screenStream,
+	connectionState,
+	joinMeeting,
+	leaveMeeting,
+	toggleAudio,
+	toggleVideo,
+	startScreenShare,
+	stopScreenShare,
+} = useWebRTC()
 
-// UI状态
+// UI 状态
 const showSidebar = ref(true)
 const showSettings = ref(false)
 const sidebarTab = ref('participants')
@@ -324,16 +349,33 @@ const enableHD = ref(true)
 const enableMirror = ref(false)
 
 // 计算属性
-const participantCount = computed(() => participants.value.length + 1)
-const currentUserId = ref('current-user-id')
+const participantCount = computed(() => participants.value.length)
 
-// 根据控制栏状态动态计算视频容器高度
 const videoContainerHeight = computed(() => {
-	// 顶部栏: 48px
-	// 控制栏展开: 88px, 收起: 0px
 	const topBarHeight = 48
 	const controlBarHeight = controlBarCollapsed.value ? 0 : 88
 	return `calc(100vh - ${topBarHeight}px - ${controlBarHeight}px)`
+})
+
+// 屏幕共享信息
+const screenShare = computed(() => {
+	const sharingPeer = participants.value.find(p =>
+		Object.values(p.producers).some(producer => producer.appData?.source === 'screen'),
+	)
+
+	if (sharingPeer) {
+		const screenProducer = Object.values(sharingPeer.producers).find(
+			producer => producer.appData?.source === 'screen',
+		)
+
+		return {
+			active: true,
+			stream: new MediaStream([screenProducer.track]),
+			presenter: sharingPeer.username,
+		}
+	}
+
+	return { active: false, stream: null, presenter: null }
 })
 
 // 会议时长
@@ -353,6 +395,32 @@ useIntervalFn(() => {
 	}
 }, 1000)
 
+// 监听音视频状态变化
+watch(audioEnabled, enabled => {
+	console.log('Audio state changed', enabled)
+})
+
+watch(videoEnabled, enabled => {
+	console.log('Video state changed', enabled)
+})
+
+watch(screenSharing, sharing => {
+	if (sharing) {
+		startScreenShare()
+	} else {
+		stopScreenShare()
+	}
+})
+
+// 监听连接状态
+watch(connectionState, state => {
+	if (state === 'failed') {
+		$notify.error('连接失败,请重试')
+	} else if (state === 'disconnected') {
+		console.log('Connection disconnected')
+	}
+})
+
 // 方法
 const toggleSidebarChat = () => {
 	showSidebar.value = true
@@ -366,7 +434,6 @@ const toggleVideoLayout = () => {
 	$notify.success(`已切换到${layouts[(currentIndex + 1) % layouts.length]}布局`)
 }
 
-// 显示离开确认对话框
 const handleLeaveMeeting = () => {
 	showLeaveConfirm.value = true
 }
@@ -375,20 +442,19 @@ const confirmLeaveMeeting = async () => {
 	showLeaveConfirm.value = false
 
 	try {
-		// 清理WebRTC连接和媒体流
+		isLoading.value = true
+		loadingMessage.value = '正在离开会议...'
+
 		await leaveMeeting()
 
 		router.push('/')
-
 		$notify.success('已离开会议')
 	} catch (error) {
-		console.error('Failed to leave meeting:', error)
+		console.error('Failed to leave meeting', error)
 		$notify.error('离开会议失败')
-
-		// 即使出错也尝试跳转
-		router.push({
-			path: `/meeting/detail/${meetingInfo.value.id}`,
-		})
+		router.push('/')
+	} finally {
+		isLoading.value = false
 	}
 }
 
@@ -396,12 +462,14 @@ const handleSendMessage = async message => {
 	chatMessages.value.push({
 		id: Date.now(),
 		userId: currentUserId.value,
-		userName: '我',
+		userName: currentUsername.value,
 		content: message.content,
 		type: message.type || 'text',
 		timestamp: new Date(),
 		isOwn: true,
 	})
+
+	// TODO: 通过 Socket.io 发送消息给其他参与者
 }
 
 const handleMessageRead = () => {
@@ -409,7 +477,6 @@ const handleMessageRead = () => {
 }
 
 const handleLoadMoreMessages = async () => {
-	// 预留加载更多消息API
 	console.log('Load more messages')
 }
 
@@ -417,7 +484,7 @@ const handleFileUpload = async fileData => {
 	chatMessages.value.push({
 		id: Date.now(),
 		userId: currentUserId.value,
-		userName: '我',
+		userName: currentUsername.value,
 		type: 'file',
 		file: fileData.file,
 		timestamp: new Date(),
@@ -426,44 +493,79 @@ const handleFileUpload = async fileData => {
 }
 
 const handleMuteParticipant = async participantId => {
-	console.log('Mute participant:', participantId)
+	console.log('Mute participant', participantId)
+	// TODO: 实现远程静音功能 (需要后端支持)
 }
 
 const handleRemoveParticipant = async participantId => {
-	console.log('Remove participant:', participantId)
+	console.log('Remove participant', participantId)
+	// TODO: 实现踢出参与者功能 (需要后端支持)
 }
 
 const handlePinParticipant = participantId => {
-	console.log('Pin participant:', participantId)
+	console.log('Pin participant', participantId)
+	// TODO: 实现固定参与者视图
 }
 
 const handleSpotlightParticipant = participantId => {
-	console.log('Spotlight participant:', participantId)
+	console.log('Spotlight participant', participantId)
+	// TODO: 实现聚光灯模式
 }
 
 const saveSettings = () => {
-	// 预留保存设置API
 	showSettings.value = false
 	$notify.success('设置已保存')
+	// TODO: 应用设备更改
+}
+
+// 加载会议详情
+async function loadMeetingDetail() {
+	try {
+		const detail = await fetchMeetingDetail(meetingInfo.value.id)
+		meetingInfo.value = {
+			...meetingInfo.value,
+			...detail.meeting,
+		}
+	} catch (error) {
+		console.error('Failed to load meeting detail', error)
+	}
 }
 
 onMounted(async () => {
 	isLoading.value = true
-	loadingMessage.value = '正在加入会议...'
+	loadingMessage.value = '正在初始化...'
+	loadingProgress.value = 20
 
 	try {
+		// 1. 枚举媒体设备
 		await enumerateDevices()
-		await joinMeeting(meetingInfo.value.id)
-		$notify.useRoute('已加入会议')
+		loadingProgress.value = 40
+
+		// 2. 加载会议详情
+		await loadMeetingDetail()
+		loadingProgress.value = 60
+
+		// 3. 加入会议房间
+		loadingMessage.value = '正在加入会议...'
+		await joinMeeting(meetingInfo.value.id, currentUserId.value, currentUsername.value, authToken.value)
+
+		loadingProgress.value = 100
+		$notify.success('已成功加入会议')
 	} catch (error) {
-		console.error('Failed to join meeting:', error)
-		$notify.error('加入会议失败')
+		console.error('Failed to join meeting', error)
+		$notify.error(`加入会议失败: ${error.message}`)
+
+		// 失败后返回详情页
+		setTimeout(() => {
+			router.push(`/meeting/detail/${meetingInfo.value.id}`)
+		}, 2000)
 	} finally {
 		isLoading.value = false
+		loadingProgress.value = 0
 	}
 })
 
-onUnmounted(() => {
+onBeforeUnmount(() => {
 	leaveMeeting()
 })
 </script>

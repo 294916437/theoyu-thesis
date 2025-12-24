@@ -55,7 +55,7 @@ public class FindUserProfileRspVO {
     /**
      * 背景图片
      */
-    private String backgroundImage;
+    private String backgroundImg;
 
     /**
      * 个人介绍

@@ -107,7 +107,7 @@ public class UserServiceImpl implements UserService {
 
         UserPO userPO = new UserPO();
         // 设置当前需要更新的用户 ID
-        userPO.setId(LoginUserContextHolder.getUserId());
+        userPO.setId(userId);
         // 标识位：是否需要更新
         boolean needUpdate = false;
 
@@ -533,7 +533,7 @@ public class UserServiceImpl implements UserService {
                 .userAppId(userPO.getUserId())
                 .sex(userPO.getSex())
                 .phone(userPO.getPhone())
-                .backgroundImage(userPO.getBackgroundImg())
+                .backgroundImg(userPO.getBackgroundImg())
                 .introduction(userPO.getIntroduction())
                 .build();
 

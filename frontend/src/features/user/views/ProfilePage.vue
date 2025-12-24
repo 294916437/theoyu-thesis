@@ -4,7 +4,7 @@
 		<div class="profile-header">
 			<!-- 背景图 -->
 			<div class="background-wrapper">
-				<v-img :src="backgroundUrl" cover height="300" class="background-image">
+				<v-img :src="backgroundUrl" cover height="360" class="background-image">
 					<div class="background-content">
 						<!-- 背景图编辑按钮 -->
 						<transition name="fade">
@@ -185,7 +185,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useCloned, useFileDialog, useObjectUrl, useDateFormat } from '@vueuse/core'
 import { $notify } from '@/plugins/notification'
 import { useUserStore } from '@/stores/user'
@@ -518,7 +518,6 @@ onMounted(() => {
 }
 
 .background-image {
-	width: 100%;
 	position: relative;
 }
 

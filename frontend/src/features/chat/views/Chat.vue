@@ -36,7 +36,7 @@
 			</v-col>
 
 			<!-- 右侧聊天面板 -->
-			<v-col cols="12" md="8" lg="9" class="chat-main fill-height">
+			<v-col cols="12" md="8" lg="9" class="align-center">
 				<ChatPanel
 					v-if="activeConversation"
 					:conversation="activeConversation"
@@ -521,8 +521,6 @@ onUnmounted(() => {
 	border-bottom: 1px solid rgb(var(--v-theme-border));
 }
 
-.chat-main {
-}
 .overflow-y-auto {
 	overflow-y: auto;
 	overflow-x: hidden;

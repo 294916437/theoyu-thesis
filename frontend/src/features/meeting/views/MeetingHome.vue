@@ -90,10 +90,9 @@ import HeroSection from '../components/HeroSection.vue'
 import RecentMeetings from '../components/RecentMeetings.vue'
 import CreateMeetingDialog from '../components/CreateMeetingDialog.vue'
 import { $notify } from '@/plugins/notification'
-import { useMeetingApi } from '@/composables/useMeetingApi'
+import { fetchUpcomingMeetings, fetchRecentMeetings, createMeeting } from '@/api/room'
 
 const router = useRouter()
-const { fetchUpcomingMeetings, fetchRecentMeetings, createMeeting } = useMeetingApi()
 const now = useNow({ interval: 60000 }) // 每分钟更新一次
 
 // 用户信息
@@ -180,14 +179,14 @@ const handleJoinMeeting = async meetingId => {
 const handleCreateMeeting = async meetingData => {
 	try {
 		// TODO: 调用后端API创建会议
-		// const meeting = await createMeeting(meetingData)
+		const meeting = await createMeeting(meetingData)
 		// 打印表单数据
 		console.log(meetingData)
 
 		$notify.success('会议创建成功')
 
 		// 跳转到会议页面
-		// router.push(`/meeting/detail/${meeting.id}`)
+		router.push(`/meeting/detail/${meeting.id}`)
 
 		// 刷新会议列表
 		await Promise.all([loadUpcomingMeetings(), loadRecentMeetings()])

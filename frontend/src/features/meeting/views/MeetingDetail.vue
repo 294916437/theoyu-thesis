@@ -280,15 +280,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDateFormat, useClipboard } from '@vueuse/core'
-import { useMeetingApi } from '@/composables/useMeetingApi'
 import MeetingStatistics from '../components/MeetingStatistics.vue'
 import MeetingForm from '../components/MeetingForm.vue'
 import { $notify } from '@/plugins/notification'
+import { fetchMeetingDetail, updateMeeting, deleteMeeting } from '@/api/room'
 
 const route = useRoute()
 const router = useRouter()
 const { copy } = useClipboard()
-const { fetchMeetingDetail, updateMeeting, deleteMeeting } = useMeetingApi()
 
 const meetingDetail = ref({
 	id: '',

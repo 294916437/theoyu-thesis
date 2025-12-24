@@ -285,13 +285,13 @@ import ControlBar from '../components/ControlBar.vue'
 import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
 import { useMediaDevices } from '@/composables/useMediaDevices'
 import { useWebRTC } from '@/composables/useWebRTC'
-import { useMeetingApi } from '@/composables/useMeetingApi'
+import { fetchMeetingDetail } from '@/api/room'
+
 import { $notify } from '@/plugins/notification'
 import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
 const router = useRouter()
-const { fetchMeetingDetail } = useMeetingApi()
 const userStore = useUserStore()
 
 // 会议信息

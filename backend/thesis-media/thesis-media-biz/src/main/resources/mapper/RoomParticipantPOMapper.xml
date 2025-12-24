@@ -175,6 +175,19 @@
     WHERE room_id = #{roomId}
       AND user_id = #{userId}
   </update>
+  <update id="updateByRoomIdAndUserId" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
+    UPDATE room_participant
+    <set>
+      <if test="status != null">status = #{status},</if>
+      <if test="role != null">role = #{role},</if>
+      <if test="audioMuted != null">audio_muted = #{audioMuted},</if>
+      <if test="videoMuted != null">video_muted = #{videoMuted},</if>
+      <if test="joinedAt != null">joined_at = #{joinedAt},</if>
+      <if test="leftAt != null">left_at = #{leftAt},</if>
+      updated_time = #{updatedTime}
+    </set>
+    WHERE room_id = #{roomId} AND user_id = #{userId}
+  </update>
 
   <!-- 查询房间在线参与者列表 -->
   <select id="selectByRoomIdAndStatus" resultMap="BaseResultMap">

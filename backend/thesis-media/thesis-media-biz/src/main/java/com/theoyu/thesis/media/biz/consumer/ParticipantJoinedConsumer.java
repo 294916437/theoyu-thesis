@@ -4,7 +4,9 @@ import com.alibaba.fastjson.JSON;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
 import com.theoyu.thesis.media.biz.model.entity.RoomPO;
+import com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO;
 import com.theoyu.thesis.media.biz.model.mapper.RoomPOMapper;
+import com.theoyu.thesis.media.biz.model.mapper.RoomParticipantPOMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
@@ -14,6 +16,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -44,6 +47,9 @@ public class ParticipantJoinedConsumer extends BaseRocketMQConsumer implements R
 
     @Resource
     private RoomPOMapper roomPOMapper;
+
+    @Resource
+    private RoomParticipantPOMapper roomParticipantPOMapper;
 
     @Resource(name = "taskExecutor")
     private ThreadPoolTaskExecutor taskExecutor;
@@ -99,11 +105,93 @@ public class ParticipantJoinedConsumer extends BaseRocketMQConsumer implements R
         // 2. 更新在线人数缓存
         updateOnlineCount(roomId, true);
 
-        // 3. 检查房间容量预警（异步）
+        // 3. 记录会议的参会者
+        recordRoomParticipant(roomId, userId, timestamp);
+
+        // 4. 检查房间容量预警(异步)
         taskExecutor.execute(() -> checkRoomCapacityWarning(roomId));
 
-        // 4. 记录行为日志（异步）
+        // 5. 记录行为日志(异步)
         taskExecutor.execute(() -> logUserBehavior(roomId, userId, username, "joined", timestamp));
+    }
+
+
+    /**
+     * 记录会议参会者
+     *
+     * 业务说明:
+     * 1. 检查参会者记录是否存在
+     * 2. 如果不存在则创建新记录
+     * 3. 如果存在但状态为离线,则更新为在线状态
+     * 4. 记录加入时间
+     */
+    private void recordRoomParticipant(String roomId, String userId, Long timestamp) {
+        try {
+            Long roomIdLong = Long.parseLong(roomId);
+            Long userIdLong = Long.parseLong(userId);
+
+            // 1. 查询是否已有参会记录
+            RoomParticipantPO existingParticipant = roomParticipantPOMapper
+                    .selectByRoomIdAndUserId(roomIdLong, userIdLong);
+
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime joinedAt = timestamp != null
+                    ? LocalDateTime.ofInstant(
+                    java.time.Instant.ofEpochMilli(timestamp),
+                    java.time.ZoneId.systemDefault())
+                    : now;
+
+            if (existingParticipant == null) {
+                // 2. 首次加入,创建新记录
+                RoomParticipantPO participant = RoomParticipantPO.builder()
+                        .roomId(roomIdLong)
+                        .userId(userIdLong)
+                        .role(1) // 默认普通成员
+                        .status(1) // 在线状态
+                        .audioMuted(false)
+                        .videoMuted(false)
+                        .joinedAt(joinedAt)
+                        .createdTime(now)
+                        .updatedTime(now)
+                        .build();
+
+                roomParticipantPOMapper.insert(participant);
+
+                log.info("[ParticipantJoinedConsumer] New participant recorded - roomId: {}, userId: {}",
+                        roomId, userId);
+
+            } else if (existingParticipant.getStatus() != 1) {
+                // 3. 重新加入(之前离开过),更新状态和时间
+                RoomParticipantPO updateParam = RoomParticipantPO.builder()
+                        .roomId(roomIdLong)
+                        .userId(userIdLong)
+                        .status(1) // 更新为在线
+                        .joinedAt(joinedAt) // 更新最新加入时间
+                        .leftAt(null) // 清空离开时间
+                        .updatedTime(now)
+                        .build();
+
+                roomParticipantPOMapper.updateByRoomIdAndUserId(updateParam);
+
+                log.info("[ParticipantJoinedConsumer] Participant rejoin updated - roomId: {}, userId: {}",
+                        roomId, userId);
+
+            } else {
+                // 4. 已在线状态,可能是重复消息或网络波动,记录日志
+                log.warn("[ParticipantJoinedConsumer] Participant already online - roomId: {}, userId: {}",
+                        roomId, userId);
+            }
+
+            // TODO: 更新缓存的参与者信息(如有的话)
+
+        } catch (NumberFormatException e) {
+            log.error("[ParticipantJoinedConsumer] Invalid roomId or userId format - roomId: {}, userId: {}",
+                    roomId, userId, e);
+        } catch (Exception e) {
+            log.error("[ParticipantJoinedConsumer] Failed to record room participant - roomId: {}, userId: {}",
+                    roomId, userId, e);
+            // 记录失败不影响主流程,只记录日志
+        }
     }
 
     /**

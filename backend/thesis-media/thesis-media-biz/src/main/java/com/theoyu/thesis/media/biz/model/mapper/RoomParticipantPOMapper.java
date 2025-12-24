@@ -50,6 +50,11 @@ public interface RoomParticipantPOMapper {
     );
 
     /**
+     * 根据 roomId 和 userId 更新参会者信息
+     */
+    int updateByRoomIdAndUserId(RoomParticipantPO record);
+
+    /**
      * 批量更新房间所有在线参与者状态为已离开
      */
     int batchUpdateStatusByRoomId(

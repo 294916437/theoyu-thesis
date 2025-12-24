@@ -195,6 +195,15 @@
       AND status = #{oldStatus}
   </update>
 
+  <!-- 查询用户最近参加的会议（分页） -->
+  <select id="selectRecentRoomsByUserId" resultType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
+    SELECT rp.*
+    FROM t_room_participant rp
+    WHERE rp.user_id = #{userId}
+    ORDER BY rp.joined_at DESC
+      LIMIT #{offset}, #{pageSize}
+  </select>
+
 
 
 </mapper>

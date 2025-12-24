@@ -53,6 +53,20 @@ public class RedisKeyConstants {
     public static final String ROOM_NO_KEY = "media:room:no:%s";
 
     /**
+     * 用户最近参加的会议列表（Sorted Set，按参与时间排序）
+     * user:recent:rooms:{userId}
+     */
+    public static final String USER_RECENT_ROOMS_KEY = "user:recent:rooms:%d";
+    public static final long USER_RECENT_ROOMS_EXPIRE_TIME = 7 * 24 * 60 * 60; // 7天
+
+    /**
+     * 用户即将开始的会议列表（Sorted Set，按计划开始时间排序）
+     * user:upcoming:rooms:{userId}
+     */
+    public static final String USER_UPCOMING_ROOMS_KEY = "user:upcoming:rooms:%d";
+    public static final long USER_UPCOMING_ROOMS_EXPIRE_TIME = 24 * 60 * 60; // 1天
+
+    /**
      * 用户房间创建配额过期时间：1小时（用于限流）
      */
     public static final long USER_ROOM_QUOTA_EXPIRE_TIME = 60 * 60;

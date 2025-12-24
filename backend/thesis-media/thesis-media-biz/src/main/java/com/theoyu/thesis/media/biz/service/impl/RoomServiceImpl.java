@@ -3,6 +3,7 @@ package com.theoyu.thesis.media.biz.service.impl;
 import cn.hutool.core.util.RandomUtil;
 import com.alibaba.fastjson.JSON;
 import com.theoyu.framework.common.exception.BusinessException;
+import com.theoyu.framework.common.response.PageResponse;
 import com.theoyu.framework.context.holder.LoginUserContextHolder;
 import com.theoyu.framework.common.utils.MapUtils;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
@@ -233,6 +234,7 @@ public class RoomServiceImpl implements RoomService {
                 .build();
     }
 
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void closeRoom(Long roomId) {
@@ -276,7 +278,371 @@ public class RoomServiceImpl implements RoomService {
         });
     }
 
+    @Override
+    public PageResponse<RecentRoomResVO> getRecentRooms(Long page, Long size) {
+        Long userId = LoginUserContextHolder.getUserId();
+        log.info("[RoomService] 获取最近参加的会议 - userId: {}, page: {}, size: {}", userId, page, size);
+
+        // 参数校验
+        if (page == null || page < 1) {
+            page = 1L;
+        }
+        if (size == null || size < 1) {
+            size = 10L;
+        }
+
+        try {
+            // 1. 尝试从缓存获取（使用 Sorted Set 按时间排序）
+            String cacheKey = String.format(RedisKeyConstants.USER_RECENT_ROOMS_KEY, userId);
+            Long cacheSize = redisTemplate.opsForZSet().size(cacheKey);
+
+            List<RecentRoomResVO> resultList;
+            long totalCount;
+
+            if (cacheSize != null && cacheSize > 0) {
+                // 缓存命中：使用 ZSet 的范围查询
+                long start = PageResponse.getOffset(page, size);
+                long end = start + size - 1;
+
+                // 按分数倒序获取（最近的在前）
+                Set<Object> cachedRoomIds = redisTemplate.opsForZSet()
+                        .reverseRange(cacheKey, start, end);
+
+                if (cachedRoomIds != null && !cachedRoomIds.isEmpty()) {
+                    resultList = buildRecentRoomsFromCache(cachedRoomIds, userId);
+                    totalCount = cacheSize;
+                    log.debug("[RoomService] 缓存命中 - userId: {}, count: {}", userId, totalCount);
+                } else {
+                    resultList = Collections.emptyList();
+                }
+            } else {
+                // 缓存未命中：查询数据库
+                log.debug("[RoomService] 缓存未命中，查询数据库 - userId: {}", userId);
+
+                long offset = PageResponse.getOffset(page, size);
+                List<RoomParticipantPO> participants = roomParticipantPOMapper
+                        .selectRecentRoomsByUserId(userId, offset, size);
+
+
+                if (!participants.isEmpty()) {
+                    resultList = buildRecentRoomsFromDB(participants);
+
+                    // 异步回写缓存
+                    asyncCacheRecentRooms(userId, participants);
+                } else {
+                    resultList = Collections.emptyList();
+                }
+            }
+
+            return PageResponse.success(resultList, page,size);
+
+        } catch (Exception e) {
+            log.error("[RoomService] 获取最近参加的会议失败 - userId: {}", userId, e);
+            throw new BusinessException(ResponseCodeEnum.SYSTEM_ERROR);
+        }
+    }
+
+    @Override
+    public PageResponse<UpcomingRoomResVO> getUpcomingRooms(Long page, Long size) {
+        Long userId = LoginUserContextHolder.getUserId();
+        log.info("[RoomService] 获取即将开始的会议 - userId: {}, page: {}, size: {}", userId, page, size);
+
+        // 参数校验
+        if (page == null || page < 1) {
+            page = 1L;
+        }
+        if (size == null || size < 1) {
+            size = 10L;
+        }
+
+        try {
+            // 1. 尝试从缓存获取（使用 Sorted Set 按计划开始时间排序）
+            String cacheKey = String.format(RedisKeyConstants.USER_UPCOMING_ROOMS_KEY, userId);
+            Long cacheSize = redisTemplate.opsForZSet().size(cacheKey);
+
+            List<UpcomingRoomResVO> resultList;
+            long totalCount;
+
+            if (cacheSize != null && cacheSize > 0) {
+                // 缓存命中：使用 ZSet 的范围查询
+                long start = PageResponse.getOffset(page, size);
+                long end = start + size - 1;
+
+                // 按分数正序获取（最近开始的在前）
+                Set<Object> cachedRoomIds = redisTemplate.opsForZSet()
+                        .range(cacheKey, start, end);
+
+                if (cachedRoomIds != null && !cachedRoomIds.isEmpty()) {
+                    resultList = buildUpcomingRoomsFromCache(cachedRoomIds, userId);
+                    totalCount = cacheSize;
+                    log.debug("[RoomService] 缓存命中 - userId: {}, count: {}", userId, totalCount);
+                } else {
+                    resultList = Collections.emptyList();
+                    totalCount = 0;
+                }
+            } else {
+                // 缓存未命中：查询数据库
+                log.debug("[RoomService] 缓存未命中，查询数据库 - userId: {}", userId);
+
+                long offset = PageResponse.getOffset(page, size);
+                List<RoomPO> rooms = roomPOMapper
+                        .selectUpcomingRoomsByUserId(userId, offset, size);
+
+                if (!rooms.isEmpty()) {
+                    resultList = buildUpcomingRoomsFromDB(rooms, userId);
+
+                    // 异步回写缓存
+                    asyncCacheUpcomingRooms(userId, rooms);
+                } else {
+                    resultList = Collections.emptyList();
+                }
+            }
+
+            return PageResponse.success(resultList, page, size);
+
+        } catch (Exception e) {
+            log.error("[RoomService] 获取即将开始的会议失败 - userId: {}", userId, e);
+            throw new BusinessException(ResponseCodeEnum.SYSTEM_ERROR);
+        }
+    }
+
     // ==================== 私有辅助方法 ====================
+    /**
+     * 异步缓存最近参加的会议
+     * 使用 Sorted Set，score 为参与时间戳（越大越新）
+     */
+    private void asyncCacheRecentRooms(Long userId, List<RoomParticipantPO> participants) {
+        threadPoolTaskExecutor.execute(() -> {
+            try {
+                String cacheKey = String.format(RedisKeyConstants.USER_RECENT_ROOMS_KEY, userId);
+
+                // 批量添加到 ZSet
+                for (RoomParticipantPO participant : participants) {
+                    double score = participant.getJoinedAt() != null
+                            ? participant.getJoinedAt().toEpochSecond(java.time.ZoneOffset.of("+8"))
+                            : System.currentTimeMillis() / 1000.0;
+
+                    redisTemplate.opsForZSet().add(cacheKey, participant.getRoomId(), score);
+                }
+
+                // 设置过期时间
+                redisTemplate.expire(cacheKey,
+                        RedisKeyConstants.USER_RECENT_ROOMS_EXPIRE_TIME,
+                        TimeUnit.SECONDS);
+
+                // 保留最新的 100 条记录
+                redisTemplate.opsForZSet().removeRange(cacheKey, 0, -101);
+
+                log.debug("[RoomService] 异步缓存最近参加的会议成功 - userId: {}", userId);
+
+            } catch (Exception e) {
+                log.error("[RoomService] 异步缓存最近参加的会议失败 - userId: {}", userId, e);
+            }
+        });
+    }
+
+    /**
+     * 异步缓存即将开始的会议
+     * 使用 Sorted Set，score 为计划开始时间戳（越小越早）
+     */
+    private void asyncCacheUpcomingRooms(Long userId, List<RoomPO> rooms) {
+        threadPoolTaskExecutor.execute(() -> {
+            try {
+                String cacheKey = String.format(RedisKeyConstants.USER_UPCOMING_ROOMS_KEY, userId);
+
+                // 批量添加到 ZSet
+                for (RoomPO room : rooms) {
+                    double score = room.getStartTime() != null
+                            ? room.getStartTime().toEpochSecond(java.time.ZoneOffset.of("+8"))
+                            : System.currentTimeMillis() / 1000.0;
+
+                    redisTemplate.opsForZSet().add(cacheKey, room.getId(), score);
+                }
+
+                // 设置过期时间
+                redisTemplate.expire(cacheKey,
+                        RedisKeyConstants.USER_UPCOMING_ROOMS_EXPIRE_TIME,
+                        TimeUnit.SECONDS);
+
+                log.debug("[RoomService] 异步缓存即将开始的会议成功 - userId: {}", userId);
+
+            } catch (Exception e) {
+                log.error("[RoomService] 异步缓存即将开始的会议失败 - userId: {}", userId, e);
+            }
+        });
+    }
+
+    /**
+     * 从缓存构建最近参加的会议列表
+     */
+    private List<RecentRoomResVO> buildRecentRoomsFromCache(Set<Object> cachedRoomIds, Long userId) {
+        List<RecentRoomResVO> resultList = new ArrayList<>();
+
+        for (Object obj : cachedRoomIds) {
+            Long roomId = Long.valueOf(obj.toString());
+
+            // 从缓存获取会议信息
+            RoomPO room = getRoomFromCache(roomId);
+            if (room == null) {
+                continue;
+            }
+
+            // 从缓存或DB获取参与者信息
+            RoomParticipantPO participant = roomParticipantPOMapper
+                    .selectByRoomIdAndUserId(roomId, userId);
+
+            if (participant != null) {
+                resultList.add(buildRecentRoomVO(room, participant));
+            }
+        }
+
+        return resultList;
+    }
+
+    /**
+     * 从数据库构建最近参加的会议列表
+     */
+    private List<RecentRoomResVO> buildRecentRoomsFromDB(List<RoomParticipantPO> participants) {
+        // 批量获取会议信息
+        List<Long> roomIds = participants.stream()
+                .map(RoomParticipantPO::getRoomId)
+                .collect(Collectors.toList());
+
+        List<RoomPO> rooms = roomPOMapper.selectByIds(roomIds);
+        Map<Long, RoomPO> roomMap = rooms.stream()
+                .collect(Collectors.toMap(RoomPO::getId, r -> r));
+
+        // 批量获取房主信息
+        List<Long> hostIds = rooms.stream()
+                .map(RoomPO::getHostId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        List<FindUserByIdRspDTO> hostInfos = userRpcService.findByIds(hostIds);
+        Map<Long, FindUserByIdRspDTO> hostInfoMap = hostInfos != null
+                ? hostInfos.stream().collect(Collectors.toMap(FindUserByIdRspDTO::getId, u -> u))
+                : new HashMap<>();
+
+        // 构建结果
+        return participants.stream()
+                .map(p -> {
+                    RoomPO room = roomMap.get(p.getRoomId());
+                    if (room == null) {
+                        return null;
+                    }
+
+                    FindUserByIdRspDTO hostInfo = hostInfoMap.get(room.getHostId());
+                    return RecentRoomResVO.builder()
+                            .roomId(room.getId())
+                            .roomNo(room.getRoomNo())
+                            .title(room.getTitle())
+                            .hostId(room.getHostId())
+                            .hostName(hostInfo != null ? hostInfo.getNickName() : "未知")
+                            .type(room.getType())
+                            .status(room.getStatus())
+                            .joinedAt(p.getJoinedAt())
+                            .leftAt(p.getLeftAt())
+                            .startTime(room.getStartTime())
+                            .endTime(room.getEndTime())
+                            .role(p.getRole())
+                            .build();
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+    /**
+     * 构建单个最近参加的会议VO
+     */
+    private RecentRoomResVO buildRecentRoomVO(RoomPO room, RoomParticipantPO participant) {
+        FindUserByIdRspDTO hostInfo = userRpcService.findById(room.getHostId());
+
+        return RecentRoomResVO.builder()
+                .roomId(room.getId())
+                .roomNo(room.getRoomNo())
+                .title(room.getTitle())
+                .hostId(room.getHostId())
+                .hostName(hostInfo != null ? hostInfo.getNickName() : "未知")
+                .type(room.getType())
+                .status(room.getStatus())
+                .joinedAt(participant.getJoinedAt())
+                .leftAt(participant.getLeftAt())
+                .startTime(room.getStartTime())
+                .endTime(room.getEndTime())
+                .role(participant.getRole())
+                .build();
+    }
+
+    /**
+     * 从缓存构建即将开始的会议列表
+     */
+    private List<UpcomingRoomResVO> buildUpcomingRoomsFromCache(Set<Object> cachedRoomIds, Long userId) {
+        List<UpcomingRoomResVO> resultList = new ArrayList<>();
+
+        for (Object obj : cachedRoomIds) {
+            Long roomId = Long.valueOf(obj.toString());
+            RoomPO room = getRoomFromCache(roomId);
+
+            if (room != null) {
+                resultList.add(buildUpcomingRoomVO(room, userId));
+            }
+        }
+
+        return resultList;
+    }
+
+    /**
+     * 从数据库构建即将开始的会议列表
+     */
+    private List<UpcomingRoomResVO> buildUpcomingRoomsFromDB(List<RoomPO> rooms, Long userId) {
+        // 批量获取房主信息
+        List<Long> hostIds = rooms.stream()
+                .map(RoomPO::getHostId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        List<FindUserByIdRspDTO> hostInfos = userRpcService.findByIds(hostIds);
+        Map<Long, FindUserByIdRspDTO> hostInfoMap = hostInfos != null
+                ? hostInfos.stream().collect(Collectors.toMap(FindUserByIdRspDTO::getId, u -> u))
+                : new HashMap<>();
+
+        return rooms.stream()
+                .map(room -> {
+                    FindUserByIdRspDTO hostInfo = hostInfoMap.get(room.getHostId());
+                    return UpcomingRoomResVO.builder()
+                            .roomId(room.getId())
+                            .roomNo(room.getRoomNo())
+                            .title(room.getTitle())
+                            .hostId(room.getHostId())
+                            .hostName(hostInfo != null ? hostInfo.getNickName() : "未知")
+                            .type(room.getType())
+                            .maxParticipants(room.getMaxParticipants())
+                            .startTime(room.getStartTime())
+                            .endTime(room.getEndTime())
+                            .createdTime(room.getCreatedTime())
+                            .isHost(room.getHostId().equals(userId))
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 构建单个即将开始的会议VO
+     */
+    private UpcomingRoomResVO buildUpcomingRoomVO(RoomPO room, Long userId) {
+        FindUserByIdRspDTO hostInfo = userRpcService.findById(room.getHostId());
+
+        return UpcomingRoomResVO.builder()
+                .roomId(room.getId())
+                .roomNo(room.getRoomNo())
+                .title(room.getTitle())
+                .hostId(room.getHostId())
+                .hostName(hostInfo != null ? hostInfo.getNickName() : "未知")
+                .type(room.getType())
+                .maxParticipants(room.getMaxParticipants())
+                .createdTime(room.getCreatedTime())
+                .isHost(room.getHostId().equals(userId))
+                .build();
+    }
 
     /**
      * 缓存会议信息（使用 Hash 结构）

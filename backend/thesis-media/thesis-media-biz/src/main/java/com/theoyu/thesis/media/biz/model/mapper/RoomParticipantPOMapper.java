@@ -37,6 +37,8 @@ public interface RoomParticipantPOMapper {
             @Param("status") Integer status
     );
 
+    List<RoomParticipantPO> selectRecentRoomsByUserId(@Param("userId") Long userId,@Param("offset") Long offset,@Param("pageSize") Long pageSize);
+
     /**
      * 更新参与者状态
      */

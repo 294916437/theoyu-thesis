@@ -1,56 +1,190 @@
-import { Server, Socket } from "socket.io";
-import { RoomManager } from "../core/room-manager";
-import { Peer } from "../core/peer";
-import { GrpcClient } from "../utils/grpc-client";
-import { Logger } from "../utils/logger";
-import config from "../config/config";
-import type * as mediasoupTypes from "mediasoup/node/lib/types";
+import { Server, Socket } from "socket.io"
+import { RoomManager } from "../core/room-manager"
+import { Peer } from "../core/peer"
+import { GrpcClient } from "../utils/grpc-client"
+import { Logger } from "../utils/logger"
+import { ConnectionManager } from "./connection-manager"
+import { SessionManager } from "./session-manager"
+import { TransportManager } from "./transport-manager"
+import { MonitoringService } from "./monitoring-service"
+import config from "../config/config"
+import type * as mediasoupTypes from "mediasoup/node/lib/types"
 
 export class SignalingHandler {
-	private io: Server;
-	private roomManager: RoomManager;
-	private grpcClient: GrpcClient;
-	private logger = new Logger("SignalingHandler");
-	private socketToPeerMap: Map<string, { roomId: string; userId: string }> = new Map();
+	private io: Server
+	private roomManager: RoomManager
+	private grpcClient: GrpcClient
+	private connectionManager: ConnectionManager
+	private sessionManager: SessionManager
+	private transportManager: TransportManager
+	private monitoring: MonitoringService
+	private logger = new Logger("EnhancedSignalingHandler")
 
 	constructor(io: Server) {
-		this.io = io;
-		this.roomManager = RoomManager.getInstance();
-		this.grpcClient = GrpcClient.getInstance();
-		this.setupSocketHandlers();
+		this.io = io
+		this.roomManager = RoomManager.getInstance()
+		this.grpcClient = GrpcClient.getInstance()
+		this.connectionManager = new ConnectionManager()
+		this.sessionManager = new SessionManager()
+		this.transportManager = new TransportManager()
+		this.monitoring = new MonitoringService()
+
+		this.setupMiddleware()
+		this.setupSocketHandlers()
+	}
+
+	private setupMiddleware(): void {
+		// 连接认证中间件
+		this.io.use(async (socket, next) => {
+			try {
+				const token = socket.handshake.auth.token
+				if (!token) {
+					return next(new Error("Authentication token required"))
+				}
+
+				// 这里可以做预验证
+				next()
+			} catch (error: any) {
+				next(new Error("Authentication failed"))
+			}
+		})
 	}
 
 	private setupSocketHandlers(): void {
 		this.io.on("connection", (socket: Socket) => {
-			this.logger.info(`Client connected: ${socket.id}`);
+			this.logger.info(`Client connected: ${socket.id}`)
 
-			socket.on("joinRoom", (data, callback) => this.handleJoinRoom(socket, data, callback));
-			socket.on("getRouterRtpCapabilities", (data, callback) =>
-				this.handleGetRouterRtpCapabilities(socket, data, callback)
-			);
-			socket.on("createWebRtcTransport", (data, callback) =>
-				this.handleCreateWebRtcTransport(socket, data, callback)
-			);
-			socket.on("connectWebRtcTransport", (data, callback) =>
-				this.handleConnectWebRtcTransport(socket, data, callback)
-			);
-			socket.on("produce", (data, callback) => this.handleProduce(socket, data, callback));
-			socket.on("consume", (data, callback) => this.handleConsume(socket, data, callback));
-			socket.on("resumeConsumer", (data, callback) =>
-				this.handleResumeConsumer(socket, data, callback)
-			);
-			socket.on("pauseProducer", (data, callback) =>
-				this.handlePauseProducer(socket, data, callback)
-			);
-			socket.on("resumeProducer", (data, callback) =>
-				this.handleResumeProducer(socket, data, callback)
-			);
-			socket.on("closeProducer", (data, callback) =>
-				this.handleCloseProducer(socket, data, callback)
-			);
-			socket.on("leaveRoom", () => this.handleLeaveRoom(socket));
-			socket.on("disconnect", () => this.handleDisconnect(socket));
-		});
+			// 初始化连接管理
+			this.connectionManager.setupConnection(socket)
+			this.monitoring.recordConnection()
+
+			// 注册所有事件处理器
+			this.registerHandlers(socket)
+
+			socket.on("disconnect", (reason) => {
+				this.handleDisconnect(socket, reason)
+			})
+		})
+	}
+
+	private registerHandlers(socket: Socket): void {
+		// 房间相关
+		socket.on("joinRoom", (data, callback) =>
+			this.withErrorHandling(socket, "joinRoom", data, callback, this.handleJoinRoom)
+		)
+		socket.on("leaveRoom", (data, callback) =>
+			this.withErrorHandling(socket, "leaveRoom", data, callback, this.handleLeaveRoom)
+		)
+
+		// 媒体协商相关
+		socket.on("getRouterRtpCapabilities", (data, callback) =>
+			this.withErrorHandling(
+				socket,
+				"getRouterRtpCapabilities",
+				data,
+				callback,
+				this.handleGetRouterRtpCapabilities
+			)
+		)
+		socket.on("createWebRtcTransport", (data, callback) =>
+			this.withErrorHandling(
+				socket,
+				"createWebRtcTransport",
+				data,
+				callback,
+				this.handleCreateWebRtcTransport
+			)
+		)
+		socket.on("connectWebRtcTransport", (data, callback) =>
+			this.withErrorHandling(
+				socket,
+				"connectWebRtcTransport",
+				data,
+				callback,
+				this.handleConnectWebRtcTransport
+			)
+		)
+
+		// 生产者相关
+		socket.on("produce", (data, callback) =>
+			this.withErrorHandling(socket, "produce", data, callback, this.handleProduce)
+		)
+		socket.on("pauseProducer", (data, callback) =>
+			this.withErrorHandling(socket, "pauseProducer", data, callback, this.handlePauseProducer)
+		)
+		socket.on("resumeProducer", (data, callback) =>
+			this.withErrorHandling(
+				socket,
+				"resumeProducer",
+				data,
+				callback,
+				this.handleResumeProducer
+			)
+		)
+		socket.on("closeProducer", (data, callback) =>
+			this.withErrorHandling(socket, "closeProducer", data, callback, this.handleCloseProducer)
+		)
+
+		// 消费者相关
+		socket.on("consume", (data, callback) =>
+			this.withErrorHandling(socket, "consume", data, callback, this.handleConsume)
+		)
+		socket.on("resumeConsumer", (data, callback) =>
+			this.withErrorHandling(
+				socket,
+				"resumeConsumer",
+				data,
+				callback,
+				this.handleResumeConsumer
+			)
+		)
+		socket.on("pauseConsumer", (data, callback) =>
+			this.withErrorHandling(socket, "pauseConsumer", data, callback, this.handlePauseConsumer)
+		)
+
+		// Simulcast/SVC 支持
+		socket.on("setPreferredLayers", (data, callback) =>
+			this.withErrorHandling(
+				socket,
+				"setPreferredLayers",
+				data,
+				callback,
+				this.handleSetPreferredLayers
+			)
+		)
+
+		// 统计和监控
+		socket.on("getStats", (data, callback) =>
+			this.withErrorHandling(socket, "getStats", data, callback, this.handleGetStats)
+		)
+	}
+
+	// 错误处理包装器
+	private async withErrorHandling(
+		socket: Socket,
+		eventName: string,
+		data: any,
+		callback: Function,
+		handler: (socket: Socket, data: any, callback: Function) => Promise<void>
+	): Promise<void> {
+		const startTime = Date.now()
+		try {
+			this.sessionManager.updateActivity(socket.id)
+			this.monitoring.recordMessage(eventName)
+
+			await handler.call(this, socket, data, callback)
+
+			const duration = Date.now() - startTime
+			this.monitoring.recordMessageDuration(eventName, duration)
+		} catch (error: any) {
+			this.logger.error(`Error in ${eventName}`, error)
+			this.monitoring.recordError(eventName)
+
+			callback({
+				error: error.message,
+				code: error.code || "INTERNAL_ERROR",
+			})
+		}
 	}
 
 	private async handleJoinRoom(
@@ -58,78 +192,68 @@ export class SignalingHandler {
 		data: { roomId: string; userId: string; username: string; token: string },
 		callback: Function
 	): Promise<void> {
-		try {
-			const { roomId, userId, username, token } = data;
+		const { roomId, userId, username, token } = data
 
-			// 验证房间访问权限（此时房间应该已经在 Spring Cloud 端创建）
-			const validation = await this.grpcClient.validateRoomAccess(roomId, userId, token);
-			if (!validation.allowed) {
-				callback({ error: "Access denied: " + validation.message });
-				return;
-			}
+		// 创建会话
+		const session = await this.sessionManager.createSession(socket, data)
 
-			// 获取或创建房间
-			let room = this.roomManager.getRoom(roomId);
-
-			if (!room) {
-				room = await this.roomManager.createRoomInternal(roomId);
-				this.logger.info(`SFU Room ${roomId} created for first participant`);
-			}
-
-			// 检查用户是否已在房间中（处理重连）
-			const existingPeer = room.getPeer(userId);
-			if (existingPeer) {
-				// 用户已在房间中，关闭旧连接
-				existingPeer.socket.disconnect();
-				room.removePeer(userId);
-			}
-
-			// 创建 Peer
-			const peer = new Peer(
-				{
-					id: userId,
-					userId,
-					username,
-					roomId,
-				},
-				socket
-			);
-
-			// 添加到房间
-			room.addPeer(peer);
-			// 映射 socket.id 到 peer 信息
-			this.socketToPeerMap.set(socket.id, { roomId, userId });
-
-			// 加入 Socket.io 房间
-			socket.join(roomId);
-
-			// 通知其他参与者
-			socket.to(roomId).emit("newPeer", {
-				peerId: peer.id,
-				userId: peer.userId,
-				username: peer.username,
-			});
-
-			// 通知 Spring Cloud
-			await this.grpcClient.notifyParticipantJoined(roomId, userId, username);
-
-			// 返回房间中的其他参与者
-			const otherPeers = room.getPeersExcept(peer.id).map((p: Peer) => ({
-				peerId: p.id,
-				userId: p.userId,
-				username: p.username,
-			}));
-
-			callback({
-				peerId: peer.id,
-				peers: otherPeers,
-			});
-
-			this.logger.info(`User ${username} (${userId}) joined room ${roomId}`);
-		} catch (error: any) {
-			this.logger.error("Error in joinRoom", error);
-			callback({ error: error.message });
+		// 获取或创建房间
+		let room = this.roomManager.getRoom(roomId)
+		if (!room) {
+			room = await this.roomManager.createRoomInternal(roomId)
+			this.logger.info(`Room ${roomId} created`)
 		}
+
+		// 处理重连（移除旧 Peer）
+		const existingPeer = room.getPeer(userId)
+		if (existingPeer) {
+			existingPeer.socket.disconnect()
+			room.removePeer(userId)
+		}
+
+		// 创建 Peer
+		const peer = new Peer(
+			{
+				id: userId,
+				userId,
+				username,
+				roomId,
+			},
+			socket
+		)
+
+		room.addPeer(peer)
+		socket.join(roomId)
+
+		// 通知其他参与者
+		socket.to(roomId).emit("newPeer", {
+			peerId: peer.id,
+			userId: peer.userId,
+			username: peer.username,
+		})
+
+		// 通知业务系统
+		await this.grpcClient.notifyParticipantJoined(roomId, userId, username)
+
+		// 获取现有参与者和他们的生产者
+		const otherPeers = room.getPeersExcept(peer.id).map((p: Peer) => ({
+			peerId: p.id,
+			userId: p.userId,
+			username: p.username,
+			producers: Array.from(p.producers.values()).map((producer) => ({
+				id: producer.id,
+				kind: producer.kind,
+				paused: producer.paused,
+			})),
+		}))
+
+		callback({
+			peerId: peer.id,
+			peers: otherPeers,
+		})
+
+		this.monitoring.recordRoomJoin(roomId)
+		this.logger.info(`User ${username} joined room ${roomId}`)
 	}
 
 	private async handleGetRouterRtpCapabilities(
@@ -137,213 +261,241 @@ export class SignalingHandler {
 		data: { roomId: string },
 		callback: Function
 	): Promise<void> {
-		try {
-			const { roomId } = data;
-			const room = this.roomManager.getRoom(roomId);
+		const { roomId } = data
+		const room = this.roomManager.getRoom(roomId)
 
-			if (!room) {
-				callback({ error: "Room not found" });
-				return;
-			}
-
-			const rtpCapabilities = room.router.rtpCapabilities;
-			callback({ rtpCapabilities });
-		} catch (error: any) {
-			this.logger.error("Error in getRouterRtpCapabilities", error);
-			callback({ error: error.message });
+		if (!room) {
+			throw new Error("Room not found")
 		}
+
+		callback({ rtpCapabilities: room.router.rtpCapabilities })
 	}
 
 	private async handleCreateWebRtcTransport(
 		socket: Socket,
-		data: { roomId: string; producing: boolean; consuming: boolean },
+		data: {
+			roomId: string
+			producing: boolean
+			consuming: boolean
+			sctpCapabilities?: mediasoupTypes.SctpCapabilities
+		},
 		callback: Function
 	): Promise<void> {
-		try {
-			const { roomId, producing, consuming } = data;
-			const room = this.roomManager.getRoom(roomId);
+		const { roomId, producing, consuming, sctpCapabilities } = data
 
-			const peerInfo = this.socketToPeerMap.get(socket.id);
-			if (!peerInfo) {
-				callback({ error: "Peer info not found" });
-				return;
-			}
-
-			const peer = room?.getPeer(peerInfo.userId);
-
-			if (!room || !peer) {
-				callback({ error: "Room or peer not found" });
-				return;
-			}
-
-			const transport = await room.router.createWebRtcTransport({
-				...config.mediasoup.webRtcTransportOptions,
-				appData: { producing, consuming },
-			});
-
-			if (producing) {
-				peer.sendTransport = transport;
-			}
-			if (consuming) {
-				peer.recvTransport = transport;
-			}
-
-			callback({
-				id: transport.id,
-				iceParameters: transport.iceParameters,
-				iceCandidates: transport.iceCandidates,
-				dtlsParameters: transport.dtlsParameters,
-			});
-
-			this.logger.info(`WebRTC transport created for peer ${peer.id}`);
-		} catch (error: any) {
-			this.logger.error("Error in createWebRtcTransport", error);
-			callback({ error: error.message });
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
 		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer) {
+			throw new Error("Room or peer not found")
+		}
+
+		// 权限检查
+		if (producing && !this.sessionManager.hasPermission(socket.id, "publish")) {
+			throw new Error("No permission to publish")
+		}
+		if (consuming && !this.sessionManager.hasPermission(socket.id, "subscribe")) {
+			throw new Error("No permission to subscribe")
+		}
+
+		const transportOptions: mediasoupTypes.WebRtcTransportOptions = {
+			...config.mediasoup.webRtcTransportOptions,
+			enableSctp: !!sctpCapabilities,
+			numSctpStreams: sctpCapabilities?.numStreams,
+			appData: { producing, consuming, peerId: peer.id },
+		}
+
+		const transport = await room.router.createWebRtcTransport(transportOptions)
+
+		// 注册到传输管理器
+		const direction = producing ? "send" : "recv"
+		this.transportManager.registerTransport(transport, direction, peer.id)
+
+		if (producing) {
+			peer.sendTransport = transport
+		}
+		if (consuming) {
+			peer.recvTransport = transport
+		}
+
+		callback({
+			id: transport.id,
+			iceParameters: transport.iceParameters,
+			iceCandidates: transport.iceCandidates,
+			dtlsParameters: transport.dtlsParameters,
+			sctpParameters: transport.sctpParameters,
+		})
+
+		this.logger.info(`WebRTC transport ${transport.id} created for peer ${peer.id}`)
 	}
 
 	private async handleConnectWebRtcTransport(
 		socket: Socket,
 		data: {
-			roomId: string;
-			transportId: string;
-			dtlsParameters: mediasoupTypes.DtlsParameters;
+			roomId: string
+			transportId: string
+			dtlsParameters: mediasoupTypes.DtlsParameters
 		},
 		callback: Function
 	): Promise<void> {
-		try {
-			const { roomId, transportId, dtlsParameters } = data;
-			const room = this.roomManager.getRoom(roomId);
-			const peer = room?.getPeer(socket.id);
+		const { roomId, transportId, dtlsParameters } = data
 
-			if (!room || !peer) {
-				callback({ error: "Room or peer not found" });
-				return;
-			}
-
-			const transport =
-				peer.sendTransport?.id === transportId ? peer.sendTransport : peer.recvTransport;
-
-			if (!transport) {
-				callback({ error: "Transport not found" });
-				return;
-			}
-
-			await transport.connect({ dtlsParameters });
-			callback({ success: true });
-
-			this.logger.info(`Transport ${transportId} connected for peer ${peer.id}`);
-		} catch (error: any) {
-			this.logger.error("Error in connectWebRtcTransport", error);
-			callback({ error: error.message });
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
 		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer) {
+			throw new Error("Room or peer not found")
+		}
+
+		const transport =
+			peer.sendTransport?.id === transportId ? peer.sendTransport : peer.recvTransport
+
+		if (!transport) {
+			throw new Error("Transport not found")
+		}
+
+		await this.transportManager.connectTransport(transport, dtlsParameters)
+
+		callback({ success: true })
+		this.logger.info(`Transport ${transportId} connected`)
 	}
 
 	private async handleProduce(
 		socket: Socket,
 		data: {
-			roomId: string;
-			transportId: string;
-			kind: mediasoupTypes.MediaKind;
-			rtpParameters: mediasoupTypes.RtpParameters;
-			appData?: any;
+			roomId: string
+			transportId: string
+			kind: mediasoupTypes.MediaKind
+			rtpParameters: mediasoupTypes.RtpParameters
+			appData?: any
 		},
 		callback: Function
 	): Promise<void> {
-		try {
-			const { roomId, transportId, kind, rtpParameters, appData } = data;
-			const room = this.roomManager.getRoom(roomId);
+		const { roomId, transportId, kind, rtpParameters, appData } = data
 
-			const peerInfo = this.socketToPeerMap.get(socket.id);
-			if (!peerInfo) {
-				callback({ error: "Peer info not found" });
-				return;
-			}
-			const peer = room?.getPeer(peerInfo.userId);
-
-			if (!room || !peer || !peer.sendTransport) {
-				callback({ error: "Room, peer or transport not found" });
-				return;
-			}
-
-			const producer = await peer.sendTransport.produce({
-				kind,
-				rtpParameters,
-				appData: { ...appData, peerId: peer.id, username: peer.username },
-			});
-
-			peer.addProducer(producer);
-
-			// 通知房间内其他参与者
-			socket.to(roomId).emit("newProducer", {
-				producerId: producer.id,
-				peerId: peer.id,
-				userId: peer.userId,
-				username: peer.username,
-				kind: producer.kind,
-			});
-
-			callback({ id: producer.id });
-
-			this.logger.info(`Producer ${producer.id} created for peer ${peer.id} (${kind})`);
-		} catch (error: any) {
-			this.logger.error("Error in produce", error);
-			callback({ error: error.message });
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
 		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer || !peer.sendTransport) {
+			throw new Error("Room, peer or transport not found")
+		}
+
+		const producer = await peer.sendTransport.produce({
+			kind,
+			rtpParameters,
+			appData: {
+				...appData,
+				peerId: peer.id,
+				username: peer.username,
+				userId: session.userId,
+			},
+		})
+
+		peer.addProducer(producer)
+
+		// 监听生产者事件
+		producer.on("transportclose", () => {
+			this.logger.info(`Producer ${producer.id} transport closed`)
+		})
+
+		producer.on("score", (score) => {
+			// 可以用于监控质量
+			this.monitoring.recordProducerScore(producer.id, score)
+		})
+
+		// 通知房间内其他参与者有新的生产者
+		socket.to(roomId).emit("newProducer", {
+			producerId: producer.id,
+			peerId: peer.id,
+			userId: session.userId,
+			username: peer.username,
+			kind: producer.kind,
+			paused: producer.paused,
+		})
+
+		callback({ id: producer.id })
+
+		this.monitoring.recordProducerCreated(roomId, kind)
+		this.logger.info(`Producer ${producer.id} created (${kind})`)
 	}
 
 	private async handleConsume(
 		socket: Socket,
 		data: {
-			roomId: string;
-			producerId: string;
-			rtpCapabilities: mediasoupTypes.RtpCapabilities;
+			roomId: string
+			producerId: string
+			rtpCapabilities: mediasoupTypes.RtpCapabilities
 		},
 		callback: Function
 	): Promise<void> {
-		try {
-			const { roomId, producerId, rtpCapabilities } = data;
-			const room = this.roomManager.getRoom(roomId);
+		const { roomId, producerId, rtpCapabilities } = data
 
-			const peerInfo = this.socketToPeerMap.get(socket.id);
-			if (!peerInfo) {
-				callback({ error: "Peer info not found" });
-				return;
-			}
-
-			const peer = room?.getPeer(peerInfo.userId);
-
-			if (!room || !peer || !peer.recvTransport) {
-				callback({ error: "Room, peer or transport not found" });
-				return;
-			}
-
-			// 检查是否可以消费
-			if (!room.router.canConsume({ producerId, rtpCapabilities })) {
-				callback({ error: "Cannot consume" });
-				return;
-			}
-
-			const consumer = await peer.recvTransport.consume({
-				producerId,
-				rtpCapabilities,
-				paused: true, // 初始暂停，等待客户端准备好
-			});
-
-			peer.addConsumer(consumer);
-
-			callback({
-				id: consumer.id,
-				producerId: consumer.producerId,
-				kind: consumer.kind,
-				rtpParameters: consumer.rtpParameters,
-			});
-
-			this.logger.info(`Consumer ${consumer.id} created for peer ${peer.id}`);
-		} catch (error: any) {
-			this.logger.error("Error in consume", error);
-			callback({ error: error.message });
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
 		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer || !peer.recvTransport) {
+			throw new Error("Room, peer or transport not found")
+		}
+
+		// 检查是否可以消费
+		if (!room.router.canConsume({ producerId, rtpCapabilities })) {
+			throw new Error("Cannot consume this producer")
+		}
+
+		const consumer = await peer.recvTransport.consume({
+			producerId,
+			rtpCapabilities,
+			paused: true, // 初始暂停
+		})
+
+		peer.addConsumer(consumer)
+
+		// 监听消费者事件
+		consumer.on("transportclose", () => {
+			this.logger.info(`Consumer ${consumer.id} transport closed`)
+		})
+
+		consumer.on("producerclose", () => {
+			// 通知客户端生产者已关闭
+			socket.emit("consumerClosed", { consumerId: consumer.id })
+			peer.removeConsumer(consumer.id)
+		})
+
+		consumer.on("score", (score) => {
+			this.monitoring.recordConsumerScore(consumer.id, score)
+		})
+
+		callback({
+			id: consumer.id,
+			producerId: consumer.producerId,
+			kind: consumer.kind,
+			rtpParameters: consumer.rtpParameters,
+			type: consumer.type,
+			producerPaused: consumer.producerPaused,
+		})
+
+		this.monitoring.recordConsumerCreated(roomId)
+		this.logger.info(`Consumer ${consumer.id} created`)
 	}
 
 	private async handleResumeConsumer(
@@ -351,30 +503,59 @@ export class SignalingHandler {
 		data: { roomId: string; consumerId: string },
 		callback: Function
 	): Promise<void> {
-		try {
-			const { roomId, consumerId } = data;
-			const room = this.roomManager.getRoom(roomId);
-			const peer = room?.getPeer(socket.id);
+		const { roomId, consumerId } = data
 
-			if (!room || !peer) {
-				callback({ error: "Room or peer not found" });
-				return;
-			}
-
-			const consumer = peer.consumers.get(consumerId);
-			if (!consumer) {
-				callback({ error: "Consumer not found" });
-				return;
-			}
-
-			await consumer.resume();
-			callback({ success: true });
-
-			this.logger.info(`Consumer ${consumerId} resumed for peer ${peer.id}`);
-		} catch (error: any) {
-			this.logger.error("Error in resumeConsumer", error);
-			callback({ error: error.message });
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
 		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer) {
+			throw new Error("Room or peer not found")
+		}
+
+		const consumer = peer.consumers.get(consumerId)
+		if (!consumer) {
+			throw new Error("Consumer not found")
+		}
+
+		await consumer.resume()
+		callback({ success: true })
+
+		this.logger.info(`Consumer ${consumerId} resumed`)
+	}
+
+	private async handlePauseConsumer(
+		socket: Socket,
+		data: { roomId: string; consumerId: string },
+		callback: Function
+	): Promise<void> {
+		const { roomId, consumerId } = data
+
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
+		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer) {
+			throw new Error("Room or peer not found")
+		}
+
+		const consumer = peer.consumers.get(consumerId)
+		if (!consumer) {
+			throw new Error("Consumer not found")
+		}
+
+		await consumer.pause()
+		callback({ success: true })
+
+		this.logger.info(`Consumer ${consumerId} paused`)
 	}
 
 	private async handlePauseProducer(
@@ -382,33 +563,34 @@ export class SignalingHandler {
 		data: { roomId: string; producerId: string },
 		callback: Function
 	): Promise<void> {
-		try {
-			const { roomId, producerId } = data;
-			const room = this.roomManager.getRoom(roomId);
-			const peer = room?.getPeer(socket.id);
+		const { roomId, producerId } = data
 
-			if (!room || !peer) {
-				callback({ error: "Room or peer not found" });
-				return;
-			}
-
-			const producer = peer.producers.get(producerId);
-			if (!producer) {
-				callback({ error: "Producer not found" });
-				return;
-			}
-
-			await producer.pause();
-
-			// 通知其他参与者
-			socket.to(roomId).emit("producerPaused", { producerId, peerId: peer.id });
-
-			callback({ success: true });
-			this.logger.info(`Producer ${producerId} paused for peer ${peer.id}`);
-		} catch (error: any) {
-			this.logger.error("Error in pauseProducer", error);
-			callback({ error: error.message });
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
 		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer) {
+			throw new Error("Room or peer not found")
+		}
+
+		const producer = peer.producers.get(producerId)
+		if (!producer) {
+			throw new Error("Producer not found")
+		}
+
+		await producer.pause()
+
+		socket.to(roomId).emit("producerPaused", {
+			producerId,
+			peerId: peer.id,
+		})
+
+		callback({ success: true })
+		this.logger.info(`Producer ${producerId} paused`)
 	}
 
 	private async handleResumeProducer(
@@ -416,33 +598,34 @@ export class SignalingHandler {
 		data: { roomId: string; producerId: string },
 		callback: Function
 	): Promise<void> {
-		try {
-			const { roomId, producerId } = data;
-			const room = this.roomManager.getRoom(roomId);
-			const peer = room?.getPeer(socket.id);
+		const { roomId, producerId } = data
 
-			if (!room || !peer) {
-				callback({ error: "Room or peer not found" });
-				return;
-			}
-
-			const producer = peer.producers.get(producerId);
-			if (!producer) {
-				callback({ error: "Producer not found" });
-				return;
-			}
-
-			await producer.resume();
-
-			// 通知其他参与者
-			socket.to(roomId).emit("producerResumed", { producerId, peerId: peer.id });
-
-			callback({ success: true });
-			this.logger.info(`Producer ${producerId} resumed for peer ${peer.id}`);
-		} catch (error: any) {
-			this.logger.error("Error in resumeProducer", error);
-			callback({ error: error.message });
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
 		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer) {
+			throw new Error("Room or peer not found")
+		}
+
+		const producer = peer.producers.get(producerId)
+		if (!producer) {
+			throw new Error("Producer not found")
+		}
+
+		await producer.resume()
+
+		socket.to(roomId).emit("producerResumed", {
+			producerId,
+			peerId: peer.id,
+		})
+
+		callback({ success: true })
+		this.logger.info(`Producer ${producerId} resumed`)
 	}
 
 	private async handleCloseProducer(
@@ -450,74 +633,147 @@ export class SignalingHandler {
 		data: { roomId: string; producerId: string },
 		callback: Function
 	): Promise<void> {
-		try {
-			const { roomId, producerId } = data;
-			const room = this.roomManager.getRoom(roomId);
-			const peer = room?.getPeer(socket.id);
+		const { roomId, producerId } = data
 
-			if (!room || !peer) {
-				callback({ error: "Room or peer not found" });
-				return;
-			}
-
-			const producer = peer.producers.get(producerId);
-			if (!producer) {
-				callback({ error: "Producer not found" });
-				return;
-			}
-
-			producer.close();
-			peer.removeProducer(producerId);
-
-			// 通知其他参与者
-			socket.to(roomId).emit("producerClosed", { producerId, peerId: peer.id });
-
-			callback({ success: true });
-			this.logger.info(`Producer ${producerId} closed for peer ${peer.id}`);
-		} catch (error: any) {
-			this.logger.error("Error in closeProducer", error);
-			callback({ error: error.message });
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
 		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer) {
+			throw new Error("Room or peer not found")
+		}
+
+		const producer = peer.producers.get(producerId)
+		if (!producer) {
+			throw new Error("Producer not found")
+		}
+
+		producer.close()
+		peer.removeProducer(producerId)
+
+		socket.to(roomId).emit("producerClosed", {
+			producerId,
+			peerId: peer.id,
+		})
+
+		callback({ success: true })
+		this.logger.info(`Producer ${producerId} closed`)
 	}
 
-	private async handleLeaveRoom(socket: Socket): Promise<void> {
-		try {
-			const peerInfo = this.socketToPeerMap.get(socket.id);
-			if (!peerInfo) {
-				return;
-			}
+	private async handleSetPreferredLayers(
+		socket: Socket,
+		data: {
+			roomId: string
+			consumerId: string
+			spatialLayer: number
+			temporalLayer?: number
+		},
+		callback: Function
+	): Promise<void> {
+		const { roomId, consumerId, spatialLayer, temporalLayer } = data
 
-			const { roomId, userId } = peerInfo;
-			const room = this.roomManager.getRoom(roomId);
-			const peer = room?.getPeer(userId);
-
-			if (room && peer) {
-				// 通知其他参与者
-				socket.to(roomId).emit("peerLeft", {
-					peerId: peer.id,
-					userId: peer.userId,
-					username: peer.username,
-				});
-
-				// 通知 Spring Cloud
-				await this.grpcClient.notifyParticipantLeft(roomId, peer.userId, peer.username);
-
-				// 从房间移除
-				this.roomManager.removePeerFromRoom(roomId, peer.id);
-
-				// 离开 Socket.io 房间
-				socket.leave(roomId);
-
-				this.logger.info(`Peer ${peer.id} (${peer.username}) left room ${roomId}`);
-			}
-			this.socketToPeerMap.delete(socket.id);
-		} catch (error) {
-			this.logger.error("Error in leaveRoom", error);
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
 		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer) {
+			throw new Error("Room or peer not found")
+		}
+
+		const consumer = peer.consumers.get(consumerId)
+		if (!consumer) {
+			throw new Error("Consumer not found")
+		}
+
+		await consumer.setPreferredLayers({ spatialLayer, temporalLayer })
+
+		callback({ success: true })
+		this.logger.info(
+			`Consumer ${consumerId} preferred layers set: spatial=${spatialLayer}, temporal=${temporalLayer}`
+		)
 	}
 
-	private async handleDisconnect(socket: Socket): Promise<void> {
-		await this.handleLeaveRoom(socket);
-		this.logger.info(`Client disconnected: ${socket.id}`);
+	private async handleGetStats(
+		socket: Socket,
+		data: { roomId: string; producerId?: string; consumerId?: string },
+		callback: Function
+	): Promise<void> {
+		const { roomId, producerId, consumerId } = data
+
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
+		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer) {
+			throw new Error("Room or peer not found")
+		}
+
+		let stats
+		if (producerId) {
+			const producer = peer.producers.get(producerId)
+			if (producer) {
+				stats = await producer.getStats()
+			}
+		} else if (consumerId) {
+			const consumer = peer.consumers.get(consumerId)
+			if (consumer) {
+				stats = await consumer.getStats()
+			}
+		}
+
+		callback({ stats })
+	}
+
+	private async handleLeaveRoom(socket: Socket, data: any, callback: Function): Promise<void> {
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			callback({ success: true })
+			return
+		}
+
+		const { roomId, userId } = session
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(userId)
+
+		if (room && peer) {
+			socket.to(roomId).emit("peerLeft", {
+				peerId: peer.id,
+				userId: peer.userId,
+				username: peer.username,
+			})
+
+			await this.grpcClient.notifyParticipantLeft(roomId, peer.userId, peer.username)
+
+			this.roomManager.removePeerFromRoom(roomId, peer.id)
+			socket.leave(roomId)
+
+			this.monitoring.recordRoomLeave(roomId)
+			this.logger.info(`Peer ${peer.id} left room ${roomId}`)
+		}
+
+		this.sessionManager.destroySession(socket.id)
+		callback({ success: true })
+	}
+
+	private async handleDisconnect(socket: Socket, reason: string): Promise<void> {
+		const session = this.sessionManager.getSession(socket.id)
+		if (session) {
+			await this.handleLeaveRoom(socket, {}, () => {})
+		}
+
+		this.monitoring.recordDisconnection()
+		this.logger.info(`Client disconnected: ${socket.id} (${reason})`)
 	}
 }

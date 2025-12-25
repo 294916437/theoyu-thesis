@@ -1,78 +1,78 @@
-import * as grpc from "@grpc/grpc-js";
-import * as protoLoader from "@grpc/proto-loader";
-import path from "path";
-import config from "../config/config";
-import { Logger } from "./logger";
+import * as grpc from "@grpc/grpc-js"
+import * as protoLoader from "@grpc/proto-loader"
+import path from "path"
+import config from "../config/config"
+import { Logger } from "./logger"
 
 interface RoomConfig {
-	max_participants: number;
-	enable_recording: boolean;
-	allowed_codecs: string[];
+	max_participants: number
+	enable_recording: boolean
+	allowed_codecs: string[]
 }
 
 interface RoomAccessRequest {
-	room_id: string;
-	user_id: string;
-	token: string;
+	room_id: string
+	user_id: string
+	token: string
 }
 
 interface RoomAccessResponse {
-	allowed: boolean;
-	message: string;
-	config?: RoomConfig;
+	allowed: boolean
+	message: string
+	config?: RoomConfig
 }
 
 interface TokenRequest {
-	token: string;
+	token: string
 }
 
 interface TokenResponse {
-	valid: boolean;
-	user_id: string;
-	username: string;
+	valid: boolean
+	user_id: string
+	username: string
 }
 
 interface ParticipantEvent {
-	room_id: string;
-	user_id: string;
-	username: string;
-	timestamp: number;
+	room_id: string
+	user_id: string
+	username: string
+	timestamp: number
 }
 
 interface AckResponse {
-	success: boolean;
-	message: string;
+	success: boolean
+	message: string
 }
 
 interface MediaStatsRequest {
-	room_id: string;
-	peer_id: string;
-	stats: { [key: string]: string };
+	room_id: string
+	peer_id: string
+	stats: { [key: string]: string }
 }
 
 export class GrpcClient {
-	private static instance: GrpcClient;
-	private client: any;
-	private logger = new Logger("GrpcClient");
-	private connected = false;
+	private static instance: GrpcClient
+	private client: any
+	private logger = new Logger("GrpcClient")
+	private connected = false
 
 	private constructor() {}
 
 	public static getInstance(): GrpcClient {
 		if (!GrpcClient.instance) {
-			GrpcClient.instance = new GrpcClient();
+			GrpcClient.instance = new GrpcClient()
 		}
-		return GrpcClient.instance;
+		return GrpcClient.instance
 	}
 
 	public async init(): Promise<void> {
 		try {
-			const PROTO_PATH = path.join(__dirname, "../../proto/sfu-service.proto");
+			const PROTO_PATH = path.join(__dirname, "../../proto/sfu-service.proto")
 
 			// 检查文件是否存在
-			const fs = require("fs");
+			const fs = require("fs")
 			if (!fs.existsSync(PROTO_PATH)) {
-				throw new Error(`Proto file not found: ${PROTO_PATH}`);
+				throw new Error(`Proto file not found: ${PROTO_PATH}`)
 			}
 
 			const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
@@ -81,16 +81,16 @@ export class GrpcClient {
 				enums: String,
 				defaults: true,
 				oneofs: true,
-			});
+			})
 
-			const protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any;
+			const protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any
 
 			// 检查包是否正确加载
 			if (!protoDescriptor.sfu || !protoDescriptor.sfu.SFUService) {
-				throw new Error("Failed to load SFUService from proto file");
+				throw new Error("Failed to load SFUService from proto file")
 			}
 
-			const sfuService = protoDescriptor.sfu.SFUService;
+			const sfuService = protoDescriptor.sfu.SFUService
 
 			this.client = new sfuService(
 				`${config.grpc.host}:${config.grpc.port}`,
@@ -103,20 +103,20 @@ export class GrpcClient {
 					"grpc.http2.min_time_between_pings_ms": 10000,
 					"grpc.http2.min_ping_interval_without_data_ms": 5000,
 				}
-			);
+			)
 
-			this.connected = true;
-			this.logger.info(`gRPC client initialized: ${config.grpc.host}:${config.grpc.port}`);
+			this.connected = true
+			this.logger.info(`gRPC client initialized: ${config.grpc.host}:${config.grpc.port}`)
 		} catch (error) {
-			this.logger.error("Failed to initialize gRPC client", error);
-			this.connected = false;
-			throw error;
+			this.logger.error("Failed to initialize gRPC client", error)
+			this.connected = false
+			throw error
 		}
 	}
 
 	private ensureConnected(): void {
 		if (!this.connected || !this.client) {
-			throw new Error("gRPC client not initialized or disconnected");
+			throw new Error("gRPC client not initialized or disconnected")
 		}
 	}
 
@@ -125,63 +125,63 @@ export class GrpcClient {
 		userId: string,
 		token: string
 	): Promise<RoomAccessResponse> {
-		this.ensureConnected();
+		this.ensureConnected()
 
 		return new Promise((resolve, reject) => {
 			const request: RoomAccessRequest = {
 				room_id: roomId,
 				user_id: userId,
 				token: token,
-			};
+			}
 
-			const deadline = new Date();
-			deadline.setSeconds(deadline.getSeconds() + 5);
+			const deadline = new Date()
+			deadline.setSeconds(deadline.getSeconds() + 5)
 
 			this.client.ValidateRoomAccess(
 				request,
 				{ deadline },
 				(error: grpc.ServiceError | null, response: RoomAccessResponse) => {
 					if (error) {
-						this.logger.error("ValidateRoomAccess failed", error);
+						this.logger.error("ValidateRoomAccess failed", error)
 						// 返回默认拒绝响应而不是抛出错误
 						resolve({
 							allowed: false,
 							message: `gRPC error: ${error.message}`,
-						});
+						})
 					} else {
-						resolve(response);
+						resolve(response)
 					}
 				}
-			);
-		});
+			)
+		})
 	}
 
 	public async validateUserToken(token: string): Promise<TokenResponse> {
-		this.ensureConnected();
+		this.ensureConnected()
 
 		return new Promise((resolve, reject) => {
-			const request: TokenRequest = { token };
+			const request: TokenRequest = { token }
 
-			const deadline = new Date();
-			deadline.setSeconds(deadline.getSeconds() + 5);
+			const deadline = new Date()
+			deadline.setSeconds(deadline.getSeconds() + 5)
 
 			this.client.ValidateUserToken(
 				request,
 				{ deadline },
 				(error: grpc.ServiceError | null, response: TokenResponse) => {
 					if (error) {
-						this.logger.error("ValidateUserToken failed", error);
+						this.logger.error("ValidateUserToken failed", error)
 						resolve({
 							valid: false,
 							user_id: "",
 							username: "",
-						});
+						})
 					} else {
-						resolve(response);
+						resolve(response)
 					}
 				}
-			);
-		});
+			)
+		})
 	}
 
 	public async notifyParticipantJoined(
@@ -189,7 +189,7 @@ export class GrpcClient {
 		userId: string,
 		username: string
 	): Promise<AckResponse> {
-		this.ensureConnected();
+		this.ensureConnected()
 
 		return new Promise((resolve, reject) => {
 			const request: ParticipantEvent = {
@@ -197,24 +197,24 @@ export class GrpcClient {
 				user_id: userId,
 				username: username,
 				timestamp: Date.now(),
-			};
+			}
 
-			const deadline = new Date();
-			deadline.setSeconds(deadline.getSeconds() + 5);
+			const deadline = new Date()
+			deadline.setSeconds(deadline.getSeconds() + 5)
 
 			this.client.NotifyParticipantJoined(
 				request,
 				{ deadline },
 				(error: grpc.ServiceError | null, response: AckResponse) => {
 					if (error) {
-						this.logger.warn("NotifyParticipantJoined failed (non-critical)", error.message);
-						resolve({ success: false, message: error.message });
+						this.logger.warn("NotifyParticipantJoined failed (non-critical)", error.message)
+						resolve({ success: false, message: error.message })
 					} else {
-						resolve(response);
+						resolve(response)
 					}
 				}
-			);
-		});
+			)
+		})
 	}
 
 	public async notifyParticipantLeft(
@@ -222,7 +222,7 @@ export class GrpcClient {
 		userId: string,
 		username: string
 	): Promise<AckResponse> {
-		this.ensureConnected();
+		this.ensureConnected()
 
 		return new Promise((resolve, reject) => {
 			const request: ParticipantEvent = {
@@ -230,24 +230,24 @@ export class GrpcClient {
 				user_id: userId,
 				username: username,
 				timestamp: Date.now(),
-			};
+			}
 
-			const deadline = new Date();
-			deadline.setSeconds(deadline.getSeconds() + 5);
+			const deadline = new Date()
+			deadline.setSeconds(deadline.getSeconds() + 5)
 
 			this.client.NotifyParticipantLeft(
 				request,
 				{ deadline },
 				(error: grpc.ServiceError | null, response: AckResponse) => {
 					if (error) {
-						this.logger.warn("NotifyParticipantLeft failed (non-critical)", error.message);
-						resolve({ success: false, message: error.message });
+						this.logger.warn("NotifyParticipantLeft failed (non-critical)", error.message)
+						resolve({ success: false, message: error.message })
 					} else {
-						resolve(response);
+						resolve(response)
 					}
 				}
-			);
-		});
+			)
+		})
 	}
 
 	public async reportMediaStats(
@@ -255,42 +255,42 @@ export class GrpcClient {
 		peerId: string,
 		stats: { [key: string]: string }
 	): Promise<AckResponse> {
-		this.ensureConnected();
+		this.ensureConnected()
 
 		return new Promise((resolve, reject) => {
 			const request: MediaStatsRequest = {
 				room_id: roomId,
 				peer_id: peerId,
 				stats: stats,
-			};
+			}
 
-			const deadline = new Date();
-			deadline.setSeconds(deadline.getSeconds() + 5);
+			const deadline = new Date()
+			deadline.setSeconds(deadline.getSeconds() + 5)
 
 			this.client.ReportMediaStats(
 				request,
 				{ deadline },
 				(error: grpc.ServiceError | null, response: AckResponse) => {
 					if (error) {
-						this.logger.warn("ReportMediaStats failed (non-critical)", error.message);
-						resolve({ success: false, message: error.message });
+						this.logger.warn("ReportMediaStats failed (non-critical)", error.message)
+						resolve({ success: false, message: error.message })
 					} else {
-						resolve(response);
+						resolve(response)
 					}
 				}
-			);
-		});
+			)
+		})
 	}
 
 	public isConnected(): boolean {
-		return this.connected;
+		return this.connected
 	}
 
 	public close(): void {
 		if (this.client) {
-			grpc.closeClient(this.client);
-			this.connected = false;
-			this.logger.info("gRPC client closed");
+			grpc.closeClient(this.client)
+			this.connected = false
+			this.logger.info("gRPC client closed")
 		}
 	}
 }

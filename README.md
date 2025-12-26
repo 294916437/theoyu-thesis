@@ -10,7 +10,8 @@
 - **WebAssembly**: 高性能计算模块
 - **Rust**: 编译为 wasm 模块
 - **前端**: Vue.js (用户交互页面)
-- **后端**: SpringCloud (信令服务器和基础业务)
+- **后端业务**: SpringCloud (Stomp 信令服务器和基础业务)
+- **后端 SFU**: Node.js (Socket.io 信令服务器和 SFU 服务)
 
 ## 主要功能
 
@@ -24,10 +25,10 @@
 
 ```
 theoyu-thesis/
-├── frontend/          # 前端代码
-├── backend/           # 后端信令服务器
+├── frontend/          # Vue.js
+├── backend/           # SpringCloud
 ├── wasm/              # WebAssembly 模块
-├── sfu/               # sfu服务器
+├── sfu/               # Node.js
 ├── docs/              # 项目文档
 └── README.md
 ```

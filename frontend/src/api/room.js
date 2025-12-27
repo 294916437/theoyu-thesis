@@ -1,7 +1,7 @@
 import axios from '@/utils/axios'
 
 // 接口前缀
-const API_PREFIX = '/api/media/room'
+const API_PREFIX = '/media/media/room'
 
 /**
  * 验证会议号

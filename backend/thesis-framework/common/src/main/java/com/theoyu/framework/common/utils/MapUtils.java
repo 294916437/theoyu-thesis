@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.SneakyThrows;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -19,10 +21,14 @@ import java.util.stream.Collectors;
 public class MapUtils {
 
     private static ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    
+    // ISO 8601 格式化器,用于 LocalDateTime 的序列化
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     static {
         OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         OBJECT_MAPPER.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+        OBJECT_MAPPER.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false); // 禁用时间戳数组格式
         OBJECT_MAPPER.registerModules(new JavaTimeModule()); // 解决 LocalDateTime 的序列化问题
     }
 
@@ -52,13 +58,23 @@ public class MapUtils {
         @SuppressWarnings("unchecked")
         Map<String, Object> map = OBJECT_MAPPER.convertValue(obj, Map.class);
 
-        // 将所有值转换为字符串,过滤 null 值
+        // 将所有值转换为字符串,对 LocalDateTime 特殊处理,过滤 null 值
         return map.entrySet().stream()
                 .filter(entry -> entry.getValue() != null)
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
-                        entry -> String.valueOf(entry.getValue())
+                        entry -> convertValueToString(entry.getValue())
                 ));
+    }
+
+    /**
+     * 将值转换为字符串,对时间类型特殊处理
+     */
+    private static String convertValueToString(Object value) {
+        if (value instanceof LocalDateTime) {
+            return ((LocalDateTime) value).format(DATE_TIME_FORMATTER);
+        }
+        return String.valueOf(value);
     }
 
     /**
@@ -110,11 +126,8 @@ public class MapUtils {
             return null;
         }
 
-        // 先转换为 JSON 字符串,再转换为对象,利用 Jackson 的类型推断
-        String jsonStr = OBJECT_MAPPER.writeValueAsString(stringMap);
-        Map<String, Object> objectMap = OBJECT_MAPPER.readValue(jsonStr, Map.class);
-        
-        return OBJECT_MAPPER.convertValue(objectMap, clazz);
+        // 直接使用 convertValue,Jackson 会自动处理字符串到目标类型的转换
+        return OBJECT_MAPPER.convertValue(stringMap, clazz);
     }
 
     /**

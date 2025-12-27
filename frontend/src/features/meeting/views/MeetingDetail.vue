@@ -241,7 +241,7 @@
 						<v-list-item
 							v-for="related in relatedMeetings"
 							:key="related.id"
-							@click="navigateToMeeting(related.id)"
+							@click="navigateToMeeting(related.roomNo)"
 						>
 							<template #prepend>
 								<v-icon>mdi-video</v-icon>
@@ -467,8 +467,8 @@ const viewTranscript = () => {
 	console.log('View transcript')
 }
 
-const navigateToMeeting = id => {
-	router.push(`/meeting/detail/${id}`)
+const navigateToMeeting = roomNo => {
+	router.push(`/meeting/detail/${roomNo}`)
 }
 
 const goBack = () => {

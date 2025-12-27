@@ -131,10 +131,49 @@ public class RoomServiceImpl implements RoomService {
     }
 
     @Override
-    public GetRoomInfoResVO getRoomInfo(Long roomId) {
-        log.info("[RoomService] getRoomInfo - roomId: {}", roomId);
+    public GetRoomInfoResVO getRoomInfo(String roomIdOrNo) {
+        log.info("[RoomService] getRoomInfo - roomIdOrNo: {}", roomIdOrNo);
 
-        // 1. 从缓存获取会议信息（Hash 优化）
+        Long roomId = null;
+
+        // 1. 判断入参是 roomId 还是 roomNo
+        try {
+            // 尝试解析为 Long，如果成功则认为是 roomId
+            roomId = Long.parseLong(roomIdOrNo);
+        } catch (NumberFormatException e) {
+            // 从 Hash 中直接获取 roomId
+            String mappingKey = RedisKeyConstants.ROOM_NO_MAPPING_KEY;
+            Object cachedRoomId = redisTemplate.opsForHash().get(mappingKey, roomIdOrNo);
+
+            if (cachedRoomId != null) {
+                roomId = Long.parseLong(cachedRoomId.toString());
+                log.debug("[RoomService] Found roomId from Hash cache: {}", roomId);
+            } else {
+                // 缓存未命中，从数据库查询
+                RoomPO room = roomPOMapper.selectByRoomNo(roomIdOrNo);
+                if (room != null) {
+                    roomId = room.getId();
+
+                    // 回写缓存到 Hash
+                    redisTemplate.opsForHash().put(mappingKey, roomIdOrNo, roomId.toString());
+
+                    // 设置 Hash 的过期时间（首次写入时）
+                    if (!Boolean.TRUE.equals(redisTemplate.hasKey(mappingKey))) {
+                        redisTemplate.expire(mappingKey,
+                                RedisKeyConstants.ROOM_NO_MAPPING_EXPIRE_TIME,
+                                TimeUnit.SECONDS);
+                    }
+
+                    log.debug("[RoomService] Found roomId from DB and cached to Hash: {}", roomId);
+                }
+            }
+
+            if (roomId == null) {
+                throw new BusinessException(ResponseCodeEnum.ROOM_NOT_FOUND);
+            }
+        }
+
+        // 2. 从缓存获取会议信息（Hash 优化）
         RoomPO room = getRoomFromCache(roomId);
 
         if (room == null) {
@@ -662,11 +701,18 @@ public class RoomServiceImpl implements RoomService {
                     RedisKeyConstants.ROOM_INFO_EXPIRE_TIME,
                     TimeUnit.SECONDS);
 
-            // 缓存会议号映射
-            String roomNoKey = String.format(RedisKeyConstants.ROOM_NO_KEY, room.getRoomNo());
-            redisTemplate.opsForValue().set(roomNoKey, room.getId().toString());
+            // 缓存roomNo -> roomId映射的hash
+            String mappingKey = RedisKeyConstants.ROOM_NO_MAPPING_KEY;
+            redisTemplate.opsForHash().put(mappingKey, room.getRoomNo(), room.getId().toString());
 
-            log.debug("[RoomService] Cached room info to Hash - roomId: {}", room.getId());
+            // 延长 Hash 的过期时间（每次写入时刷新）
+            redisTemplate.expire(mappingKey,
+                    RedisKeyConstants.ROOM_NO_MAPPING_EXPIRE_TIME,
+                    TimeUnit.SECONDS);
+
+
+            log.debug("[RoomService] Cached room info to Hash - roomId: {}, roomNo: {}",
+                    room.getId(), room.getRoomNo());
 
         } catch (Exception e) {
             log.error("[RoomService] Failed to cache room info - roomId: {}", room.getId(), e);
@@ -746,19 +792,50 @@ public class RoomServiceImpl implements RoomService {
         }
     }
 
+    /**
+     * 生成唯一的会议号
+     * 使用 Redis Set 数据结构存储所有生成的会议号
+     */
     private String generateUniqueRoomNo() {
+        String roomNoSetKey = RedisKeyConstants.ROOM_NO_SET_KEY;
         int maxRetries = 10;
-        for (int i = 0; i < maxRetries; i++) {
-            String roomNo = RandomUtil.randomNumbers(6);
-            String roomNoKey = String.format(RedisKeyConstants.ROOM_NO_KEY, roomNo);
-            Boolean exists = redisTemplate.hasKey(roomNoKey);
 
-            if (Boolean.FALSE.equals(exists)) {
-                redisTemplate.opsForValue().set(roomNoKey, "1", 10, TimeUnit.MINUTES);
+        for (int i = 0; i < maxRetries; i++) {
+            // 生成 1 位随机小写字母
+            char randomLetter = (char) (RandomUtil.randomInt(26) + 'A');
+            
+            // 生成 5 位随机数字
+            String randomDigits = RandomUtil.randomNumbers(5);
+            
+            // 组合成会议号
+            String roomNo = randomLetter + randomDigits;
+
+            // 使用 SADD 命令尝试添加到 Set 中
+            // 如果 roomNo 已存在，SADD 返回 0；不存在则添加成功，返回 1
+            Long addResult = redisTemplate.opsForSet().add(roomNoSetKey, roomNo);
+
+            if (addResult != null && addResult > 0) {
+                // 添加成功，说明 roomNo 是唯一的
+                log.debug("[RoomService] Generated unique roomNo: {}", roomNo);
+
+                // 为整个 Set 设置过期时间（只在第一次添加时设置）
+                Long setSize = redisTemplate.opsForSet().size(roomNoSetKey);
+                if (setSize != null && setSize == 1) {
+                    // 默认过期时间为 7 天
+                    redisTemplate.expire(roomNoSetKey,
+                            RedisKeyConstants.ROOM_NO_SET_EXPIRE_TIME,
+                            TimeUnit.SECONDS);
+                }
+
                 return roomNo;
             }
+
+            log.debug("[RoomService] RoomNo {} already exists, retry {}/{}",
+                    roomNo, i + 1, maxRetries);
         }
 
+        // 重试次数用尽，抛出异常
+        log.error("[RoomService] Failed to generate unique roomNo after {} retries", maxRetries);
         throw new BusinessException(ResponseCodeEnum.ROOM_NO_DUPLICATE);
     }
 

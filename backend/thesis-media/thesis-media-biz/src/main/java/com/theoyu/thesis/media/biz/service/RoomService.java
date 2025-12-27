@@ -13,7 +13,7 @@ public interface RoomService {
     /**
      * 获取房间信息
      */
-    GetRoomInfoResVO getRoomInfo(Long roomId);
+    GetRoomInfoResVO getRoomInfo(String roomIdOrNo);
 
     /**
      * 加入房间（预验证）

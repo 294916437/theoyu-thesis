@@ -31,12 +31,12 @@ public class RoomController {
 
     /**
      * 获取会议信息
-     * GET /media/room/{roomId}
+     * GET /media/room/{roomIdOrNo}
      */
-    @GetMapping("/{roomId}")
+    @GetMapping("/{roomIdOrNo}")
     @ApiOperationLog(description = "获取会议信息")
-    public Response<GetRoomInfoResVO> getRoomInfo(@PathVariable Long roomId) {
-        GetRoomInfoResVO resVO = roomService.getRoomInfo(roomId);
+    public Response<GetRoomInfoResVO> getRoomInfo(@PathVariable String roomIdOrNo) {
+        GetRoomInfoResVO resVO = roomService.getRoomInfo(roomIdOrNo);
         return Response.success(resVO);
     }
 

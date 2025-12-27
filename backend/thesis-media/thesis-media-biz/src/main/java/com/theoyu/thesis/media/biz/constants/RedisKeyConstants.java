@@ -62,12 +62,6 @@ public class RedisKeyConstants {
 
 
     /**
-     * roomNo 到 roomId 的映射 Key
-     * media:room:no:{roomNo}
-     */
-    public static final String ROOM_NO_KEY = "media:room:no:%s";
-
-    /**
      * 用户最近参加的会议列表（Sorted Set，按参与时间排序）
      * user:recent:rooms:{userId}
      */
@@ -77,6 +71,24 @@ public class RedisKeyConstants {
      * user:upcoming:rooms:{userId}
      */
     public static final String USER_UPCOMING_ROOMS_KEY = "user:upcoming:rooms:%d";
+
+
+    // ==================== SFU 节点相关 ====================
+
+    /**
+     * SFU 节点列表 Key
+     * media:sfu:nodes
+     */
+    public static final String SFU_NODES_KEY = "media:sfu:nodes";
+
+    /**
+     * SFU 节点详情 Key
+     * media:sfu:node:{nodeId}
+     */
+    public static final String SFU_NODE_INFO_KEY = "media:sfu:node:%s";
+
+    // ==================== 缓存过期时间 ====================
+
     /**
      * 会议号映射过期时间（7天）
      */
@@ -100,22 +112,6 @@ public class RedisKeyConstants {
      * 房间号缓存过期时间：永久（直到房间删除）
      */
     public static final long ROOM_NO_EXPIRE_TIME = -1;
-
-    // ==================== SFU 节点相关 ====================
-
-    /**
-     * SFU 节点列表 Key
-     * media:sfu:nodes
-     */
-    public static final String SFU_NODES_KEY = "media:sfu:nodes";
-
-    /**
-     * SFU 节点详情 Key
-     * media:sfu:node:{nodeId}
-     */
-    public static final String SFU_NODE_INFO_KEY = "media:sfu:node:%s";
-
-    // ==================== 缓存过期时间 ====================
 
     /**
      * 房间信息缓存过期时间：30分钟

@@ -6,10 +6,12 @@ import com.theoyu.framework.common.exception.BusinessException;
 import com.theoyu.framework.common.response.PageResponse;
 import com.theoyu.framework.context.holder.LoginUserContextHolder;
 import com.theoyu.framework.common.utils.MapUtils;
+import com.theoyu.framework.common.utils.JsonUtils;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
 import com.theoyu.thesis.media.biz.enums.ResponseCodeEnum;
 import com.theoyu.thesis.media.biz.grpc.SfuGrpcService;
+import com.theoyu.thesis.media.biz.model.dto.RoomCreatedEventDTO;
 import com.theoyu.thesis.media.biz.model.entity.RoomPO;
 import com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO;
 import com.theoyu.thesis.media.biz.model.mapper.RoomPOMapper;
@@ -101,16 +103,22 @@ public class RoomServiceImpl implements RoomService {
         // 5. 异步发送会议创建事件到MQ
         threadPoolTaskExecutor.execute(() -> {
             try {
-                Map<String, Object> message = new HashMap<>();
-                message.put("roomId", roomId);
-                message.put("roomNo", roomNo);
-                message.put("hostId", userId);
-                message.put("title", reqVO.getTitle());
-                message.put("timestamp", System.currentTimeMillis());
+                // 构建消息事件对象
+                RoomCreatedEventDTO event = RoomCreatedEventDTO.builder()
+                        .roomId(roomId)
+                        .roomNo(roomNo)
+                        .hostId(userId)
+                        .title(reqVO.getTitle())
+                        .timestamp(now)
+                        .totalParticipants(0)
+                        .totalMessages(0)
+                        .duration(0)
+                        .build();
 
+                // 直接序列化 DTO 对象
                 rocketMQTemplate.convertAndSend(
                         MQConstants.TOPIC_MEDIA_ROOM_EVENT + ":" + MQConstants.TAG_ROOM_CREATED,
-                        JSON.toJSONString(message)
+                        JsonUtils.toJsonString(event)
                 );
 
                 log.info("[RoomService] Room created event sent to MQ - roomId: {}", roomId);

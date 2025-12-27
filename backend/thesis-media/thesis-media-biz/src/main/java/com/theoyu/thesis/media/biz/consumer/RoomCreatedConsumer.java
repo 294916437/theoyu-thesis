@@ -1,11 +1,9 @@
 package com.theoyu.thesis.media.biz.consumer;
-
-import cn.hutool.json.JSONUtil;
-import com.alibaba.fastjson.JSON;
+import com.theoyu.framework.common.utils.JsonUtils;
+import com.theoyu.framework.common.utils.MapUtils;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
-import com.theoyu.thesis.media.biz.model.entity.RoomPO;
-import com.theoyu.thesis.media.biz.model.mapper.RoomPOMapper;
+import com.theoyu.thesis.media.biz.model.dto.RoomCreatedEventDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
@@ -20,7 +18,6 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 房间创建事件消费者
- *
  * 业务职责:
  * 1. 更新用户房间配额缓存
  * 2. 初始化房间统计数据
@@ -42,46 +39,38 @@ public class RoomCreatedConsumer extends BaseRocketMQConsumer implements RocketM
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
 
-    @Resource
-    private RoomPOMapper roomPOMapper;
 
     @Override
     public void onMessage(String message) {
         log.info("[RoomCreatedConsumer] Received message: {}", message);
 
         try {
-            // 1. 解析消息
-            Map<String, Object> msgMap = JSON.parseObject(message, Map.class);
-            Long roomId = Long.valueOf(msgMap.get("roomId").toString());
-            String roomNo = msgMap.get("roomNo").toString();
-            Long hostId = Long.valueOf(msgMap.get("hostId").toString());
-            String title = msgMap.get("title").toString();
-            Long timestamp = Long.valueOf(msgMap.get("timestamp").toString());
+            // 1. 直接反序列化为 DTO 对象（类型安全）
+            RoomCreatedEventDTO event = JsonUtils.parseObject(message, RoomCreatedEventDTO.class);
 
-            // 2. 幂等性检查(基于roomId,防止重复消费)
+            // 2. 幂等性检查（基于 roomId）
             String idempotentKey = generateIdempotentKey(
                     MQConstants.TOPIC_MEDIA_ROOM_EVENT,
                     MQConstants.TAG_ROOM_CREATED,
-                    roomId.toString()
+                    event.getRoomId().toString()
             );
 
             Boolean isFirstConsume = redisTemplate.opsForValue()
                     .setIfAbsent(idempotentKey, "1", 24, TimeUnit.HOURS);
 
             if (Boolean.FALSE.equals(isFirstConsume)) {
-                log.warn("[RoomCreatedConsumer] Duplicate message detected - roomId: {}", roomId);
-                return; // 已消费过,直接返回
+                log.warn("[RoomCreatedConsumer] Duplicate message - roomId: {}", event.getRoomId());
+                return;
             }
 
-            // 3. 更新用户房间配额缓存(增加计数)
-            updateUserRoomQuota(hostId);
+            // 3. 更新用户房间配额缓存
+            updateUserRoomQuota(event.getHostId());
 
             // 4. 初始化房间统计数据
-            initRoomStats(roomId, roomNo, hostId, title, timestamp);
-
+            initRoomStats(event);
 
         } catch (Exception e) {
-            // 抛出异常,触发RocketMQ重试机制
+            log.error("[RoomCreatedConsumer] Consume failed", e);
             throw new RuntimeException("Room created event consume failed", e);
         }
     }
@@ -115,32 +104,22 @@ public class RoomCreatedConsumer extends BaseRocketMQConsumer implements RocketM
     /**
      * 初始化房间统计数据
      */
-    private void initRoomStats(Long roomId, String roomNo, Long hostId,
-                               String title, Long timestamp) {
+    private void initRoomStats(RoomCreatedEventDTO event) {
         try {
-            // 初始化房间统计Hash结构
-            String statsKey = String.format("media:room:stats:%s", roomId);
+            String statsKey = String.format("media:room:stats:%s", event.getRoomId());
 
-            Map<String, Object> stats = new HashMap<>();
-            stats.put("roomId", roomId);
-            stats.put("roomNo", roomNo);
-            stats.put("hostId", hostId);
-            stats.put("title", title);
-            stats.put("createTime", timestamp);
-            stats.put("totalParticipants", 0); // 总参与人数
-            stats.put("peakParticipants", 0);  // 峰值人数
-            stats.put("totalMessages", 0);     // 总消息数
-            stats.put("duration", 0);          // 持续时长(秒)
+            Map<String, String> hashMap = MapUtils.objectToStringMap(event);
 
-            redisTemplate.opsForHash().putAll(statsKey, stats);
-            // 统计数据保留7天
-            redisTemplate.expire(statsKey, 7, TimeUnit.DAYS);
+            // 存储到 Redis Hash
+            redisTemplate.opsForHash().putAll(statsKey, hashMap);
+            // 设置过期时间
+            redisTemplate.expire(statsKey, RedisKeyConstants.MEDIA_STATS_EXPIRE_TIME,TimeUnit.SECONDS);
 
-            log.info("[RoomCreatedConsumer] Initialized room stats - roomId: {}", roomId);
+            log.info("[RoomCreatedConsumer] Initialized room stats - roomId: {}", event.getRoomId());
 
         } catch (Exception e) {
             log.error("[RoomCreatedConsumer] Failed to init room stats - roomId: {}",
-                    roomId, e);
+                    event.getRoomId(), e);
         }
     }
 

@@ -1,6 +1,5 @@
 package com.theoyu.thesis.media.biz.consumer;
 
-import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson.JSON;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
@@ -162,7 +161,6 @@ public class RoomClosedConsumer extends BaseRocketMQConsumer implements RocketMQ
                     String.format(RedisKeyConstants.ROOM_INFO_KEY, roomId),
                     String.format(RedisKeyConstants.ROOM_CONFIG_KEY, roomId),
                     String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId),
-                    String.format(RedisKeyConstants.ROOM_NO_KEY, roomId),
                     String.format("media:room:stats:%s", roomId)
             );
 

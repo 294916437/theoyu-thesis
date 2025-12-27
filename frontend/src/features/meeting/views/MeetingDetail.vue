@@ -478,7 +478,7 @@ const goBack = () => {
 onMounted(async () => {
 	try {
 		// 预留API调用
-		const data = await fetchMeetingDetail(route.params.id)
+		const data = await fetchMeetingDetail(route.params.roomNo)
 		meetingDetail.value = data.meeting
 		participants.value = data.participants
 		relatedMeetings.value = data.relatedMeetings
@@ -487,7 +487,8 @@ onMounted(async () => {
 		hasTranscript.value = data.hasTranscript
 		recordingSize.value = data.recordingSize
 	} catch (error) {
-		$notify('加载会议详情失败')
+		$notify.error('加载会议详情失败')
+		console.log(error)
 	}
 })
 </script>

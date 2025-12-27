@@ -81,7 +81,7 @@
 									density="comfortable"
 									color="primary"
 									prepend-inner-icon="mdi-server"
-									hint="留空则自动分配"
+									hint="默认0表示自动分配"
 									persistent-hint
 									clearable
 									class="mb-4"
@@ -160,7 +160,7 @@
 			<!-- 对话框操作 -->
 			<v-card-actions class="px-6 py-4">
 				<v-spacer></v-spacer>
-				<v-btn variant="text" color="grey-darken-1" @click="handleClose" :disabled="loading"> 取消 </v-btn>
+				<v-btn variant="text" color="grey-darken-1" :disabled="loading" @click="handleClose"> 取消 </v-btn>
 				<v-btn variant="flat" color="primary" :loading="loading" :disabled="!formValid" @click="handleSubmit">
 					<v-icon left>mdi-check</v-icon>
 					创建会议
@@ -207,7 +207,7 @@ const formData = reactive({
 	title: '',
 	type: 1,
 	maxParticipants: 15,
-	sfuNodeId: null,
+	sfuNodeId: 0,
 })
 
 // 会议设置
@@ -253,7 +253,7 @@ const resetForm = () => {
 	formData.title = ''
 	formData.type = 1
 	formData.maxParticipants = 15
-	formData.sfuNodeId = null
+	formData.sfuNodeId = 0
 
 	settings.enableRecording = false
 	settings.allowedCodecs = ['opus', 'VP8']
@@ -280,7 +280,7 @@ const handleSubmit = async () => {
 			title: formData.title.trim(),
 			type: formData.type,
 			maxParticipants: formData.maxParticipants,
-			sfuNodeId: formData.sfuNodeId || undefined,
+			sfuNodeId: formData.sfuNodeId,
 			settings: JSON.stringify(settings),
 		}
 

@@ -19,7 +19,7 @@ const routes = [
 				},
 			},
 			{
-				path: 'meeting/detail/:id',
+				path: 'meeting/detail/:roomNo',
 				name: 'MeetingDetail',
 				component: () => import('@/features/meeting/views/MeetingDetail.vue'),
 				meta: {

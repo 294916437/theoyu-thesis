@@ -299,18 +299,21 @@ const handleJoinMeeting = async meetingId => {
 // 创建会议
 const handleCreateMeeting = async meetingData => {
 	try {
-		// TODO: 调用后端API创建会议
-		const meeting = await createMeeting(meetingData)
+		// 调用后端API创建会议
+		const { success, data } = await createMeeting(meetingData)
 		// 打印表单数据
-		console.log(meetingData)
+		console.log('用户创建会议提交的表单数据:' + meetingData)
 
-		$notify.success('会议创建成功')
-
-		// 跳转到会议页面
-		router.push(`/meeting/detail/${meeting.id}`)
-
-		// 刷新会议列表
-		await Promise.all([loadUpcomingMeetings(), loadRecentMeetings()])
+		if (success) {
+			$notify.success('会议创建成功')
+			// 刷新会议列表
+			await Promise.all([loadUpcomingMeetings(), loadRecentMeetings()])
+			// 跳转到会议页面
+			router.push(`/meeting/detail/${data.roomNo}`)
+		} else {
+			$notify.error('创建会议失败')
+			return
+		}
 	} catch (error) {
 		$notify.error('创建会议失败')
 		console.error('Create meeting error:', error)

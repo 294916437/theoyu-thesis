@@ -290,7 +290,8 @@ const router = useRouter()
 const { copy } = useClipboard()
 
 const meetingDetail = ref({
-	id: '',
+	roomId: '',
+	roomNo: '',
 	title: '',
 	description: '',
 	startTime: '',
@@ -311,11 +312,11 @@ const hasTranscript = ref(false)
 const recordingSize = ref(0)
 
 const meetingLink = computed(() => {
-	return `${window.location.origin}/meeting/${meetingDetail.value.id}`
+	return `${window.location.origin}/meeting/room/${meetingDetail.value.roomNo}`
 })
 
 const canJoinMeeting = computed(() => {
-	return meetingDetail.value.status === 'ongoing' || meetingDetail.value.status === 'scheduled'
+	return meetingDetail.value.status === 0 || meetingDetail.value.status === 1
 })
 
 const canEditMeeting = computed(() => {
@@ -396,7 +397,7 @@ const copyLink = async () => {
 }
 
 const joinMeeting = () => {
-	router.push(`/meeting/${meetingDetail.value.id}`)
+	router.push(`/meeting/room/${meetingDetail.value.roomNo}`)
 }
 
 const editMeeting = () => {
@@ -426,7 +427,7 @@ const confirmDelete = () => {
 const handleSave = async updatedMeeting => {
 	try {
 		// 预留API调用
-		await updateMeeting(meetingDetail.value.id, updatedMeeting)
+		await updateMeeting(meetingDetail.value.roomId, updatedMeeting)
 		Object.assign(meetingDetail.value, updatedMeeting)
 		showEditDialog.value = false
 		$notify('会议更新成功')
@@ -438,7 +439,7 @@ const handleSave = async updatedMeeting => {
 const handleDelete = async () => {
 	try {
 		// 预留API调用
-		await deleteMeeting(meetingDetail.value.id)
+		await deleteMeeting(meetingDetail.value.roomId)
 		$notify('会议已删除')
 		showDeleteDialog.value = false
 		router.push('/')
@@ -478,14 +479,8 @@ const goBack = () => {
 onMounted(async () => {
 	try {
 		// 预留API调用
-		const data = await fetchMeetingDetail(route.params.roomNo)
-		meetingDetail.value = data.meeting
-		participants.value = data.participants
-		relatedMeetings.value = data.relatedMeetings
-		meetingStatistics.value = data.statistics
-		hasRecording.value = data.hasRecording
-		hasTranscript.value = data.hasTranscript
-		recordingSize.value = data.recordingSize
+		const { data } = await fetchMeetingDetail(route.params.roomNo)
+		meetingDetail.value = data
 	} catch (error) {
 		$notify.error('加载会议详情失败')
 		console.log(error)

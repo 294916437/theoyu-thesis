@@ -2,21 +2,23 @@
 	<v-app>
 		<v-main class="meeting-room">
 			<!-- 顶部信息栏 -->
-			<v-app-bar class="meeting-header" density="compact" flat elevation="0">
+			<v-app-bar density="compact" flat elevation="0" color="surface" class="meeting-header">
 				<v-toolbar-title class="d-flex align-center">
-					<v-icon class="mr-2 text-primary">mdi-video</v-icon>
+					<v-icon icon="mdi-video" color="primary" class="mr-2"></v-icon>
 					<span class="text-h6 font-weight-medium">{{ meetingInfo.title }}</span>
 				</v-toolbar-title>
 
 				<v-spacer></v-spacer>
 
 				<div class="d-flex align-center mr-4">
-					<v-icon size="small" class="mr-1 text-medium-emphasis">mdi-clock-outline</v-icon>
+					<v-icon icon="mdi-clock-outline" size="small" class="mr-1"></v-icon>
 					<span class="text-body-2 font-weight-medium">{{ meetingDuration }}</span>
 				</div>
 
-				<v-chip color="success" variant="flat" class="mr-4" size="small">
-					<v-icon left size="small">mdi-account-multiple</v-icon>
+				<v-chip color="success" variant="flat" size="small" class="mr-4">
+					<template #prepend>
+						<v-icon icon="mdi-account-multiple" size="small"></v-icon>
+					</template>
 					<span class="font-weight-medium">{{ participantCount }} 人</span>
 				</v-chip>
 
@@ -44,14 +46,16 @@
 						<div class="sidebar">
 							<v-tabs
 								v-model="sidebarTab"
-								bg-color="surface-variant"
+								bg-color="surface"
 								color="primary"
+								density="compact"
 								class="sidebar-tabs"
 							>
 								<v-tab value="participants">
-									<v-icon left size="small">mdi-account-multiple</v-icon>
+									<v-icon icon="mdi-account-multiple" size="small" class="mr-1"></v-icon>
 									<span class="text-caption">参与者</span>
 								</v-tab>
+
 								<v-tab value="chat">
 									<v-badge
 										:content="unreadMessages"
@@ -59,8 +63,8 @@
 										color="error"
 										inline
 									>
-										<v-icon left size="small">mdi-chat</v-icon>
-										<span class="text-caption ml-1">聊天</span>
+										<v-icon icon="mdi-chat" size="small" class="mr-1"></v-icon>
+										<span class="text-caption">聊天</span>
 									</v-badge>
 								</v-tab>
 							</v-tabs>
@@ -112,82 +116,97 @@
 			<!-- 设置对话框 -->
 			<v-dialog v-model="showSettings" max-width="600" transition="dialog-bottom-transition">
 				<v-card class="settings-dialog">
-					<v-card-title class="d-flex align-center justify-space-between">
-						<span class="text-h6">会议设置</span>
+					<v-card-title class="d-flex align-center justify-space-between pa-4">
+						<span class="text-h6 font-weight-medium">会议设置</span>
 						<v-btn icon="mdi-close" variant="text" size="small" @click="showSettings = false"></v-btn>
 					</v-card-title>
 
 					<v-divider></v-divider>
 
 					<v-card-text class="pa-6">
-						<h3 class="text-subtitle-1 mb-4 text-medium-emphasis">音视频设备</h3>
+						<!-- 音视频设备 -->
+						<div class="mb-6">
+							<h3 class="text-subtitle-1 font-weight-medium mb-4">音视频设备</h3>
 
-						<v-select
-							v-model="selectedCamera"
-							:items="cameras"
-							label="摄像头"
-							item-title="label"
-							item-value="deviceId"
-							prepend-inner-icon="mdi-camera"
-							variant="outlined"
-							density="comfortable"
-							class="mb-4"
-						></v-select>
+							<v-select
+								v-model="selectedCamera"
+								:items="cameras"
+								label="摄像头"
+								item-title="label"
+								item-value="deviceId"
+								variant="outlined"
+								density="comfortable"
+								prepend-inner-icon="mdi-camera"
+								color="primary"
+								class="mb-4"
+							></v-select>
 
-						<v-select
-							v-model="selectedMicrophone"
-							:items="microphones"
-							label="麦克风"
-							item-title="label"
-							item-value="deviceId"
-							prepend-inner-icon="mdi-microphone"
-							variant="outlined"
-							density="comfortable"
-							class="mb-4"
-						></v-select>
+							<v-select
+								v-model="selectedMicrophone"
+								:items="microphones"
+								label="麦克风"
+								item-title="label"
+								item-value="deviceId"
+								variant="outlined"
+								density="comfortable"
+								prepend-inner-icon="mdi-microphone"
+								color="primary"
+								class="mb-4"
+							></v-select>
 
-						<v-select
-							v-model="selectedSpeaker"
-							:items="speakers"
-							label="扬声器"
-							item-title="label"
-							item-value="deviceId"
-							prepend-inner-icon="mdi-volume-high"
-							variant="outlined"
-							density="comfortable"
-						></v-select>
+							<v-select
+								v-model="selectedSpeaker"
+								:items="speakers"
+								label="扬声器"
+								item-title="label"
+								item-value="deviceId"
+								variant="outlined"
+								density="comfortable"
+								prepend-inner-icon="mdi-volume-high"
+								color="primary"
+							></v-select>
+						</div>
 
 						<v-divider class="my-6"></v-divider>
 
-						<h3 class="text-subtitle-1 mb-4 text-medium-emphasis">视频设置</h3>
+						<!-- 视频设置 -->
+						<div>
+							<h3 class="text-subtitle-1 font-weight-medium mb-4">视频设置</h3>
 
-						<v-slider
-							v-model="videoQuality"
-							:min="1"
-							:max="3"
-							:step="1"
-							:ticks="{ 1: '流畅', 2: '标清', 3: '高清' }"
-							show-ticks="always"
-							tick-size="4"
-							class="mb-4"
-						>
-							<template #prepend>
-								<v-icon>mdi-quality-low</v-icon>
-							</template>
-							<template #append>
-								<v-icon>mdi-quality-high</v-icon>
-							</template>
-						</v-slider>
+							<v-slider
+								v-model="videoQuality"
+								:min="1"
+								:max="3"
+								:step="1"
+								:ticks="{ 1: '流畅', 2: '标清', 3: '高清' }"
+								show-ticks="always"
+								tick-size="4"
+								color="primary"
+								class="mb-6"
+							>
+								<template #prepend>
+									<v-icon icon="mdi-quality-low"></v-icon>
+								</template>
+								<template #append>
+									<v-icon icon="mdi-quality-high"></v-icon>
+								</template>
+							</v-slider>
 
-						<v-switch
-							v-model="enableHD"
-							label="启用高清视频"
-							color="primary"
-							hide-details
-							class="mb-2"
-						></v-switch>
+							<v-switch
+								v-model="enableHD"
+								label="启用高清视频"
+								color="primary"
+								hide-details
+								class="mb-3"
+							></v-switch>
 
-						<v-switch v-model="enableMirror" label="镜像我的视频" color="primary" hide-details></v-switch>
+							<v-switch
+								v-model="enableMirror"
+								label="镜像我的视频"
+								color="primary"
+								hide-details
+							></v-switch>
+						</div>
 					</v-card-text>
 
 					<v-divider></v-divider>
@@ -203,52 +222,37 @@
 			<!-- 离开会议确认对话框 -->
 			<v-dialog v-model="showLeaveConfirm" max-width="480" persistent transition="dialog-bottom-transition">
 				<v-card class="leave-confirm-dialog">
-					<!-- 顶部警告条 -->
-					<div class="warning-stripe"></div>
-
-					<v-card-title class="px-6">
+					<!-- 警告图标 -->
+					<v-card-title class="d-flex align-center pa-6">
 						<div class="warning-icon-wrapper">
-							<v-icon color="warning" size="32">mdi-exit-to-app</v-icon>
+							<v-icon icon="mdi-exit-to-app" color="warning" size="40"></v-icon>
 						</div>
 					</v-card-title>
 
-					<v-divider></v-divider>
-
-					<v-card-text class="pa-6">
+					<v-card-text class="px-6 pb-6">
 						<!-- 主要提示 -->
 						<div class="mb-4">
-							<p class="text-body-1 font-weight-medium mb-2">
-								您确定要离开当前会议吗？会议时长: {{ meetingDuration }} 分钟
-							</p>
+							<h3 class="text-h6 font-weight-medium mb-2">确认离开会议？</h3>
+							<p class="text-body-2">会议时长: {{ meetingDuration }}</p>
 						</div>
 
 						<!-- 信息提示卡片 -->
-						<v-card variant="tonal" color="info" class="info-card mb-4">
-							<v-card-text class="pa-3">
-								<div class="d-flex align-center">
-									<v-icon size="20" class="mr-2">mdi-information-outline</v-icon>
-									<div>
-										<div class="font-weight-medium mb-1">温馨提示</div>
-										<div>
-											• 会议记录和聊天内容将会保留<br />
-											• 您的离开不会结束整个会议<br />
-											• 其他参与者将收到您离开的通知
-										</div>
-									</div>
+						<v-alert type="info" variant="tonal" density="compact" class="mb-0">
+							<div class="text-body-2">
+								<div class="font-weight-medium mb-2">温馨提示</div>
+								<div>
+									• 会议记录和聊天内容将会保留<br />
+									• 您的离开不会结束整个会议<br />
+									• 其他参与者将收到您离开的通知
 								</div>
-							</v-card-text>
-						</v-card>
+							</div>
+						</v-alert>
 					</v-card-text>
 
 					<v-divider></v-divider>
 
 					<v-card-actions class="pa-4">
-						<v-btn
-							variant="text"
-							color="default"
-							prepend-icon="mdi-arrow-left"
-							@click="showLeaveConfirm = false"
-						>
+						<v-btn variant="text" prepend-icon="mdi-arrow-left" @click="showLeaveConfirm = false">
 							留在会议
 						</v-btn>
 
@@ -296,7 +300,7 @@ const userStore = useUserStore()
 
 // 会议信息
 const meetingInfo = ref({
-	id: route.params.id,
+	roomNo: route.params.roomNo,
 	title: '视频会议',
 	startTime: new Date(),
 })
@@ -521,7 +525,7 @@ const saveSettings = () => {
 // 加载会议详情
 async function loadMeetingDetail() {
 	try {
-		const detail = await fetchMeetingDetail(meetingInfo.value.id)
+		const detail = await fetchMeetingDetail(meetingInfo.value.roomNo)
 		meetingInfo.value = {
 			...meetingInfo.value,
 			...detail.meeting,
@@ -554,11 +558,6 @@ onMounted(async () => {
 	} catch (error) {
 		console.error('Failed to join meeting', error)
 		$notify.error(`加入会议失败: ${error.message}`)
-
-		// 失败后返回详情页
-		setTimeout(() => {
-			router.push(`/meeting/detail/${meetingInfo.value.id}`)
-		}, 2000)
 	} finally {
 		isLoading.value = false
 		loadingProgress.value = 0
@@ -572,16 +571,14 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .meeting-room {
-	background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+	background: rgb(var(--v-theme-background));
 	height: 100vh;
 	overflow: hidden;
 }
 
 .meeting-header {
-	background: linear-gradient(to bottom, rgba(30, 30, 46, 0.95) 0%, rgba(30, 30, 46, 0.85) 100%) !important;
-	backdrop-filter: blur(10px);
-	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-	color: rgba(255, 255, 255, 0.95);
+	border-bottom: 1px solid rgb(var(--v-theme-border));
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .video-container {
@@ -593,6 +590,7 @@ onBeforeUnmount(() => {
 	background: #000;
 }
 
+/* 侧边栏 */
 .sidebar-container {
 	display: flex;
 	flex-direction: column;
@@ -600,30 +598,17 @@ onBeforeUnmount(() => {
 }
 
 .sidebar {
-	background: linear-gradient(to bottom, rgba(40, 40, 58, 0.98) 0%, rgba(35, 35, 51, 0.98) 100%);
-	backdrop-filter: blur(10px);
-	border-left: 1px solid rgba(255, 255, 255, 0.08);
+	background: rgb(var(--v-theme-surface));
+	border-left: 1px solid rgb(var(--v-theme-border));
 	display: flex;
 	flex-direction: column;
 	height: 100%;
-	box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
 	overflow: hidden;
 }
 
 .sidebar-tabs {
 	flex-shrink: 0;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.sidebar-tabs :deep(.v-tab) {
-	color: rgba(255, 255, 255, 0.7);
-	text-transform: none;
-	letter-spacing: 0.5px;
-	min-height: 48px;
-}
-
-.sidebar-tabs :deep(.v-tab--selected) {
-	color: rgba(255, 255, 255, 0.95);
+	border-bottom: 1px solid rgb(var(--v-theme-border));
 }
 
 .sidebar-content {
@@ -640,12 +625,36 @@ onBeforeUnmount(() => {
 	height: 100%;
 }
 
+/* 设置对话框 */
 .settings-dialog {
-	background: linear-gradient(to bottom, rgba(40, 40, 58, 0.98) 0%, rgba(35, 35, 51, 0.98) 100%);
-	backdrop-filter: blur(10px);
-	color: rgba(255, 255, 255, 0.95);
+	background: rgb(var(--v-theme-surface));
 }
 
+/* 离开会议对话框 */
+.leave-confirm-dialog {
+	background: rgb(var(--v-theme-surface));
+	border: 1px solid rgb(var(--v-theme-border));
+	overflow: hidden;
+}
+
+.warning-icon-wrapper {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 64px;
+	height: 64px;
+	margin: 0 auto;
+	border-radius: 50%;
+	background: rgba(var(--v-theme-warning), 0.1);
+	border: 2px solid rgba(var(--v-theme-warning), 0.3);
+}
+
+.leave-btn {
+	font-weight: 600;
+	letter-spacing: 0.5px;
+}
+
+/* 工具类 */
 .fill-height {
 	height: 100%;
 }
@@ -653,118 +662,22 @@ onBeforeUnmount(() => {
 .h-100 {
 	height: 100%;
 }
-/* 离开会议确认对话框样式 */
-.leave-confirm-dialog {
-	backdrop-filter: blur(20px);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
-	overflow: hidden;
-}
-
-.warning-stripe {
-	height: 4px;
-	background: linear-gradient(90deg, #ff9800 0%, #f44336 100%);
-}
-
-.warning-icon-wrapper {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 56px;
-	height: 56px;
-	border-radius: 12px;
-	background: linear-gradient(135deg, rgba(255, 152, 0, 0.15) 0%, rgba(244, 67, 54, 0.15) 100%);
-	border: 2px solid rgba(255, 152, 0, 0.3);
-}
-
-.info-card {
-	background: rgba(33, 150, 243, 0.1) !important;
-	border: 1px solid rgba(33, 150, 243, 0.3);
-	border-radius: 8px;
-}
-.stats-grid {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 12px;
-	padding: 12px;
-	border-radius: 8px;
-	border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.stat-item {
-	display: flex;
-	align-items: center;
-	padding: 8px 12px;
-	background: rgba(255, 255, 255, 0.02);
-	border-radius: 6px;
-	transition: all 0.2s;
-}
-
-.stat-item:hover {
-	background: rgba(255, 255, 255, 0.05);
-	transform: translateY(-1px);
-}
-
-.leave-btn {
-	background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%) !important;
-	box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
-	font-weight: 600;
-	letter-spacing: 0.5px;
-}
-
-.leave-btn:hover {
-	background: linear-gradient(135deg, #e53935 0%, #c62828 100%) !important;
-	box-shadow: 0 6px 16px rgba(244, 67, 54, 0.5);
-	transform: translateY(-2px);
-}
-
-.leave-btn:active {
-	transform: translateY(0);
-}
 
 /* 响应式调整 */
+@media (max-width: 960px) {
+	.sidebar-container {
+		display: none;
+	}
+
+	.video-main {
+		width: 100% !important;
+	}
+}
+
 @media (max-width: 600px) {
-	.stats-grid {
-		grid-template-columns: 1fr;
-	}
-
 	.warning-icon-wrapper {
-		width: 48px;
-		height: 48px;
+		width: 56px;
+		height: 56px;
 	}
-}
-
-/* 提升文本对比度 */
-:deep(.v-card-title),
-:deep(.v-list-item-title) {
-	color: rgba(255, 255, 255, 0.95) !important;
-}
-
-:deep(.v-list-item-subtitle),
-:deep(.text-caption) {
-	color: rgba(255, 255, 255, 0.7) !important;
-}
-
-:deep(.text-medium-emphasis) {
-	color: rgba(255, 255, 255, 0.6) !important;
-}
-
-/* 输入框优化 */
-:deep(.v-field) {
-	background-color: rgba(255, 255, 255, 0.05);
-	border-color: rgba(255, 255, 255, 0.12);
-}
-
-:deep(.v-field--focused) {
-	background-color: rgba(255, 255, 255, 0.08);
-}
-
-:deep(.v-field__input) {
-	color: rgba(255, 255, 255, 0.95);
-}
-
-/* 滑块优化 */
-:deep(.v-slider__tick-label) {
-	color: rgba(255, 255, 255, 0.7);
 }
 </style>

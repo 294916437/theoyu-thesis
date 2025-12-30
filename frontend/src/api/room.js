@@ -13,11 +13,20 @@ export function validateMeetingNo(meetingNo) {
 }
 
 /**
+ * 获取会议信息
+ */
+export function fetchMeetingInfo(roomId) {
+	return axios.get(`${API_PREFIX}/info/${roomId}`)
+}
+
+/**
  * 获取会议详情
  */
 export function fetchMeetingDetail(roomId) {
-	return axios.get(`${API_PREFIX}/${roomId}`)
+	return axios.get(`${API_PREFIX}/detail/${roomId}`)
 }
+
+//
 
 /**
  * 创建会议

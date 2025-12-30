@@ -19,7 +19,7 @@ const routes = [
 				},
 			},
 			{
-				path: 'meeting/detail/:roomNo',
+				path: 'meeting/info/:roomNo',
 				name: 'MeetingDetail',
 				component: () => import('@/features/meeting/views/MeetingDetail.vue'),
 				meta: {
@@ -62,7 +62,7 @@ const routes = [
 		component: BlankLayout,
 		children: [
 			{
-				path: 'meeting/:id',
+				path: 'meeting/room/:roomNo',
 				name: 'MeetingRoom',
 				component: () => import('@/features/meeting/views/MeetingRoom.vue'),
 				meta: {

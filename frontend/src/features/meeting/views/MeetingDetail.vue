@@ -283,7 +283,7 @@ import { useDateFormat, useClipboard } from '@vueuse/core'
 import MeetingStatistics from '../components/MeetingStatistics.vue'
 import MeetingForm from '../components/MeetingForm.vue'
 import { $notify } from '@/plugins/notification'
-import { fetchMeetingDetail, updateMeeting, deleteMeeting } from '@/api/room'
+import { fetchMeetingInfo, updateMeeting, deleteMeeting } from '@/api/room'
 
 const route = useRoute()
 const router = useRouter()
@@ -479,7 +479,7 @@ const goBack = () => {
 onMounted(async () => {
 	try {
 		// 预留API调用
-		const { data } = await fetchMeetingDetail(route.params.roomNo)
+		const { data } = await fetchMeetingInfo(route.params.roomNo)
 		meetingDetail.value = data
 	} catch (error) {
 		$notify.error('加载会议详情失败')

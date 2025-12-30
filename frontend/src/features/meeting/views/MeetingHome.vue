@@ -22,7 +22,7 @@
 									:key="meeting.id"
 									class="upcoming-item"
 									rounded="lg"
-									@click="goToMeetingDetail(meeting.id)"
+									@click="goToMeetingInfo(meeting.roomNo)"
 								>
 									<template #prepend>
 										<v-avatar :color="getMeetingColor(index)" size="44" class="mr-4">
@@ -105,10 +105,10 @@
 							<v-list v-else-if="recentMeetings.length > 0" class="py-0">
 								<v-list-item
 									v-for="(meeting, index) in displayRecentMeetings"
-									:key="meeting.id"
+									:key="meeting.roomId"
 									class="meeting-item"
 									rounded="lg"
-									@click="goToMeetingDetail(meeting.id)"
+									@click="goToMeetingInfo(meeting.roomNo)"
 								>
 									<template #prepend>
 										<v-avatar :color="getMeetingColor(index)" size="56" class="mr-4">
@@ -265,8 +265,8 @@ const getStatusColor = status => {
 	const colorMap = {
 		completed: 'success',
 		ongoing: 'primary',
-		cancelled: 'error',
-		scheduled: 'warning',
+		cancelled: 'warning',
+		scheduled: 'error',
 	}
 	return colorMap[status] || 'grey'
 }
@@ -274,10 +274,10 @@ const getStatusColor = status => {
 // 获取状态文本
 const getStatusText = status => {
 	const textMap = {
-		completed: '已结束',
+		completed: '预约中',
 		ongoing: '进行中',
-		cancelled: '已取消',
-		scheduled: '已安排',
+		cancelled: '已结束',
+		scheduled: '已取消',
 	}
 	return textMap[status] || '未知'
 }
@@ -288,12 +288,12 @@ const openCreateDialog = () => {
 }
 
 // 加入会议(默认先查看会议详情)
-const handleJoinMeeting = async meetingId => {
-	if (!meetingId || !meetingId.trim()) {
-		$notify.warning('请输入会议ID')
+const handleJoinMeeting = async roomNo => {
+	if (!roomNo || !roomNo.trim()) {
+		$notify.warning('请输入会议号D')
 		return
 	}
-	router.push(`/meeting/detail/${meetingId.trim()}`)
+	router.push(`/meeting/info/${roomNo.trim()}`)
 }
 
 // 创建会议
@@ -309,7 +309,7 @@ const handleCreateMeeting = async meetingData => {
 			// 刷新会议列表
 			await Promise.all([loadUpcomingMeetings(), loadRecentMeetings()])
 			// 跳转到会议页面
-			router.push(`/meeting/detail/${data.roomNo}`)
+			router.push(`/meeting/info/${data.roomNo}`)
 		} else {
 			$notify.error('创建会议失败')
 			return
@@ -321,8 +321,8 @@ const handleCreateMeeting = async meetingData => {
 }
 
 // 查看会议详情
-const goToMeetingDetail = meetingId => {
-	router.push(`/meeting/detail/${meetingId}`)
+const goToMeetingInfo = roomNo => {
+	router.push(`/meeting/info/${roomNo}`)
 }
 </script>
 

@@ -34,7 +34,7 @@ export function useMeetingApi() {
 	/**
 	 * 获取会议详情
 	 */
-	async function fetchMeetingDetail(roomId) {
+	async function fetchMeetingInfo(roomId) {
 		loading.value = true
 		error.value = null
 
@@ -300,7 +300,7 @@ export function useMeetingApi() {
 		loading,
 		error,
 		validateMeetingNo,
-		fetchMeetingDetail,
+		fetchMeetingInfo,
 		createMeeting,
 		joinMeeting,
 		fetchUpcomingMeetings,

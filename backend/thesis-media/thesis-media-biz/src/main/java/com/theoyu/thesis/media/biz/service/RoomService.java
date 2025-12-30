@@ -16,6 +16,11 @@ public interface RoomService {
     GetRoomInfoResVO getRoomInfo(String roomIdOrNo);
 
     /**
+     * 获取房间信息
+     */
+    GetRoomDetailResVO getRoomDetail(String roomIdOrNo);
+
+    /**
      * 加入房间（预验证）
      */
     JoinRoomResVO joinRoom(JoinRoomReqVO reqVO);

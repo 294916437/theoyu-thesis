@@ -215,6 +215,11 @@ public class RoomServiceImpl implements RoomService {
                 .build();
     }
 
+    @Override
+    public GetRoomDetailResVO getRoomDetail(String roomIdOrNo) {
+        return null;
+    }
+
     /**
      * 加入会议（预验证阶段）
      * 

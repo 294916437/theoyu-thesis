@@ -3,8 +3,6 @@ package com.theoyu.thesis.media.biz.consumer;
 import com.alibaba.fastjson.JSON;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
-import com.theoyu.thesis.media.biz.model.entity.RoomPO;
-import com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO;
 import com.theoyu.thesis.media.biz.model.mapper.RoomPOMapper;
 import com.theoyu.thesis.media.biz.model.mapper.RoomParticipantPOMapper;
 import jakarta.annotation.Resource;
@@ -16,7 +14,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;

@@ -135,7 +135,7 @@
 											<div
 												v-for="(group, date) in groupedMessages"
 												:key="date"
-												class="message-date-group"
+												class="mb-4"
 											>
 												<!-- 日期分隔符 -->
 												<div class="date-divider">
@@ -147,11 +147,11 @@
 													v-for="message in group"
 													:key="message.id"
 													class="message-wrapper"
-													:class="{ 'message-own': message.isOwn }"
+													:class="{ 'd-flex justify-end': message.isOwn }"
 												>
 													<div class="message-content">
 														<!-- 他人消息头部 -->
-														<div v-if="!message.isOwn" class="message-header">
+														<div v-if="!message.isOwn" class="d-flex align-center mb-2 px-1">
 															<v-avatar size="28" color="primary"><span class="text-caption">{{getInitials(message.userName)}}</span></v-avatar>
 															<span class="message-sender ml-2">{{ message.userName }}</span>
 															<span class="message-time ml-2">{{ formatTime(message.timestamp) }}</span>
@@ -206,7 +206,7 @@
 											</div>
 
 											<!-- 空状态 -->
-											<div v-if="chatMessages.length === 0" class="empty-state">
+											<div v-if="chatMessages.length === 0" class="d-flex flex-column align-center justify-center fill-height text-on-surface-variant">
 												<v-icon
 													icon="mdi-chat-outline"
 													size="64"
@@ -228,11 +228,11 @@
 												v-model="uploadProgress"
 												color="primary"
 												height="3"
-												class="upload-progress"
+												class="mb-2 rounded"
 											></v-progress-linear>
 
 											<!-- 消息输入框 -->
-											<div class="input-wrapper">
+											<div class="d-flex align-end ga-2">
 												<v-btn
 													icon="mdi-emoticon-happy-outline"
 													variant="text"
@@ -317,7 +317,7 @@
 
 								<!-- 中间：主要控制按钮 -->
 								<v-col cols="auto">
-									<div class="control-buttons">
+									<div class="d-flex ga-3 align-center">
 										<!-- 音频控制 -->
 										<v-tooltip location="top">
 											<template #activator="{ props }">
@@ -1303,10 +1303,6 @@ onBeforeUnmount(() => {
 	margin-bottom: 16px;
 }
 
-.message-date-group {
-	margin-bottom: 16px;
-}
-
 .date-divider {
 	text-align: center;
 	margin: 16px 0;
@@ -1350,20 +1346,8 @@ onBeforeUnmount(() => {
 	}
 }
 
-.message-wrapper.message-own {
-	display: flex;
-	justify-content: flex-end;
-}
-
 .message-content {
 	max-width: 75%;
-}
-
-.message-header {
-	display: flex;
-	align-items: center;
-	margin-bottom: 6px;
-	padding: 0 4px;
 }
 
 .message-sender {
@@ -1468,15 +1452,6 @@ onBeforeUnmount(() => {
 	}
 }
 
-.empty-state {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	height: 100%;
-	color: rgb(var(--v-theme-on-surface-variant));
-}
-
 .input-area {
 	flex-shrink: 0;
 	background: rgb(var(--v-theme-surface));
@@ -1484,16 +1459,7 @@ onBeforeUnmount(() => {
 	padding: 12px;
 }
 
-.upload-progress {
-	margin-bottom: 8px;
-	border-radius: 2px;
-}
 
-.input-wrapper {
-	display: flex;
-	align-items: flex-end;
-	gap: 8px;
-}
 
 .message-input {
 	flex: 1;
@@ -1563,11 +1529,6 @@ onBeforeUnmount(() => {
 	box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.1);
 }
 
-.control-buttons {
-	display: flex;
-	gap: 12px;
-	align-items: center;
-}
 
 .control-btn {
 	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);

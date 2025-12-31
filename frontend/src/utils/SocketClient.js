@@ -1,6 +1,5 @@
 import { io } from 'socket.io-client'
-import { ref, computed } from 'vue'
-import { useEventListener } from '@vueuse/core'
+import { ref } from 'vue'
 
 class SocketClient {
 	constructor() {

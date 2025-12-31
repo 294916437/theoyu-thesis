@@ -37,50 +37,49 @@ export class MediasoupClient {
 
 			console.log('Creating send transport', transportInfo)
 
-			this.sendTransport = this.device.createSendTransport({
-				id: transportInfo.id,
-				iceParameters: transportInfo.iceParameters,
-				iceCandidates: transportInfo.iceCandidates,
-				dtlsParameters: transportInfo.dtlsParameters,
-				sctpParameters: transportInfo.sctpParameters,
-			})
+			this.sendTransport = this.device.createSendTransport(transportInfo)
 
 			this.sendTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
 				try {
-					console.log('Send transport connecting', dtlsParameters)
+					console.log('Send transport connecting...')
+
 					await socketClient.emit('connectWebRtcTransport', {
 						roomId,
 						transportId: this.sendTransport.id,
 						dtlsParameters,
 					})
+
+					console.log('Send transport connected')
 					callback()
 				} catch (error) {
-					console.error('Send transport connect failed', error)
+					console.error('Send transport connect failed:', error)
 					errback(error)
 				}
 			})
 
+			// 监听 produce 事件
 			this.sendTransport.on('produce', async ({ kind, rtpParameters, appData }, callback, errback) => {
 				try {
-					console.log('Producing', kind, rtpParameters)
-					const { id } = await socketClient.emit('produce', {
+					const response = await socketClient.emit('produce', {
 						roomId,
 						transportId: this.sendTransport.id,
 						kind,
 						rtpParameters,
 						appData,
 					})
-					callback({ id })
+
+					callback({ id: response.id })
 				} catch (error) {
-					console.error('Produce failed', error)
 					errback(error)
 				}
 			})
 
+			// 监听连接状态变化
 			this.sendTransport.on('connectionstatechange', state => {
-				console.log('Send transport connection state', state)
-				if (state === 'failed' || state === 'closed') {
-					this.sendTransport = null
+				console.log('Send transport connection state:', state)
+
+				if (state === 'failed') {
+					console.error('Send transport connection failed')
 				}
 			})
 
@@ -146,6 +145,12 @@ export class MediasoupClient {
 	async produce(track, appData = {}) {
 		if (!this.sendTransport) {
 			throw new Error('Send transport not created')
+		}
+
+		// 确保 transport 已连接
+		if (this.sendTransport.connectionState === 'new') {
+			console.log('Send transport not connected, waiting for connection...')
+			// produce 会自动触发 'connect' 事件，无需手动连接
 		}
 
 		try {

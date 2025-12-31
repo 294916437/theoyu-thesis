@@ -24,12 +24,15 @@ export function useMedia() {
     // Mediasoup 客户端实例
     let mediasoupClient = null
 
+	
+
     // 统计信息
     const stats = ref({
         audio: null,
         video: null,
         screen: null,
     })
+	let statsIntervalId = null
 
     // 获取远程参与者列表
     const remoteParticipants = computed(() => participants.value.filter(p => p.peerId !== peerId.value))
@@ -641,12 +644,32 @@ export function useMedia() {
      * 启动统计信息收集
      */
     function startStatsCollection() {
+		// 清理旧的定时器
+		if (statsIntervalId) {
+			clearInterval(statsIntervalId)
+			statsIntervalId = null
+		}
         setInterval(async () => {
             if (connectionState.value === 'connected') {
+                try {
                 await getStats()
+            } catch (error) {
+                console.error('Failed to collect stats:', error)
+                stopStatsCollection()
             }
-        }, 5000) // 每5秒收集一次统计信息
+            }
+        }, 10000) // 每10秒收集一次统计信息
     }
+	/**
+	 * 停止统计信息收集
+	 */
+	function stopStatsCollection() {
+		if (statsIntervalId) {
+			clearInterval(statsIntervalId)
+			statsIntervalId = null
+			console.log('Stats collection stopped')
+		}
+	}
 
     /**
      * 获取质量等级

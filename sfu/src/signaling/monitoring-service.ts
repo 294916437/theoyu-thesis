@@ -114,14 +114,14 @@ export class MonitoringService {
 
 	// 定期输出统计信息
 	startPeriodicLogging(intervalMs: number = 60000): void {
-		setInterval(() => {
-			const stats = this.getMetrics()
-			this.logger.info("=== Monitoring Stats ===")
-			this.logger.info(`Active Connections: ${stats.connections.current}`)
-			this.logger.info(`Total Connections: ${stats.connections.total}`)
-			this.logger.info(`Audio Producers: ${stats.producers.audio}`)
-			this.logger.info(`Video Producers: ${stats.producers.video}`)
-			this.logger.info(`Consumers: ${stats.consumers}`)
-		}, intervalMs)
+		// setInterval(() => {
+		// 	const stats = this.getMetrics()
+		// 	this.logger.info("=== Monitoring Stats ===")
+		// 	this.logger.info(`Active Connections: ${stats.connections.current}`)
+		// 	this.logger.info(`Total Connections: ${stats.connections.total}`)
+		// 	this.logger.info(`Audio Producers: ${stats.producers.audio}`)
+		// 	this.logger.info(`Video Producers: ${stats.producers.video}`)
+		// 	this.logger.info(`Consumers: ${stats.consumers}`)
+		// }, intervalMs)
 	}
 }

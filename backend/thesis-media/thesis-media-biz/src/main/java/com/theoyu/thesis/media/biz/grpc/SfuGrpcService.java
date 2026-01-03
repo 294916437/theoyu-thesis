@@ -104,11 +104,11 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
                 return;
             }
 
-            // 5. 检查用户权限
-            if (!checkUserPermission(roomId, userId, room.getHostId())) {
-                sendAccessDeniedResponse(responseObserver, "无权限访问该房间");
-                return;
-            }
+            // 5. 检查用户权限(需要重新设计校验逻辑)
+//            if (!checkUserPermission(roomId, userId, room.getHostId())) {
+//                sendAccessDeniedResponse(responseObserver, "无权限访问该房间");
+//                return;
+//            }
 
             // 6. 构建房间配置
             RoomConfig roomConfig = RoomConfig.newBuilder()

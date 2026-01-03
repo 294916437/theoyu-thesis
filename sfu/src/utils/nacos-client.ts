@@ -76,7 +76,7 @@ export class NacosClient {
 					this.logger.error("Failed to send heartbeat", error);
 				}
 			}
-		}, 60000); // 每60s发送一次心跳
+		}, 180000); // 每180s发送一次心跳
 	}
 
 	public async deregisterService(): Promise<void> {

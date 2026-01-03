@@ -46,7 +46,7 @@ public interface RoomParticipantPOMapper {
             @Param("roomId") Long roomId,
             @Param("userId") Long userId,
             @Param("status") Integer status,
-            @Param("leaveTime") LocalDateTime leaveTime
+            @Param("leftAt") LocalDateTime leftAt
     );
 
     /**

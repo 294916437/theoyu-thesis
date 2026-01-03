@@ -6,7 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.util.Date;
+
 
 @Data
 @AllArgsConstructor
@@ -30,5 +30,4 @@ public class RoomMessagePO {
     private LocalDateTime createdTime;
 
     private LocalDateTime updatedTime;
-
 }

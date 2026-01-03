@@ -250,7 +250,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             roomParticipantPOMapper.updateStatusByRoomIdAndUserId(
                     Long.parseLong(roomId),
                     Long.parseLong(userId),
-                    0, // 0-离线
+                    2, // 2-离线
                     LocalDateTime.now()
             );
 

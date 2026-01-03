@@ -7,6 +7,144 @@
     <result column="sender_id" jdbcType="BIGINT" property="senderId" />
     <result column="message_type" jdbcType="TINYINT" property="messageType" />
     <result column="content_type" jdbcType="TINYINT" property="contentType" />
+    <result column="content" jdbcType="VARCHAR" property="content" />
+    <result column="is_recalled" jdbcType="BIT" property="isRecalled" />
+    <result column="created_time" jdbcType="TIMESTAMP" property="createdTime" />
+    <result column="updated_time" jdbcType="TIMESTAMP" property="updatedTime" />
+  </resultMap>
+  <sql id="Base_Column_List">
+    id, room_id, sender_id, message_type, content_type, content, is_recalled, created_time, 
+    updated_time
+  </sql>
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select 
+    <include refid="Base_Column_List" />
+    from t_room_message
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from t_room_message
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+  <insert id="insert" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomMessagePO">
+    insert into t_room_message (id, room_id, sender_id, 
+      message_type, content_type, content, 
+      is_recalled, created_time, updated_time
+      )
+    values (#{id,jdbcType=BIGINT}, #{roomId,jdbcType=BIGINT}, #{senderId,jdbcType=BIGINT}, 
+      #{messageType,jdbcType=TINYINT}, #{contentType,jdbcType=TINYINT}, #{content,jdbcType=VARCHAR}, 
+      #{isRecalled,jdbcType=BIT}, #{createdTime,jdbcType=TIMESTAMP}, #{updatedTime,jdbcType=TIMESTAMP}
+      )
+  </insert>
+  <insert id="insertSelective" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomMessagePO">
+    insert into t_room_message
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        id,
+      </if>
+      <if test="roomId != null">
+        room_id,
+      </if>
+      <if test="senderId != null">
+        sender_id,
+      </if>
+      <if test="messageType != null">
+        message_type,
+      </if>
+      <if test="contentType != null">
+        content_type,
+      </if>
+      <if test="content != null">
+        content,
+      </if>
+      <if test="isRecalled != null">
+        is_recalled,
+      </if>
+      <if test="createdTime != null">
+        created_time,
+      </if>
+      <if test="updatedTime != null">
+        updated_time,
+      </if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        #{id,jdbcType=BIGINT},
+      </if>
+      <if test="roomId != null">
+        #{roomId,jdbcType=BIGINT},
+      </if>
+      <if test="senderId != null">
+        #{senderId,jdbcType=BIGINT},
+      </if>
+      <if test="messageType != null">
+        #{messageType,jdbcType=TINYINT},
+      </if>
+      <if test="contentType != null">
+        #{contentType,jdbcType=TINYINT},
+      </if>
+      <if test="content != null">
+        #{content,jdbcType=VARCHAR},
+      </if>
+      <if test="isRecalled != null">
+        #{isRecalled,jdbcType=BIT},
+      </if>
+      <if test="createdTime != null">
+        #{createdTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatedTime != null">
+        #{updatedTime,jdbcType=TIMESTAMP},
+      </if>
+    </trim>
+  </insert>
+  <update id="updateByPrimaryKeySelective" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomMessagePO">
+    update t_room_message
+    <set>
+      <if test="roomId != null">
+        room_id = #{roomId,jdbcType=BIGINT},
+      </if>
+      <if test="senderId != null">
+        sender_id = #{senderId,jdbcType=BIGINT},
+      </if>
+      <if test="messageType != null">
+        message_type = #{messageType,jdbcType=TINYINT},
+      </if>
+      <if test="contentType != null">
+        content_type = #{contentType,jdbcType=TINYINT},
+      </if>
+      <if test="content != null">
+        content = #{content,jdbcType=VARCHAR},
+      </if>
+      <if test="isRecalled != null">
+        is_recalled = #{isRecalled,jdbcType=BIT},
+      </if>
+      <if test="createdTime != null">
+        created_time = #{createdTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatedTime != null">
+        updated_time = #{updatedTime,jdbcType=TIMESTAMP},
+      </if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+  <update id="updateByPrimaryKey" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomMessagePO">
+    update t_room_message
+    set room_id = #{roomId,jdbcType=BIGINT},
+      sender_id = #{senderId,jdbcType=BIGINT},
+      message_type = #{messageType,jdbcType=TINYINT},
+      content_type = #{contentType,jdbcType=TINYINT},
+      content = #{content,jdbcType=VARCHAR},
+      is_recalled = #{isRecalled,jdbcType=BIT},
+      created_time = #{createdTime,jdbcType=TIMESTAMP},
+      updated_time = #{updatedTime,jdbcType=TIMESTAMP}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+  <resultMap id="BaseResultMap" type="com.theoyu.thesis.media.biz.model.entity.RoomMessagePO">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="room_id" jdbcType="BIGINT" property="roomId" />
+    <result column="sender_id" jdbcType="BIGINT" property="senderId" />
+    <result column="message_type" jdbcType="TINYINT" property="messageType" />
+    <result column="content_type" jdbcType="TINYINT" property="contentType" />
     <result column="content_uuid" jdbcType="VARCHAR" property="contentUuid" />
     <result column="is_recalled" jdbcType="BIT" property="isRecalled" />
     <result column="created_time" jdbcType="TIMESTAMP" property="createdTime" />

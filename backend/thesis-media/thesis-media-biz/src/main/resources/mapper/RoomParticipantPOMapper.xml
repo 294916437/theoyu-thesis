@@ -170,8 +170,7 @@
   <update id="updateStatusByRoomIdAndUserId">
     UPDATE t_room_participant
     SET status = #{status},
-        leave_time = #{leaveTime},
-        update_time = NOW()
+        left_at = #{leaveTime},
     WHERE room_id = #{roomId}
       AND user_id = #{userId}
   </update>
@@ -203,7 +202,6 @@
     UPDATE t_room_participant
     SET status = #{newStatus},
         left_at = #{leaveTime},
-        updated_time = NOW()
     WHERE room_id = #{roomId}
       AND status = #{oldStatus}
   </update>

@@ -23,7 +23,7 @@ public class RoomMessagePO {
 
     private Integer contentType;
 
-    private String contentUuid;
+    private String content;
 
     private Boolean isRecalled;
 

@@ -160,6 +160,8 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             participant.setRoomId(Long.parseLong(roomId));
             participant.setUserId(Long.parseLong(userId));
             participant.setJoinedAt(now);
+            participant.setAudioMuted(true);
+            participant.setVideoMuted(true);
             participant.setRole(1); // 角色: 1-普通成员, 2-主持人, 3-联席主持
             participant.setStatus(1); // 状态: 1-在线, 2-离线(中途退出), 3-被移除
             participant.setCreatedTime(now);
@@ -201,7 +203,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
                     message.setSenderId(Long.parseLong(userId));
                     message.setMessageType(1); // 1-系统消息
                     message.setContentType(1);
-                    // TODO:调用KV服务存储消息内容，设置 contentUuid 字段
+                    message.setContent("用户 " + username + " 加入了房间");
                     message.setCreatedTime(LocalDateTime.now());
 
                     roomMessagePOMapper.insert(message);

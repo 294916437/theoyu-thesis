@@ -46,7 +46,7 @@
 
         <!-- 需要生成的表-实体类 -->
 
-        <table tableName="t_room" domainObjectName="RoomPO"
+        <table tableName="t_room_message" domainObjectName="RoomMessagePO"
                enableCountByExample="false"
                enableUpdateByExample="false"
                enableDeleteByExample="false"

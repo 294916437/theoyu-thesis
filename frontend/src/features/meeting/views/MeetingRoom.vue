@@ -43,7 +43,7 @@
 			</v-app-bar>
 
 			<!-- 主视频区域 -->
-			<v-container fluid class="video-container pa-0" :style="{ height: videoContainerHeight }">
+			<v-container fluid class="video-container" :style="{ height: videoContainerHeight }">
 				<v-row no-gutters class="fill-height">
 					<!-- 视频网格 -->
 					<v-col :cols="showSidebar ? 9 : 12" class="video-main">
@@ -355,11 +355,16 @@
 							<v-row no-gutters align="center" justify="center">
 								<!-- 左侧：连接状态 -->
 								<v-col cols="auto" class="d-flex align-center">
-									<v-chip :color="connectionQuality.color" variant="flat" size="small" class="ml-4">
+									<v-chip
+										:color="overallConnectionQuality.color"
+										variant="flat"
+										size="small"
+										class="ml-4"
+									>
 										<template #prepend>
-											<v-icon size="small">{{ connectionQuality.icon }}</v-icon>
+											<v-icon size="small">{{ overallConnectionQuality.icon }}</v-icon>
 										</template>
-										{{ connectionQuality.text }}
+										{{ overallConnectionQuality.text }}
 									</v-chip>
 								</v-col>
 
@@ -1385,11 +1390,11 @@ useEventListener('beforeunload', e => {
 
 .video-container {
 	transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	padding: 0;
 }
 
 .video-main {
-	position: relative;
-	background: #000;
+	height: 100%;
 }
 
 /* 侧边栏 */
@@ -1671,24 +1676,23 @@ useEventListener('beforeunload', e => {
 
 /* 底部控制栏 */
 .control-bar-wrapper {
-	position: fixed;
+	position: sticky; /* 改为 sticky */
 	bottom: 0;
 	left: 0;
 	right: 0;
+	z-index: 10;
+	background: rgb(var(--v-theme-surface));
 }
 
 .control-bar-wrapper.collapsed .collapse-toggle {
-	top: -36px;
-}
-
-.control-bar-wrapper:not(.collapsed) .collapse-toggle {
-	top: -36px;
+	top: -18px;
 }
 
 .collapse-toggle {
 	position: absolute;
 	left: 50%;
 	transform: translateX(-50%);
+	top: -18px;
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 	z-index: 1;
 }

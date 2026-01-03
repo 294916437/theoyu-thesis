@@ -16,7 +16,7 @@
 				<!-- 无视频时的占位符 -->
 				<div v-if="!localVideoEnabled" class="video-placeholder">
 					<v-avatar :size="avatarSize" color="primary">
-						<span :class="avatarTextClass">{{ getInitials('我') }}</span>
+						<span :class="avatarTextClass">我</span>
 					</v-avatar>
 				</div>
 
@@ -59,12 +59,18 @@
 				}"
 			>
 				<!-- 视频元素 -->
-				<video :ref="el => setVideoRef(el, participant.id)" autoplay playsinline class="video-element"></video>
+				<video
+					:ref="el => setVideoRef(el, participant.peerId)"
+					autoplay
+					playsinline
+					:muted="false"
+					class="video-element"
+				/>
 
 				<!-- 无视频时的占位符 -->
-				<div v-if="!participant.videoEnabled" class="video-placeholder">
+				<div v-if="!hasValidVideoTrack(participant)" class="video-placeholder">
 					<v-avatar :size="avatarSize" color="secondary">
-						<span :class="avatarTextClass">{{ getInitials(participant.name) }}</span>
+						<span :class="avatarTextClass">{{ participant.name }}</span>
 					</v-avatar>
 				</div>
 
@@ -157,7 +163,7 @@
 
 					<div v-if="!participant.videoEnabled" class="thumbnail-placeholder">
 						<v-avatar size="32" color="primary">
-							<span class="text-caption">{{ getInitials(participant.name) }}</span>
+							<span class="text-caption">{{ participant.name }}</span>
 						</v-avatar>
 					</div>
 
@@ -220,6 +226,13 @@ const pinnedParticipantId = ref(null)
 const formattedParticipants = computed(() => {
 	return props.participants
 		.map(p => {
+			console.log(`Formatting participant ${p.username}:`, {
+				peerId: p.peerId,
+				hasStreams: !!p.streams,
+				audioStream: p.streams?.audio ? 'yes' : 'no',
+				videoStream: p.streams?.video ? 'yes' : 'no',
+			})
+
 			// 合并音视频流
 			let combinedStream = null
 
@@ -228,36 +241,62 @@ const formattedParticipants = computed(() => {
 
 				// 添加音频轨道
 				if (p.streams.audio && p.streams.audio.getTracks) {
-					p.streams.audio.getTracks().forEach(track => {
+					const audioTracks = p.streams.audio.getAudioTracks()
+					console.log(`Audio tracks for ${p.username}:`, audioTracks.length)
+					audioTracks.forEach(track => {
 						if (track.readyState === 'live') {
 							combinedStream.addTrack(track)
+							console.log(`Added audio track ${track.id} (${track.readyState})`)
+						} else {
+							console.warn(`Skipped audio track ${track.id} (${track.readyState})`)
 						}
 					})
 				}
 
 				// 添加视频轨道
 				if (p.streams.video && p.streams.video.getTracks) {
-					p.streams.video.getTracks().forEach(track => {
+					const videoTracks = p.streams.video.getVideoTracks()
+					console.log(`Video tracks for ${p.username}:`, videoTracks.length)
+					videoTracks.forEach(track => {
 						if (track.readyState === 'live') {
 							combinedStream.addTrack(track)
+							console.log(`Added video track ${track.id} (${track.readyState})`)
+						} else {
+							console.warn(`Skipped video track ${track.id} (${track.readyState})`)
 						}
 					})
 				}
 			}
 
-			// 判断音视频状态
-			const audioProducer = p.producers?.audio
-			const videoProducer = p.producers?.video
+			// 判断音视频状态（从实际轨道判断）
+			let audioEnabled = false
+			let videoEnabled = false
+
+			if (combinedStream) {
+				const audioTracks = combinedStream.getAudioTracks()
+				const videoTracks = combinedStream.getVideoTracks()
+
+				audioEnabled = audioTracks.length > 0 && audioTracks.some(t => t.readyState === 'live' && t.enabled)
+				videoEnabled = videoTracks.length > 0 && videoTracks.some(t => t.readyState === 'live' && t.enabled)
+			}
+
+			console.log(`Result for ${p.username}:`, {
+				streamId: combinedStream?.id,
+				totalTracks: combinedStream?.getTracks().length || 0,
+				audioEnabled,
+				videoEnabled,
+			})
 
 			return {
 				id: p.peerId,
-				name: p.username || '未知用户',
+				peerId: p.peerId,
+				name: p.username,
 				stream: combinedStream,
-				audioEnabled: audioProducer ? !audioProducer.paused : false,
-				videoEnabled: videoProducer ? !videoProducer.paused : false,
-				isSpeaking: false, // TODO: 实现音量检测
+				audioEnabled,
+				videoEnabled,
+				isSpeaking: false,
 				isLocal: p.isLocal || false,
-				connectionQuality: 'good', // TODO: 从真实数据获取
+				connectionQuality: 'good',
 			}
 		})
 		.filter(p => p.stream && p.stream.getTracks().length > 0) // 过滤无效流
@@ -276,6 +315,11 @@ const allParticipantsWithLocal = computed(() => {
 		...formattedParticipants.value,
 	].filter(p => p.stream)
 })
+const hasValidVideoTrack = participant => {
+	if (!participant.stream) return false
+	const videoTracks = participant.stream.getVideoTracks()
+	return videoTracks.length > 0 && videoTracks.some(t => t.readyState === 'live' && t.enabled)
+}
 
 // 布局类名
 const gridLayoutClass = computed(() => {
@@ -355,17 +399,6 @@ const localConnectionQuality = computed(() => {
 
 // ==================== 方法 ====================
 
-// 获取用户名首字母
-function getInitials(name) {
-	if (!name) return '?'
-	return name
-		.split(' ')
-		.map(word => word.charAt(0))
-		.join('')
-		.toUpperCase()
-		.slice(0, 2)
-}
-
 // 获取连接质量
 function getConnectionQuality(participant) {
 	const quality = participant.connectionQuality || 'good'
@@ -397,15 +430,26 @@ function getConnectionQuality(participant) {
 }
 
 // 设置视频引用
-function setVideoRef(el, participantId) {
+function setVideoRef(el, peerId) {
 	if (el) {
-		videoRefs.value.set(participantId, el)
+		videoRefs.value.set(peerId, el)
 
-		// 查找对应的参与者
-		const participant = formattedParticipants.value.find(p => p.id === participantId)
+		// 设置 srcObject
+		const participant = formattedParticipants.value.find(p => p.peerId === peerId)
 		if (participant?.stream) {
 			el.srcObject = participant.stream
+
+			// 确保播放
+			nextTick(() => {
+				el.play().catch(err => {
+					console.warn(`Failed to autoplay video for ${peerId}:`, err)
+				})
+			})
+		} else {
+			console.warn(`No stream found for peer ${peerId}`)
 		}
+	} else {
+		videoRefs.value.delete(peerId)
 	}
 }
 
@@ -467,15 +511,17 @@ watch(
 // 监听参与者流变化
 watch(
 	() => formattedParticipants.value,
-	async newParticipants => {
-		await nextTick()
-
+	newParticipants => {
 		newParticipants.forEach(participant => {
-			const videoEl = videoRefs.value.get(participant.id)
+			const videoEl = videoRefs.value.get(participant.peerId)
+
 			if (videoEl && participant.stream) {
-				if (videoEl.srcObject !== participant.stream) {
-					console.log('Updating participant stream', participant.id, participant.stream.id)
+				// 只有当流改变时才更新
+				if (videoEl.srcObject?.id !== participant.stream.id) {
 					videoEl.srcObject = participant.stream
+					videoEl.play().catch(err => {
+						console.error(`Play error for ${participant.name}:`, err)
+					})
 				}
 			}
 		})
@@ -553,6 +599,9 @@ onUnmounted(() => {
 .video-tile.is-speaking {
 	border-color: rgb(var(--v-theme-success));
 	box-shadow: 0 0 20px rgba(var(--v-theme-success), 0.3);
+}
+.video-tile.video-disabled {
+	background: rgba(var(--v-theme-surface-variant), 0.5);
 }
 
 .video-tile.is-local {

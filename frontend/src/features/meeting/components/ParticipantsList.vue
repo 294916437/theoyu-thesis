@@ -117,7 +117,7 @@
 				:class="{ 'is-speaking': participant.isSpeaking }"
 			>
 				<v-avatar size="36" :color="participant.avatarColor || 'grey'">
-					<span class="text-white">{{ getInitials(participant.name) }}</span>
+					<span class="text-white">{{ participant.name }}</span>
 				</v-avatar>
 
 				<div class="participant-info">
@@ -297,15 +297,6 @@ const videoEnabled = ref(true)
 const meetingLink = computed(() => {
 	return `${window.location.origin}/meeting/${props.meetingId}`
 })
-
-const getInitials = name => {
-	return name
-		.split(' ')
-		.map(word => word[0])
-		.join('')
-		.toUpperCase()
-		.slice(0, 2)
-}
 
 const getConnectionColor = quality => {
 	const colors = {

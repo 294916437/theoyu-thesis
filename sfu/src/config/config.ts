@@ -1,49 +1,49 @@
-import dotenv from "dotenv";
-import type * as mediasoupTypes from "mediasoup/node/lib/types";
+import dotenv from "dotenv"
+import type * as mediasoupTypes from "mediasoup/node/lib/types"
 
-dotenv.config();
+dotenv.config()
 
 export interface MediasoupConfig {
-	numWorkers: number;
+	numWorkers: number
 	workerSettings: {
-		logLevel: "debug" | "warn" | "error";
-		logTags: mediasoupTypes.WorkerLogTag[];
-		rtcMinPort: number;
-		rtcMaxPort: number;
-	};
+		logLevel: "debug" | "warn" | "error"
+		logTags: mediasoupTypes.WorkerLogTag[]
+		rtcMinPort: number
+		rtcMaxPort: number
+	}
 	routerOptions: {
-		mediaCodecs: mediasoupTypes.RtpCodecCapability[];
-	};
+		mediaCodecs: mediasoupTypes.RtpCodecCapability[]
+	}
 	webRtcTransportOptions: {
-		listenInfos: mediasoupTypes.TransportListenInfo[];
-		enableUdp: boolean;
-		enableTcp: boolean;
-		preferUdp: boolean;
-		initialAvailableOutgoingBitrate: number;
-	};
+		listenInfos: mediasoupTypes.TransportListenInfo[]
+		enableUdp: boolean
+		enableTcp: boolean
+		preferUdp: boolean
+		initialAvailableOutgoingBitrate: number
+	}
 }
 
 export interface ServerConfig {
-	port: number;
-	host: string;
+	port: number
+	host: string
 	cors: {
-		origin: string;
-		credentials: boolean;
-	};
+		origin: string
+		credentials: boolean
+	}
 }
 
 export interface GrpcConfig {
-	host: string;
-	port: number;
-	serviceName: string;
+	host: string
+	port: number
+	serviceName: string
 }
 
 export interface NacosConfig {
-	serverList: string;
-	namespace: string;
-	serviceName: string;
-	ip: string;
-	port: number;
+	serverList: string
+	namespace: string
+	serviceName: string
+	ip: string
+	port: number
 }
 
 export class Config {
@@ -54,13 +54,13 @@ export class Config {
 			origin: process.env.CORS_ORIGIN || "*",
 			credentials: true,
 		},
-	};
+	}
 
 	public readonly grpc: GrpcConfig = {
 		host: process.env.GRPC_HOST || "localhost",
 		port: parseInt(process.env.GRPC_PORT || "50051", 10),
 		serviceName: process.env.GRPC_SERVICE_NAME || "video-conference-service",
-	};
+	}
 
 	public readonly nacos: NacosConfig = {
 		serverList: process.env.NACOS_SERVER || "127.0.0.1:8848",
@@ -68,7 +68,7 @@ export class Config {
 		serviceName: process.env.NACOS_SERVICE_NAME || "sfu-server",
 		ip: process.env.NACOS_IP || "127.0.0.1",
 		port: parseInt(process.env.NACOS_PORT || "3000", 10),
-	};
+	}
 
 	public readonly mediasoup: MediasoupConfig = {
 		numWorkers: parseInt(process.env.MEDIASOUP_WORKERS || "4", 10),
@@ -154,7 +154,7 @@ export class Config {
 			preferUdp: true,
 			initialAvailableOutgoingBitrate: 1000000,
 		},
-	};
+	}
 }
 
-export default new Config();
+export default new Config()

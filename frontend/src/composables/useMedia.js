@@ -92,7 +92,7 @@ export function useMedia() {
 					userId: peer.userId,
 					username: peer.username,
 					streams: {},
-					producers: peer.producers || [],
+					producers: {},
 					consumers: {},
 					isLocal: false,
 				})),
@@ -125,33 +125,40 @@ export function useMedia() {
 				const videoTrack = localStream.value.getVideoTracks()[0]
 
 				// 添加发布重试逻辑
-				const publishWithRetry = async (track, kind, maxRetries = 3) => {
-					for (let i = 0; i < maxRetries; i++) {
-						try {
-							const producer = await mediasoupClient.produce(track, { kind })
-							updateLocalProducer(kind, producer)
-							return producer
-						} catch (error) {
-							console.error(`Failed to publish ${kind} (attempt ${i + 1}/${maxRetries}):`, error)
-							if (i === maxRetries - 1) {
-								throw error
-							}
-							// 等待后重试
-							await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)))
-						}
-					}
+				const publishWithTimeout = async (track, kind, timeout = 15000) => {
+					return Promise.race([
+						mediasoupClient.produce(track, { kind }),
+						new Promise((_, reject) =>
+							setTimeout(() => reject(new Error(`Publish ${kind} timeout`)), timeout),
+						),
+					])
 				}
 
 				try {
+					// 串行发布，确保 transport 连接已建立
 					if (audioTrack) {
-						await publishWithRetry(audioTrack, 'audio')
+						console.log('Publishing audio track...')
+						const audioProducer = await publishWithTimeout(audioTrack, 'audio')
+						updateLocalProducer('audio', audioProducer)
+						console.log('Audio published successfully')
 					}
+
 					if (videoTrack) {
-						await publishWithRetry(videoTrack, 'video')
+						console.log('Publishing video track...')
+						const videoProducer = await publishWithTimeout(videoTrack, 'video')
+						updateLocalProducer('video', videoProducer)
+						console.log('Video published successfully')
 					}
 				} catch (error) {
 					console.error('Failed to publish media streams:', error)
-					$notify.error('发布媒体流失败，但仍可以接收其他人的视频')
+
+					// 如果是超时错误，给出更明确的提示
+					if (error.message.includes('timeout')) {
+						$notify.error('媒体流发布超时，请检查网络或防火墙设置')
+					} else {
+						$notify.error('发布媒体流失败，但仍可以接收其他人的视频')
+					}
+
 					// 不抛出错误，允许用户继续观看
 				}
 			}
@@ -240,38 +247,66 @@ export function useMedia() {
 	 */
 	async function consumeProducer(producerId, remotePeerId) {
 		try {
-			console.log('Consuming producer', producerId, remotePeerId)
+			console.log(`Consuming producer ${producerId} ${remotePeerId}`)
 
 			const consumer = await mediasoupClient.consume(roomId.value, producerId, remotePeerId)
 
-			// 更新参与者流
+			// 找到对应的参与者
 			const participant = participants.value.find(p => p.peerId === remotePeerId)
-			if (participant) {
-				const kind = consumer.track.kind
+			if (!participant) {
+				console.error(`Participant ${remotePeerId} not found`)
+				return
+			}
 
-				// 创建或更新媒体流
-				if (!participant.streams[kind]) {
-					participant.streams[kind] = new MediaStream()
-				}
+			if (!participant.streams) participant.streams = {}
+			if (!participant.consumers) participant.consumers = {}
+			if (!participant.producers) participant.producers = {}
 
-				participant.streams[kind].addTrack(consumer.track)
-				participant.consumers[producerId] = consumer
+			// 创建或更新对应类型的 MediaStream
+			const kind = consumer.track.kind // 'audio' 或 'video'
 
-				// 监听消费者质量分数
-				consumer.on('score', score => {
-					connectionQuality.value.recv = {
-						score: score.score,
-						quality: getQualityLevel(score.score),
+			// 创建或更新流
+			if (!participant.streams[kind]) {
+				participant.streams[kind] = new MediaStream([consumer.track])
+				console.log(`Created new ${kind} stream for peer ${remotePeerId}`)
+			} else {
+				const existingStream = participant.streams[kind]
+				const existingTracks = existingStream.getTracks()
+
+				existingTracks.forEach(track => {
+					if (track.kind === kind) {
+						existingStream.removeTrack(track)
+						track.stop()
 					}
 				})
 
-				console.log('Consumer track added', remotePeerId, kind)
+				existingStream.addTrack(consumer.track)
+				console.log(`Updated ${kind} stream for peer ${remotePeerId}`)
 			}
 
-			return consumer
+			// 记录到 producers（用于 UI 判断状态）
+			participant.producers[kind] = {
+				id: producerId,
+				kind: kind,
+				paused: false,
+			}
+			participant.consumers[consumer.id] = consumer
+
+			// 监听 track 状态
+			consumer.track.onended = () => {
+				console.log(`Consumer track ended: ${consumer.id}`)
+				// 清理流
+				if (participant.streams[kind]) {
+					participant.streams[kind].removeTrack(consumer.track)
+				}
+			}
+
+			console.log(`Consumer track added ${remotePeerId} ${kind}`)
+
+			// 强制触发响应式更新
+			participants.value = [...participants.value]
 		} catch (error) {
-			console.error('Failed to consume producer', error)
-			throw error
+			console.error('Failed to consume producer', producerId, error)
 		}
 	}
 
@@ -303,7 +338,7 @@ export function useMedia() {
 					userId: data.userId,
 					username: data.username,
 					streams: {},
-					producers: [],
+					producers: {},
 					consumers: {},
 					isLocal: false,
 				})
@@ -333,7 +368,6 @@ export function useMedia() {
 				})
 
 				participants.value.splice(index, 1)
-				$notify.info(`${data.username} 离开了会议`)
 			}
 		})
 
@@ -341,21 +375,38 @@ export function useMedia() {
 		socketClient.on('newProducer', async data => {
 			console.log('New producer', data)
 
-			// 不消费自己的生产者
-			if (data.peerId !== peerId.value) {
-				const participant = participants.value.find(p => p.peerId === data.peerId)
-				if (participant) {
-					// 记录生产者信息
-					participant.producers.push({
-						id: data.producerId,
-						kind: data.kind,
-						paused: data.paused,
-					})
+			const { producerId, peerId: remotePeerId, userId: remoteUserId, username, kind } = data
 
-					// 开始消费
-					await consumeProducer(data.producerId, data.peerId)
+			// 确保参与者存在
+			let participant = participants.value.find(p => p.peerId === remotePeerId)
+
+			if (!participant) {
+				// 如果参与者不存在（理论上不应该发生），创建一个
+				participant = {
+					peerId: remotePeerId,
+					userId: remoteUserId,
+					username: username,
+					streams: {},
+					producers: {},
+					consumers: {},
+					isLocal: false,
 				}
+				participants.value.push(participant)
+				console.log(`Added new participant ${remotePeerId} (${username})`)
 			}
+
+			// 记录生产者信息
+			if (!participant.producers) {
+				participant.producers = {}
+			}
+			participant.producers[producerId] = {
+				id: producerId,
+				kind: kind,
+				paused: data.paused || false,
+			}
+
+			// 订阅这个新的生产者
+			await consumeProducer(producerId, remotePeerId)
 		})
 
 		// 生产者关闭

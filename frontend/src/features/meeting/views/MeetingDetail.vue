@@ -79,7 +79,7 @@
 						</v-row>
 
 						<!-- 会议链接 -->
-						<v-card variant="outlined" class="mt-4" color="blue-lighten-5">
+						<v-card variant="outlined" class="mt-4" color="secondary">
 							<v-card-text>
 								<div class="text-subtitle-2 mb-2">加入链接</div>
 								<v-text-field

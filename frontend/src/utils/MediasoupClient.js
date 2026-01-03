@@ -49,7 +49,7 @@ export class MediasoupClient {
 						dtlsParameters,
 					})
 
-					console.log('Send transport connected')
+					console.log('Send transport connected successfully')
 					callback()
 				} catch (error) {
 					console.error('Send transport connect failed:', error)
@@ -156,23 +156,6 @@ export class MediasoupClient {
 	async produce(track, appData = {}) {
 		if (!this.sendTransport) {
 			throw new Error('Send transport not created')
-		}
-
-		// 添加连接超时检查
-		const maxWaitTime = 10000 // 10秒超时
-		const startTime = Date.now()
-
-		while (this.sendTransport.connectionState !== 'connected') {
-			if (Date.now() - startTime > maxWaitTime) {
-				throw new Error('Send transport connection timeout')
-			}
-
-			if (this.sendTransport.connectionState === 'failed' || this.sendTransport.connectionState === 'closed') {
-				throw new Error(`Send transport connection ${this.sendTransport.connectionState}`)
-			}
-
-			console.log('Send transport not connected, waiting for connection...')
-			await new Promise(resolve => setTimeout(resolve, 100))
 		}
 
 		try {

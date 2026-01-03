@@ -769,7 +769,7 @@ const meetingInfo = ref({
 })
 
 const currentUserId = computed(() => userStore.userId)
-const currentUsername = computed(() => userStore.profile?.username || '访客')
+const currentUsername = computed(() => userStore.profile.nickname)
 const authToken = computed(() => userStore.token)
 
 // ==================== 媒体设备 ====================
@@ -1349,7 +1349,6 @@ onMounted(async () => {
 
 		loadingProgress.value = 100
 		meetingStartTime.value = Date.now()
-		$notify.success('已成功加入会议')
 	} catch (error) {
 		console.error('Failed to join meeting', error)
 		$notify.error(`加入会议失败: ${error.message}`)
@@ -1676,7 +1675,6 @@ useEventListener('beforeunload', e => {
 	bottom: 0;
 	left: 0;
 	right: 0;
-	z-index: 100;
 }
 
 .control-bar-wrapper.collapsed .collapse-toggle {

@@ -1,4 +1,4 @@
-import { ref, computed, onUnmounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { socketClient } from '@/utils/SocketClient'
 import { MediasoupClient } from '@/utils/MediasoupClient'
 import { $notify } from '@/plugins/notification'
@@ -108,8 +108,13 @@ export function useMedia() {
 			await mediasoupClient.loadDevice(rtpCapabilities)
 
 			// 6. 创建传输层
-			await mediasoupClient.createSendTransport(meetingId)
-			await mediasoupClient.createRecvTransport(meetingId)
+			try {
+				await mediasoupClient.createSendTransport(meetingId)
+				await mediasoupClient.createRecvTransport(meetingId)
+			} catch (error) {
+				console.error('Failed to create transports:', error)
+				throw new Error('传输层创建失败，请检查网络连接')
+			}
 
 			// 7. 获取本地媒体流
 			await getLocalStream()
@@ -119,14 +124,35 @@ export function useMedia() {
 				const audioTrack = localStream.value.getAudioTracks()[0]
 				const videoTrack = localStream.value.getVideoTracks()[0]
 
-				if (audioTrack) {
-					const producer = await mediasoupClient.produce(audioTrack, { kind: 'audio' })
-					updateLocalProducer('audio', producer)
+				// 添加发布重试逻辑
+				const publishWithRetry = async (track, kind, maxRetries = 3) => {
+					for (let i = 0; i < maxRetries; i++) {
+						try {
+							const producer = await mediasoupClient.produce(track, { kind })
+							updateLocalProducer(kind, producer)
+							return producer
+						} catch (error) {
+							console.error(`Failed to publish ${kind} (attempt ${i + 1}/${maxRetries}):`, error)
+							if (i === maxRetries - 1) {
+								throw error
+							}
+							// 等待后重试
+							await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)))
+						}
+					}
 				}
 
-				if (videoTrack) {
-					const producer = await mediasoupClient.produce(videoTrack, { kind: 'video' })
-					updateLocalProducer('video', producer)
+				try {
+					if (audioTrack) {
+						await publishWithRetry(audioTrack, 'audio')
+					}
+					if (videoTrack) {
+						await publishWithRetry(videoTrack, 'video')
+					}
+				} catch (error) {
+					console.error('Failed to publish media streams:', error)
+					$notify.error('发布媒体流失败，但仍可以接收其他人的视频')
+					// 不抛出错误，允许用户继续观看
 				}
 			}
 			// 9. 监听事件
@@ -832,11 +858,6 @@ export function useMedia() {
 		if (quality.recv.quality === 'poor' || quality.recv.quality === 'bad') {
 			console.warn('Poor recv quality detected', quality.recv)
 		}
-	})
-
-	// 组件卸载时清理
-	onUnmounted(() => {
-		leaveMeeting()
 	})
 
 	return {

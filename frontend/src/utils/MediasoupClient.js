@@ -74,13 +74,24 @@ export class MediasoupClient {
 				}
 			})
 
-			// 监听连接状态变化
+			// 添加详细的连接状态监听
 			this.sendTransport.on('connectionstatechange', state => {
-				console.log('Send transport connection state:', state)
+				console.log(`Send transport connection state: ${state}`)
 
 				if (state === 'failed') {
 					console.error('Send transport connection failed')
+					// 触发重连逻辑
+					this.handleTransportFailure('send')
 				}
+
+				if (state === 'disconnected') {
+					console.warn('Send transport disconnected')
+				}
+			})
+
+			// 添加 ICE 状态监听
+			this.sendTransport.on('icestatechange', state => {
+				console.log(`Send transport ICE state: ${state}`)
 			})
 
 			return this.sendTransport
@@ -147,10 +158,21 @@ export class MediasoupClient {
 			throw new Error('Send transport not created')
 		}
 
-		// 确保 transport 已连接
-		if (this.sendTransport.connectionState === 'new') {
+		// 添加连接超时检查
+		const maxWaitTime = 10000 // 10秒超时
+		const startTime = Date.now()
+
+		while (this.sendTransport.connectionState !== 'connected') {
+			if (Date.now() - startTime > maxWaitTime) {
+				throw new Error('Send transport connection timeout')
+			}
+
+			if (this.sendTransport.connectionState === 'failed' || this.sendTransport.connectionState === 'closed') {
+				throw new Error(`Send transport connection ${this.sendTransport.connectionState}`)
+			}
+
 			console.log('Send transport not connected, waiting for connection...')
-			// produce 会自动触发 'connect' 事件，无需手动连接
+			await new Promise(resolve => setTimeout(resolve, 100))
 		}
 
 		try {

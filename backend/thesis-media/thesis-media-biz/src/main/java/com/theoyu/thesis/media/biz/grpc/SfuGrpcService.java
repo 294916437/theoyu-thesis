@@ -480,6 +480,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             try {
                 Long messageId = Long.valueOf(idGeneratorRpcService.getRoomMsgId());
 
+                LocalDateTime now = LocalDateTime.now();
                 RoomMessagePO message = RoomMessagePO.builder()
                         .id(messageId)
                         .roomId(roomId)
@@ -487,7 +488,8 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
                         .messageType(1) // 1-系统消息
                         .contentType(1) // 1-文本
                         .content("用户 " + username + " " + action)
-                        .createdTime(LocalDateTime.now())
+                        .createdTime(now)
+                        .updatedTime(now)
                         .build();
 
                 roomMessagePOMapper.insert(message);

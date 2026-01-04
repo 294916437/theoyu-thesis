@@ -216,7 +216,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             long timestamp = request.getTimestamp();
 
             // 1. 更新参与者离线状态
-            roomParticipantPOMapper.updateStatusByRoomIdAndUserId(
+            roomParticipantPOMapper.updateStatusToOffline(
                     Long.parseLong(roomId),
                     Long.parseLong(userId),
                     LocalDateTime.now()

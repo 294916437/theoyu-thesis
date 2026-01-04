@@ -41,7 +41,7 @@
   </insert>
 
   <insert id="insertOrUpdate" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
-    INSERT INTO room_participant (
+    INSERT INTO t_room_participant (
       room_id, user_id, joined_at, audio_muted, video_muted,
       role, status, created_time, updated_time
     ) VALUES (
@@ -183,22 +183,24 @@
   </select>
 
   <!-- 更新参与者离线状态 -->
-  <update id="updateStatusByRoomIdAndUserId">
+  <update id="updateStatusToOffline">
     UPDATE t_room_participant
-    SET `status` = 2
+    SET `status` = 2,
         left_at = #{leftAt}
+        updated_time = #{leftAt}
     WHERE room_id = #{roomId}
       AND user_id = #{userId}
   </update>
   <!-- 更新参与者在线状态 -->
   <update id="updateStatusToOnline">
-    UPDATE room_participant
-    SET status = 1,
+    UPDATE t_room_participant
+    SET `status` = 1,
         updated_time = #{updatedTime}
-    WHERE room_id = #{roomId} AND user_id = #{userId}
-  </update>
+    WHERE room_id = #{roomId} 
+      AND user_id = #{userId}
+</update>
   <update id="updateByRoomIdAndUserId" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
-    UPDATE room_participant
+    UPDATE t_room_participant
     <set>
       <if test="status != null">status = #{status},</if>
       <if test="role != null">role = #{role},</if>

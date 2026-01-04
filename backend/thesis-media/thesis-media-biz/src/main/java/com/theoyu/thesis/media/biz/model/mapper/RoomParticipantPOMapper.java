@@ -45,7 +45,7 @@ public interface RoomParticipantPOMapper {
     /**
      * 更新参与者离线状态
      */
-    int updateStatusByRoomIdAndUserId(
+    int updateStatusToOffline(
             @Param("roomId") Long roomId,
             @Param("userId") Long userId,
             @Param("leftAt") LocalDateTime leftAt

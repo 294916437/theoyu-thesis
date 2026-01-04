@@ -170,7 +170,7 @@
   <update id="updateStatusByRoomIdAndUserId">
     UPDATE t_room_participant
     SET `status` = #{status},
-        left_at = #{leftAt},
+        left_at = #{leftAt}
     WHERE room_id = #{roomId}
       AND user_id = #{userId}
   </update>
@@ -201,7 +201,7 @@
   <update id="batchUpdateStatusByRoomId">
     UPDATE t_room_participant
     SET `status` = #{newStatus},
-        left_at = #{leaveTime},
+        left_at = #{leaveTime}
     WHERE room_id = #{roomId}
       AND `status` = #{oldStatus}
   </update>

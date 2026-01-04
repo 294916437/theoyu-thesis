@@ -11,6 +11,9 @@ public interface RoomParticipantPOMapper {
 
     int insert(RoomParticipantPO record);
 
+    void insertOrUpdate(RoomParticipantPO participant);
+
+
     int insertSelective(RoomParticipantPO record);
 
     RoomParticipantPO selectByPrimaryKey(@Param("roomId") Long roomId, @Param("userId") Long userId);
@@ -40,13 +43,21 @@ public interface RoomParticipantPOMapper {
     List<RoomParticipantPO> selectRecentRoomsByUserId(@Param("userId") Long userId,@Param("offset") Long offset,@Param("pageSize") Long pageSize);
 
     /**
-     * 更新参与者状态
+     * 更新参与者离线状态
      */
     int updateStatusByRoomIdAndUserId(
             @Param("roomId") Long roomId,
             @Param("userId") Long userId,
-            @Param("status") Integer status,
             @Param("leftAt") LocalDateTime leftAt
+    );
+
+    /**
+     * 更新参与者状态为在线
+     */
+    int updateStatusToOnline(
+            @Param("roomId") Long roomId,
+            @Param("userId") Long userId,
+            @Param("updatedTime") LocalDateTime updatedTime
     );
 
     /**
@@ -63,6 +74,8 @@ public interface RoomParticipantPOMapper {
             @Param("oldStatus") Integer oldStatus,
             @Param("leaveTime") LocalDateTime leaveTime
     );
+
+
 
 
 

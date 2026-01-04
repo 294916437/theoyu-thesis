@@ -15,15 +15,20 @@ public interface MQConstants {
 
     // ==================== Tag ====================
 
+
+    /**
+     * 参与者事件主题
+     */
+    public static final String TOPIC_PARTICIPANT_EVENT = "participant-event";
     /**
      * 参与者加入事件 Tag
      */
-    public static final String TAG_PARTICIPANT_JOINED = "participant-joined";
+    public static final String TAG_PARTICIPANT_JOINED = "joined";
 
     /**
      * 参与者离开事件 Tag
      */
-    public static final String TAG_PARTICIPANT_LEFT = "participant-left";
+    public static final String TAG_PARTICIPANT_LEFT = "left";
 
     /**
      * 媒体统计上报 Tag

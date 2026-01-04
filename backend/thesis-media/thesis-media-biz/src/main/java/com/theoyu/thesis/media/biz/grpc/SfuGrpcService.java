@@ -3,10 +3,12 @@ package com.theoyu.thesis.media.biz.grpc;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.alibaba.fastjson.JSON;
+import com.theoyu.framework.common.utils.JsonUtils;
 import com.theoyu.framework.common.utils.MapUtils;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
 import com.theoyu.thesis.media.biz.grpc.proto.*;
+import com.theoyu.thesis.media.biz.model.dto.ParticipantEventDTO;
 import com.theoyu.thesis.media.biz.model.entity.RoomMessagePO;
 import com.theoyu.thesis.media.biz.model.entity.RoomPO;
 import com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO;
@@ -147,87 +149,54 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
 
         log.info("[SFU-gRPC] notifyParticipantJoined - roomId: {}, userId: {}, username: {}",
                 request.getRoomId(), request.getUserId(), request.getUsername());
+        String roomId = request.getRoomId();
+        String userId = request.getUserId();
+        String username = request.getUsername();
+        long timestamp = request.getTimestamp();
 
         try {
-            String roomId = request.getRoomId();
-            String userId = request.getUserId();
-            String username = request.getUsername();
-            long timestamp = request.getTimestamp();
-
-            // 2. 创建参与者记录
-            RoomParticipantPO participant = new RoomParticipantPO();
+            Long roomIdLong = Long.parseLong(roomId);
+            Long userIdLong = Long.parseLong(userId);
             LocalDateTime now = LocalDateTime.now();
-            participant.setRoomId(Long.parseLong(roomId));
-            participant.setUserId(Long.parseLong(userId));
-            participant.setJoinedAt(now);
-            participant.setAudioMuted(true);
-            participant.setVideoMuted(true);
-            participant.setRole(1); // 角色: 1-普通成员, 2-主持人, 3-联席主持
-            participant.setStatus(1); // 状态: 1-在线, 2-离线(中途退出), 3-被移除
-            participant.setCreatedTime(now);
-            participant.setUpdatedTime(now);
 
-            roomParticipantPOMapper.insert(participant);
-
-            // 3. 更新 Redis 缓存
-            updateParticipantCache(roomId, userId, username, true);
-
-            // 4. 异步发送 MQ 消息
-            taskExecutor.execute(() -> {
-                try {
-                    Map<String, Object> message = new HashMap<>();
-                    message.put("roomId", roomId);
-                    message.put("userId", userId);
-                    message.put("username", username);
-                    message.put("event", "joined");
-                    message.put("timestamp", timestamp);
-
-                    rocketMQTemplate.convertAndSend(
-                            MQConstants.TOPIC_MEDIA_ROOM_EVENT + ":" + MQConstants.TAG_PARTICIPANT_JOINED,
-                            JSON.toJSONString(message)
-                    );
-
-                    log.info("[SFU-gRPC] MQ message sent - participant joined: {}", userId);
-                } catch (Exception e) {
-                    log.error("[SFU-gRPC] Failed to send MQ message", e);
-                }
-            });
-
-            // 5. 记录房间消息
-            taskExecutor.execute(() -> {
-                try {
-                    Long messageId = Long.valueOf(idGeneratorRpcService.getRoomMsgId());
-                    RoomMessagePO message = new RoomMessagePO();
-                    message.setId(messageId);
-                    message.setRoomId(Long.parseLong(roomId));
-                    message.setSenderId(Long.parseLong(userId));
-                    message.setMessageType(1); // 1-系统消息
-                    message.setContentType(1);
-                    message.setContent("用户 " + username + " 加入了房间");
-                    message.setCreatedTime(LocalDateTime.now());
-
-                    roomMessagePOMapper.insert(message);
-                } catch (Exception e) {
-                    log.error("[SFU-gRPC] Failed to insert room message", e);
-                }
-            });
-
-            // 6. 返回成功响应
-            AckResponse response = AckResponse.newBuilder()
-                    .setSuccess(true)
-                    .setMessage("参与者加入通知处理成功")
+            // 1. 使用 insertOrUpdate 方法处理参与者记录
+            RoomParticipantPO participant = RoomParticipantPO.builder()
+                    .roomId(roomIdLong)
+                    .userId(userIdLong)
+                    .joinedAt(now)
+                    .audioMuted(true)
+                    .videoMuted(true)
+                    .role(1) // 1-普通成员
+                    .status(1) // 1-在线
+                    .createdTime(now)
+                    .updatedTime(now)
                     .build();
 
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
+            roomParticipantPOMapper.insertOrUpdate(participant);
+            log.info("[SFU-gRPC] 参与者记录已更新 - userId: {}", userId);
 
-            log.info("[SFU-gRPC] notifyParticipantJoined success - roomId: {}, userId: {}", roomId, userId);
+            // 2. 缓存参与者信息到 Redis
+            cacheParticipantInfo(roomId, userId, username, timestamp);
 
+            // 3. 异步发送 MQ 消息
+            sendParticipantEventToMQ(roomId, userId, username, "joined", timestamp);
+
+            // 4. 异步记录房间系统消息
+            recordSystemMessage(roomIdLong, userIdLong, username, "加入了房间");
+
+            // 5. 返回成功响应
+            sendAckSuccessResponse(responseObserver, "加入房间成功");
+
+        } catch (NumberFormatException e) {
+            log.error("[SFU-gRPC] 参数格式错误 - roomId: {}, userId: {}", roomId, userId, e);
+            sendAckErrorResponse(responseObserver, "参数格式错误");
         } catch (Exception e) {
-            log.error("[SFU-gRPC] notifyParticipantJoined error", e);
-            sendAckErrorResponse(responseObserver, "参与者加入通知处理失败");
+            log.error("[SFU-gRPC] 参与者加入处理异常", e);
+            sendAckErrorResponse(responseObserver, "加入房间失败,请稍后重试");
         }
     }
+
+
 
     /**
      * 通知参与者离开
@@ -246,66 +215,32 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             String username = request.getUsername();
             long timestamp = request.getTimestamp();
 
-            // 1. 更新参与者状态
+            // 1. 更新参与者离线状态
             roomParticipantPOMapper.updateStatusByRoomIdAndUserId(
                     Long.parseLong(roomId),
                     Long.parseLong(userId),
-                    2, // 2-离线
                     LocalDateTime.now()
             );
 
             // 2. 清理 Redis 缓存
-            updateParticipantCache(roomId, userId, username, false);
+            removeParticipantCache(roomId, userId);
 
             // 3. 异步发送 MQ 消息
-            taskExecutor.execute(() -> {
-                try {
-                    Map<String, Object> message = new HashMap<>();
-                    message.put("roomId", roomId);
-                    message.put("userId", userId);
-                    message.put("username", username);
-                    message.put("event", "left");
-                    message.put("timestamp", timestamp);
-
-                    rocketMQTemplate.convertAndSend(
-                            MQConstants.TOPIC_MEDIA_ROOM_EVENT + ":" + MQConstants.TAG_PARTICIPANT_LEFT,
-                            JSON.toJSONString(message)
-                    );
-
-                    log.info("[SFU-gRPC] MQ message sent - participant left: {}", userId);
-                } catch (Exception e) {
-                    log.error("[SFU-gRPC] Failed to send MQ message", e);
-                }
-            });
+            sendParticipantEventToMQ(roomId, userId, username, "left", timestamp);
 
             // 4. 记录房间消息
-            taskExecutor.execute(() -> {
-                try {
-                    Long messageId = Long.valueOf(idGeneratorRpcService.getRoomMsgId());
-                    RoomMessagePO message = new RoomMessagePO();
-                    message.setId(messageId);
-                    message.setRoomId(Long.parseLong(roomId));
-                    message.setSenderId(Long.parseLong(userId));
-                    message.setMessageType(1); // 1-系统消息
-                    // TODO: contentUuid 字段的使用需确认，调用KV服务存储消息内容
-                    message.setCreatedTime(LocalDateTime.now());
-
-                    roomMessagePOMapper.insert(message);
-                } catch (Exception e) {
-                    log.error("[SFU-gRPC] Failed to insert room message", e);
-                }
-            });
+            recordSystemMessage(
+                    Long.parseLong(roomId),
+                    Long.parseLong(userId),
+                    username,
+                    "离开了房间"
+            );
 
             // 5. 返回成功响应
-            AckResponse response = AckResponse.newBuilder()
-                    .setSuccess(true)
-                    .setMessage("参与者离开通知处理成功")
-                    .build();
+            sendAckSuccessResponse(responseObserver, "参与者离开通知处理成功");
 
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
+            log.info("[SFU-gRPC] 参与者离开处理完成 - userId: {}", userId);
 
-            log.info("[SFU-gRPC] notifyParticipantLeft success - roomId: {}, userId: {}", roomId, userId);
 
         } catch (Exception e) {
             log.error("[SFU-gRPC] notifyParticipantLeft error", e);
@@ -321,37 +256,38 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             RoomConfigRequest request,
             StreamObserver<RoomConfigResponse> responseObserver) {
 
-        log.info("[SFU-gRPC] getRoomConfig - roomId: {}", request.getRoomId());
+        log.info("[SFU-gRPC] 获取房间配置 - roomId: {}", request.getRoomId());
 
         try {
             String roomId = request.getRoomId();
 
-            // 1. 从缓存获取房间配置
+            // 1. 从缓存获取房间配置 (使用 Hash 结构)
             String configKey = String.format(RedisKeyConstants.ROOM_CONFIG_KEY, roomId);
-            RoomConfigVO config = (RoomConfigVO) redisTemplate.opsForValue().get(configKey);
+            Map<Object, Object> configMap = redisTemplate.opsForHash().entries(configKey);
 
-            if (config == null) {
-                // 2. 缓存未命中，从数据库查询
+            RoomConfigVO config;
+            if (!configMap.isEmpty()) {
+                // 使用 MapUtils 转换
+                config = MapUtils.mapToObject(configMap, RoomConfigVO.class);
+            } else {
+                // 2. 缓存未命中,从数据库查询
                 RoomPO room = roomPOMapper.selectByPrimaryKey(Long.parseLong(roomId));
                 if (room == null) {
-                    log.warn("[SFU-gRPC] Room not found - roomId: {}", roomId);
-                    RoomConfigResponse response = RoomConfigResponse.newBuilder()
-                            .setMaxParticipants(0)
-                            .setEnableRecording(false)
-                            .build();
-                    responseObserver.onNext(response);
-                    responseObserver.onCompleted();
+                    log.warn("[SFU-gRPC] 房间不存在 - roomId: {}", roomId);
+                    sendDefaultRoomConfigResponse(responseObserver);
                     return;
                 }
 
                 config = RoomConfigVO.builder()
                         .maxParticipants(room.getMaxParticipants())
+                        .enableRecording(false)
                         .build();
 
-                // 3. 更新缓存
-                redisTemplate.opsForValue().set(
+                // 3. 使用 MapUtils 转换并更新缓存
+                Map<String, String> configHashMap = MapUtils.objectToStringMap(config);
+                redisTemplate.opsForHash().putAll(configKey, configHashMap);
+                redisTemplate.expire(
                         configKey,
-                        config,
                         RedisKeyConstants.ROOM_CONFIG_EXPIRE_TIME,
                         TimeUnit.SECONDS
                 );
@@ -367,16 +303,11 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             responseObserver.onNext(response);
             responseObserver.onCompleted();
 
-            log.info("[SFU-gRPC] getRoomConfig success - roomId: {}", roomId);
+            log.info("[SFU-gRPC] 房间配置获取成功 - roomId: {}", roomId);
 
         } catch (Exception e) {
-            log.error("[SFU-gRPC] getRoomConfig error", e);
-            RoomConfigResponse response = RoomConfigResponse.newBuilder()
-                    .setMaxParticipants(0)
-                    .setEnableRecording(false)
-                    .build();
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
+            log.error("[SFU-gRPC] 获取房间配置异常", e);
+            sendDefaultRoomConfigResponse(responseObserver);
         }
     }
 
@@ -446,6 +377,128 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
 
     // ==================== 私有辅助方法 ====================
 
+    private void sendAckSuccessResponse(
+            StreamObserver<AckResponse> responseObserver,
+            String message) {
+        AckResponse response = AckResponse.newBuilder()
+                .setSuccess(true)
+                .setMessage(message)
+                .build();
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    private void sendDefaultRoomConfigResponse(
+            StreamObserver<RoomConfigResponse> responseObserver) {
+        RoomConfigResponse response = RoomConfigResponse.newBuilder()
+                .setMaxParticipants(0)
+                .setEnableRecording(false)
+                .build();
+        responseObserver.onNext(response);
+        responseObserver.onCompleted();
+    }
+
+    private void cacheParticipantInfo(String roomId, String userId,
+                                      String username, long timestamp) {
+        // Hash 存储参与者详细信息
+        String participantInfoKey = String.format(
+                RedisKeyConstants.PARTICIPANT_INFO_KEY,
+                roomId,
+                userId
+        );
+
+        Map<String, Object> participantInfo = new HashMap<>();
+        participantInfo.put("userId", userId);
+        participantInfo.put("username", username);
+        participantInfo.put("joinTime", timestamp);
+        participantInfo.put("audioMuted", true);
+        participantInfo.put("videoMuted", true);
+
+        redisTemplate.opsForHash().putAll(participantInfoKey, participantInfo);
+        redisTemplate.expire(
+                participantInfoKey,
+                RedisKeyConstants.PARTICIPANT_INFO_EXPIRE_TIME,
+                TimeUnit.SECONDS
+        );
+
+        // Set 存储房间参与者列表
+        String participantsSetKey = String.format(
+                RedisKeyConstants.ROOM_PARTICIPANTS_KEY,
+                roomId
+        );
+        redisTemplate.opsForSet().add(participantsSetKey, userId);
+        redisTemplate.expire(
+                participantsSetKey,
+                RedisKeyConstants.PARTICIPANT_INFO_EXPIRE_TIME,
+                TimeUnit.SECONDS
+        );
+
+        log.debug("[SFU-gRPC] 参与者信息已缓存 - userId: {}", userId);
+    }
+
+    /**
+     * 发送参与者事件到 MQ
+     */
+    private void sendParticipantEventToMQ(String roomId, String userId,
+                                          String username, String eventType,
+                                          long timestamp) {
+        taskExecutor.execute(() -> {
+            try {
+                ParticipantEventDTO eventDTO = ParticipantEventDTO.builder()
+                        .roomId(roomId)
+                        .userId(userId)
+                        .username(username)
+                        .eventType(eventType)
+                        .timestamp(timestamp)
+                        .build();
+
+                String destination = MQConstants.TOPIC_PARTICIPANT_EVENT + ":"
+                        + (eventType.equals("joined")
+                        ? MQConstants.TAG_PARTICIPANT_JOINED
+                        : MQConstants.TAG_PARTICIPANT_LEFT);
+
+                rocketMQTemplate.convertAndSend(
+                        destination,
+                        JsonUtils.toJsonString(eventDTO)
+                );
+
+                log.info("[SFU-gRPC] MQ消息发送成功 - 事件类型: {}, userId: {}",
+                        eventType, userId);
+            } catch (Exception e) {
+                log.error("[SFU-gRPC] MQ消息发送失败 - eventType: {}", eventType, e);
+            }
+        });
+    }
+
+
+    /**
+     * 记录房间系统消息
+     */
+    private void recordSystemMessage(Long roomId, Long userId,
+                                     String username, String action) {
+        taskExecutor.execute(() -> {
+            try {
+                Long messageId = Long.valueOf(idGeneratorRpcService.getRoomMsgId());
+
+                RoomMessagePO message = RoomMessagePO.builder()
+                        .id(messageId)
+                        .roomId(roomId)
+                        .senderId(userId)
+                        .messageType(1) // 1-系统消息
+                        .contentType(1) // 1-文本
+                        .content("用户 " + username + " " + action)
+                        .createdTime(LocalDateTime.now())
+                        .build();
+
+                roomMessagePOMapper.insert(message);
+                log.info("[SFU-gRPC] 房间消息记录成功 - messageId: {}", messageId);
+            } catch (Exception e) {
+                log.error("[SFU-gRPC] 房间消息记录失败", e);
+            }
+        });
+    }
+
+
     /**
      * 从缓存或数据库获取房间信息
      */
@@ -511,29 +564,25 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
     }
 
     /**
-     * 更新参与者缓存
+     * 移除参与者缓存
      */
-    private void updateParticipantCache(String roomId, String userId, String username, boolean isJoin) {
-        String participantsKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
-        String participantInfoKey = String.format(RedisKeyConstants.PARTICIPANT_INFO_KEY, roomId, userId);
+    private void removeParticipantCache(String roomId, String userId) {
+        // 删除 Hash 中的参与者详细信息
+        String participantInfoKey = String.format(
+                RedisKeyConstants.PARTICIPANT_INFO_KEY,
+                roomId,
+                userId
+        );
+        redisTemplate.delete(participantInfoKey);
 
-        if (isJoin) {
-            // 加入房间
-            redisTemplate.opsForSet().add(participantsKey, userId);
-            redisTemplate.expire(participantsKey, RedisKeyConstants.PARTICIPANT_INFO_EXPIRE_TIME, TimeUnit.SECONDS);
+        // 从 Set 中移除参与者ID
+        String participantsSetKey = String.format(
+                RedisKeyConstants.ROOM_PARTICIPANTS_KEY,
+                roomId
+        );
+        redisTemplate.opsForSet().remove(participantsSetKey, userId);
 
-            Map<String, Object> participantInfo = new HashMap<>();
-            participantInfo.put("userId", userId);
-            participantInfo.put("username", username);
-            participantInfo.put("joinTime", System.currentTimeMillis());
-
-            redisTemplate.opsForHash().putAll(participantInfoKey, participantInfo);
-            redisTemplate.expire(participantInfoKey, RedisKeyConstants.PARTICIPANT_INFO_EXPIRE_TIME, TimeUnit.SECONDS);
-        } else {
-            // 离开房间
-            redisTemplate.opsForSet().remove(participantsKey, userId);
-            redisTemplate.delete(participantInfoKey);
-        }
+        log.debug("[SFU-gRPC] 参与者缓存已清理 - userId: {}", userId);
     }
 
     /**

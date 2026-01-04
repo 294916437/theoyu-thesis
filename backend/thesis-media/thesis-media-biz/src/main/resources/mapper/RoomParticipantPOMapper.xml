@@ -39,6 +39,22 @@
       #{joinedAt,jdbcType=TIMESTAMP}, #{leftAt,jdbcType=TIMESTAMP}, #{createdTime,jdbcType=TIMESTAMP}, 
       #{updatedTime,jdbcType=TIMESTAMP})
   </insert>
+
+  <insert id="insertOrUpdate" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
+    INSERT INTO room_participant (
+      room_id, user_id, joined_at, audio_muted, video_muted,
+      role, status, created_time, updated_time
+    ) VALUES (
+               #{roomId}, #{userId}, #{joinedAt}, #{audioMuted}, #{videoMuted},
+               #{role}, #{status}, #{createdTime}, #{updatedTime}
+             )
+      ON DUPLICATE KEY UPDATE
+                         status = 1,
+                         joined_at = #{joinedAt},
+                         updated_time = #{updatedTime}
+  </insert>
+
+
   <insert id="insertSelective" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
     insert into t_room_participant
     <trim prefix="(" suffix=")" suffixOverrides=",">
@@ -166,13 +182,20 @@
       AND `status` = #{status}
   </select>
 
-  <!-- 更新参与者状态 -->
+  <!-- 更新参与者离线状态 -->
   <update id="updateStatusByRoomIdAndUserId">
     UPDATE t_room_participant
-    SET `status` = #{status},
+    SET `status` = 2
         left_at = #{leftAt}
     WHERE room_id = #{roomId}
       AND user_id = #{userId}
+  </update>
+  <!-- 更新参与者在线状态 -->
+  <update id="updateStatusToOnline">
+    UPDATE room_participant
+    SET status = 1,
+        updated_time = #{updatedTime}
+    WHERE room_id = #{roomId} AND user_id = #{userId}
   </update>
   <update id="updateByRoomIdAndUserId" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO">
     UPDATE room_participant
@@ -187,6 +210,7 @@
     </set>
     WHERE room_id = #{roomId} AND user_id = #{userId}
   </update>
+
 
   <!-- 查询房间在线参与者列表 -->
   <select id="selectByRoomIdAndStatus" resultMap="BaseResultMap">

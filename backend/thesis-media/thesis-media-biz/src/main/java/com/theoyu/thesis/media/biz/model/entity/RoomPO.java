@@ -41,5 +41,4 @@ public class RoomPO {
 
     private String settings;
 
-
 }

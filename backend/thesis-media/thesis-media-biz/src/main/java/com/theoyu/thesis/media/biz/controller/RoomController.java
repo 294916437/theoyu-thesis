@@ -11,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/media/room")
+@RequestMapping("/room")
 @Slf4j
 public class RoomController {
 
@@ -20,7 +20,7 @@ public class RoomController {
 
     /**
      * 创建会议
-     * POST /media/room/create
+     * POST /room/create
      */
     @PostMapping("/create")
     @ApiOperationLog(description = "创建会议")
@@ -31,7 +31,7 @@ public class RoomController {
 
     /**
      * 获取会议信息
-     * GET /media/room/info/{roomIdOrNo}
+     * GET /room/info/{roomIdOrNo}
      */
     @GetMapping("/info/{roomIdOrNo}")
     @ApiOperationLog(description = "获取会议信息")
@@ -42,7 +42,7 @@ public class RoomController {
 
     /**
      * 获取会议详情
-     * GET /media/room/detail/{roomIdOrNo}
+     * GET /room/detail/{roomIdOrNo}
      */
     @GetMapping("/detail/{roomIdOrNo}")
     @ApiOperationLog(description = "获取会议详情")
@@ -53,7 +53,7 @@ public class RoomController {
 
     /**
      * 加入会议（预验证）
-     * POST /media/room/join
+     * POST /room/join
      */
     @PostMapping("/join")
     @ApiOperationLog(description = "加入会议")
@@ -64,7 +64,7 @@ public class RoomController {
 
     /**
      * 获取即将开始的会议
-     * GET /media/room/recent?page=1&size=10
+     * GET /room/recent?page=1&size=10
      */
     @GetMapping("/recent")
     @ApiOperationLog(description = "获取最近参加过的会议")
@@ -76,7 +76,7 @@ public class RoomController {
 
     /**
      * 获取即将开始的会议
-     * GET /media/room/upcoming?page=1&size=10
+     * GET /room/upcoming?page=1&size=10
      */
     @GetMapping("/upcoming")
     @ApiOperationLog(description = "获取即将开始的会议")
@@ -88,7 +88,7 @@ public class RoomController {
 
     /**
      * 关闭会议
-     * POST /media/room/close
+     * POST /room/close
      */
     @PostMapping("/close")
     @ApiOperationLog(description = "关闭会议")

@@ -59,14 +59,6 @@
 							@unpin-participant="handleUnpinParticipant"
 						/>
 
-						<!-- 屏幕共享覆盖层 -->
-						<ScreenShare
-							v-if="screenShare.active"
-							:stream="screenShare.stream"
-							:presenter="screenShare.presenter"
-							:participants="participants"
-						/>
-
 						<!-- 网络断开提示 -->
 						<v-fade-transition>
 							<div v-if="!online" class="connection-overlay">
@@ -413,12 +405,21 @@
 													:icon="screenSharing ? 'mdi-monitor-off' : 'mdi-monitor-share'"
 													:color="screenSharing ? 'success' : 'surface'"
 													:variant="screenSharing ? 'flat' : 'elevated'"
+													:disabled="!screenSharing && hasScreenShare"
 													size="large"
 													class="control-btn"
-													@click="screenSharing = !screenSharing"
+													@click="handleScreenShareToggle"
 												></v-btn>
 											</template>
-											<span>{{ screenSharing ? '停止共享' : '共享屏幕' }}</span>
+											<span>
+												{{
+													screenSharing
+														? '停止共享'
+														: hasScreenShare
+															? '已有人在共享'
+															: '共享屏幕'
+												}}
+											</span>
 										</v-tooltip>
 
 										<!-- 录制 -->
@@ -808,6 +809,8 @@ const {
 	videoEnabled,
 	screenSharing,
 	screenStream,
+	hasScreenShare,
+	getScreenSharingParticipant,
 	connectionState,
 	connectionQuality,
 	stats,
@@ -976,26 +979,49 @@ const videoContainerHeight = computed(() => {
 	return `calc(100vh - ${topBarHeight}px - ${controlBarHeight}px)`
 })
 
-// 屏幕共享信息
+// 屏幕共享
 const screenShare = computed(() => {
-	const sharingPeer = participants.value.find(p =>
-		Object.values(p.producers || {}).some(producer => producer.appData?.source === 'screen'),
-	)
+	const sharingPeer = remoteParticipants.value.find(p => p.streams?.screen)
+	const localSharing = screenSharing.value && localParticipant.value?.streams?.screen
+	const peer = sharingPeer || (localSharing ? localParticipant.value : null)
 
-	if (sharingPeer) {
-		const screenProducer = Object.values(sharingPeer.producers).find(
-			producer => producer.appData?.source === 'screen',
-		)
-
+	if (peer?.streams?.screen) {
 		return {
 			active: true,
-			stream: screenProducer?.track ? new MediaStream([screenProducer.track]) : null,
-			presenter: sharingPeer.username,
+			stream: peer.streams.screen,
+			presenter: {
+				id: peer.peerId,
+				name: peer.username,
+				isLocal: peer.peerId === peerId.value,
+			},
+			isLocal: peer.peerId === peerId.value,
 		}
 	}
 
-	return { active: false, stream: null, presenter: null }
+	return {
+		active: false,
+		stream: null,
+		presenter: null,
+		isLocal: false,
+	}
 })
+
+const handleScreenShareToggle = async () => {
+	try {
+		if (screenSharing.value) {
+			await stopScreenShare()
+		} else {
+			// 检查是否已经有人在共享
+			if (hasScreenShare.value) {
+				$notify.warning('已有参与者正在共享屏幕')
+				return
+			}
+			await startScreenShare()
+		}
+	} catch (error) {
+		console.error('Screen share toggle failed', error)
+	}
+}
 
 // 综合连接质量
 const overallConnectionQuality = computed(() => {
@@ -1076,14 +1102,6 @@ watch(audioEnabled, async enabled => {
 watch(videoEnabled, async enabled => {
 	console.log('Video state changed', enabled)
 	await toggleVideo()
-})
-
-watch(screenSharing, async sharing => {
-	if (sharing) {
-		await startScreenShare()
-	} else {
-		await stopScreenShare()
-	}
 })
 
 // 设备切换
@@ -1252,7 +1270,6 @@ const confirmLeaveMeeting = async () => {
 		await leaveMeeting()
 
 		router.push('/')
-		$notify.success('已离开会议')
 	} catch (error) {
 		console.error('Failed to leave meeting', error)
 		$notify.error('离开会议失败')

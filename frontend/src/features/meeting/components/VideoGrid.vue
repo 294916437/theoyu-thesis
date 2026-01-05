@@ -55,6 +55,7 @@
 				:class="{
 					'is-speaking': participant.isSpeaking,
 					'video-disabled': !participant.videoEnabled,
+					'is-screen-sharing': participant.isScreenSharing,
 					...tileClass,
 				}"
 			>
@@ -84,11 +85,13 @@
 							class="user-name-chip"
 						>
 							<template #prepend>
-								<v-icon v-if="!participant.audioEnabled" size="x-small" color="error">
+								<v-icon v-if="participant.isScreenSharing" size="x-small"> mdi-monitor-share </v-icon>
+								<v-icon v-else-if="!participant.audioEnabled" size="x-small" color="error">
 									mdi-microphone-off
 								</v-icon>
 							</template>
 							{{ participant.name }}
+							<span v-if="participant.isScreenSharing" class="ml-1 text-caption"> - 屏幕共享 </span>
 						</v-chip>
 					</div>
 
@@ -226,13 +229,6 @@ const pinnedParticipantId = ref(null)
 const formattedParticipants = computed(() => {
 	return props.participants
 		.map(p => {
-			console.log(`Formatting participant ${p.username}:`, {
-				peerId: p.peerId,
-				hasStreams: !!p.streams,
-				audioStream: p.streams?.audio ? 'yes' : 'no',
-				videoStream: p.streams?.video ? 'yes' : 'no',
-			})
-
 			// 合并音视频流
 			let combinedStream = null
 
@@ -279,13 +275,7 @@ const formattedParticipants = computed(() => {
 				audioEnabled = audioTracks.length > 0 && audioTracks.some(t => t.readyState === 'live' && t.enabled)
 				videoEnabled = videoTracks.length > 0 && videoTracks.some(t => t.readyState === 'live' && t.enabled)
 			}
-
-			console.log(`Result for ${p.username}:`, {
-				streamId: combinedStream?.id,
-				totalTracks: combinedStream?.getTracks().length || 0,
-				audioEnabled,
-				videoEnabled,
-			})
+			const isScreenSharing = p.producers?.video?.appData?.source === 'screen'
 
 			return {
 				id: p.peerId,
@@ -294,6 +284,7 @@ const formattedParticipants = computed(() => {
 				stream: combinedStream,
 				audioEnabled,
 				videoEnabled,
+				isScreenSharing,
 				isSpeaking: false,
 				isLocal: p.isLocal || false,
 				connectionQuality: 'good',
@@ -602,6 +593,10 @@ onUnmounted(() => {
 }
 .video-tile.video-disabled {
 	background: rgba(var(--v-theme-surface-variant), 0.5);
+}
+.video-tile.is-screen-sharing {
+	border-color: rgb(var(--v-theme-success));
+	box-shadow: 0 0 20px rgba(var(--v-theme-success), 0.5);
 }
 
 .video-tile.is-local {

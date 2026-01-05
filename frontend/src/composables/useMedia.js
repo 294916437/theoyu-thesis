@@ -262,8 +262,8 @@ export function useMedia() {
 			if (!participant.consumers) participant.consumers = {}
 			if (!participant.producers) participant.producers = {}
 
-			// 创建或更新对应类型的 MediaStream
-			const kind = consumer.track.kind // 'audio' 或 'video'
+			// 创建或更新对应类型的 MediaStream(screen/audio/video)
+			const kind = consumer.track.kind
 
 			// 创建或更新流
 			if (!participant.streams[kind]) {
@@ -598,11 +598,12 @@ export function useMedia() {
 			screenStream.value = stream
 			const videoTrack = stream.getVideoTracks()[0]
 
-			// 生产屏幕共享流
+			// 使用统一的 produce 方法，kind 设为 'screen'
 			const producer = await mediasoupClient.produce(videoTrack, {
-				kind: 'video',
-				appData: { source: 'screen' },
+				kind: 'screen',
 			})
+
+			updateLocalProducer('screen', producer)
 
 			// 更新本地参与者
 			const localPeer = participants.value.find(p => p.peerId === peerId.value)
@@ -612,15 +613,22 @@ export function useMedia() {
 			}
 
 			screenSharing.value = true
-			console.log('Screen share started')
 
-			// 监听用户停止共享
+			// 监听用户主动停止共享（点击浏览器的停止共享按钮）
 			videoTrack.onended = () => {
+				console.log('Screen share track ended by user')
 				stopScreenShare()
 			}
 
-			$notify.success('已开始屏幕共享')
+			// 监听 producer 状态
+			producer.on('transportclose', () => {
+				console.log('Screen share transport closed')
+				stopScreenShare()
+			})
+
+			return producer
 		} catch (error) {
+			screenSharing.value = false // 确保状态同步
 			console.error('Failed to start screen share', error)
 			$notify.error('屏幕共享失败')
 			throw error
@@ -628,44 +636,75 @@ export function useMedia() {
 	}
 
 	/**
-	 * 停止屏幕共享
+	 * 停止屏幕共享 - 修复版
 	 */
 	async function stopScreenShare() {
 		try {
+			// 防止重复调用
+			if (!screenSharing.value && !screenStream.value) {
+				console.log('Screen share already stopped')
+				return
+			}
+
+			// 1. 停止本地屏幕流
 			if (screenStream.value) {
-				screenStream.value.getTracks().forEach(track => track.stop())
+				screenStream.value.getTracks().forEach(track => {
+					track.stop()
+					console.log('Stopped screen track:', track.id)
+				})
 				screenStream.value = null
 			}
 
-			// 关闭屏幕共享生产者
-			const screenProducer = Array.from(mediasoupClient.producers.values()).find(
-				p => p.appData?.source === 'screen',
-			)
+			// 2. 关闭 producer 并通知服务器
+			const screenProducer = mediasoupClient.producers.get('screen')
 
 			if (screenProducer) {
-				await socketClient.emit('closeProducer', {
-					roomId: roomId.value,
-					producerId: screenProducer.id,
-				})
+				// 先通知服务器
+				try {
+					await socketClient.emit('closeProducer', {
+						roomId: roomId.value,
+						producerId: screenProducer.id,
+					})
+					console.log('Server notified about screen producer closure')
+				} catch (error) {
+					console.error('Failed to notify server:', error)
+				}
 
+				// 再关闭本地 producer
 				screenProducer.close()
 				mediasoupClient.producers.delete('screen')
-
-				// 更新本地参与者
-				const localPeer = participants.value.find(p => p.peerId === peerId.value)
-				if (localPeer) {
-					delete localPeer.producers.screen
-					delete localPeer.streams.screen
-				}
 			}
 
+			// 3. 更新本地参与者状态
+			const localPeer = participants.value.find(p => p.peerId === peerId.value)
+			if (localPeer) {
+				delete localPeer.producers.screen
+				delete localPeer.streams.screen
+			}
+
+			// 4. 更新状态
 			screenSharing.value = false
-			console.log('Screen share stopped')
-			$notify.info('已停止屏幕共享')
+
+			console.log('Screen share stopped successfully')
 		} catch (error) {
 			console.error('Failed to stop screen share', error)
+			screenSharing.value = false
+			screenStream.value = null
 		}
 	}
+	/**
+	 * 获取当前正在共享屏幕的参与者
+	 */
+	function getScreenSharingParticipant() {
+		return participants.value.find(p => p.producers?.screen || p.streams?.screen)
+	}
+
+	/**
+	 * 检查是否有人在共享屏幕
+	 */
+	const hasScreenShare = computed(() => {
+		return participants.value.some(p => p.streams?.screen)
+	})
 
 	/**
 	 * 设置首选层（Simulcast/SVC）
@@ -928,6 +967,7 @@ export function useMedia() {
 		connectionState,
 		connectionQuality,
 		stats,
+		hasScreenShare,
 
 		// 方法
 		joinMeeting,
@@ -941,5 +981,6 @@ export function useMedia() {
 		getStats,
 		changeAudioDevice,
 		changeVideoDevice,
+		getScreenSharingParticipant,
 	}
 }

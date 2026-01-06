@@ -195,7 +195,8 @@ const {
 } = useAsyncState(
 	async () => {
 		try {
-			return await fetchUpcomingMeetings()
+			const res = await fetchUpcomingMeetings()
+			return res?.data || []
 		} catch (error) {
 			console.error('Failed to load upcoming meetings:', error)
 			return []
@@ -213,7 +214,8 @@ const {
 } = useAsyncState(
 	async () => {
 		try {
-			return await fetchRecentMeetings()
+			const res = await fetchRecentMeetings()
+			return res?.data || []
 		} catch (error) {
 			console.error('Failed to load recent meetings:', error)
 			return []
@@ -225,9 +227,6 @@ const {
 
 // 显示的最近会议列表
 const displayRecentMeetings = computed(() => {
-	if (!Array.isArray(recentMeetings.value)) {
-		return []
-	}
 	return showAllRecent.value ? recentMeetings.value : recentMeetings.value.slice(0, 5)
 })
 

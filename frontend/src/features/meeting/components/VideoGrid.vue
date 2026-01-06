@@ -228,6 +228,7 @@ const pinnedParticipantId = ref(null)
 // 格式化参与者数据
 const formattedParticipants = computed(() => {
 	return props.participants
+		.filter(p => !p.isLocal) // 过滤掉本地参与者
 		.map(p => {
 			// 合并音视频流
 			let combinedStream = null
@@ -238,13 +239,9 @@ const formattedParticipants = computed(() => {
 				// 添加音频轨道
 				if (p.streams.audio && p.streams.audio.getTracks) {
 					const audioTracks = p.streams.audio.getAudioTracks()
-					console.log(`Audio tracks for ${p.username}:`, audioTracks.length)
 					audioTracks.forEach(track => {
 						if (track.readyState === 'live') {
 							combinedStream.addTrack(track)
-							console.log(`Added audio track ${track.id} (${track.readyState})`)
-						} else {
-							console.warn(`Skipped audio track ${track.id} (${track.readyState})`)
 						}
 					})
 				}
@@ -252,19 +249,15 @@ const formattedParticipants = computed(() => {
 				// 添加视频轨道
 				if (p.streams.video && p.streams.video.getTracks) {
 					const videoTracks = p.streams.video.getVideoTracks()
-					console.log(`Video tracks for ${p.username}:`, videoTracks.length)
 					videoTracks.forEach(track => {
 						if (track.readyState === 'live') {
 							combinedStream.addTrack(track)
-							console.log(`Added video track ${track.id} (${track.readyState})`)
-						} else {
-							console.warn(`Skipped video track ${track.id} (${track.readyState})`)
 						}
 					})
 				}
 			}
 
-			// 判断音视频状态（从实际轨道判断）
+			// 判断音视频状态
 			let audioEnabled = false
 			let videoEnabled = false
 
@@ -275,6 +268,7 @@ const formattedParticipants = computed(() => {
 				audioEnabled = audioTracks.length > 0 && audioTracks.some(t => t.readyState === 'live' && t.enabled)
 				videoEnabled = videoTracks.length > 0 && videoTracks.some(t => t.readyState === 'live' && t.enabled)
 			}
+
 			const isScreenSharing = p.producers?.video?.appData?.source === 'screen'
 
 			return {
@@ -286,7 +280,7 @@ const formattedParticipants = computed(() => {
 				videoEnabled,
 				isScreenSharing,
 				isSpeaking: false,
-				isLocal: p.isLocal || false,
+				isLocal: false, // 确保标记为远程参与者
 				connectionQuality: 'good',
 			}
 		})
@@ -295,16 +289,18 @@ const formattedParticipants = computed(() => {
 
 // 所有参与者(包含本地)
 const allParticipantsWithLocal = computed(() => {
-	return [
-		{
-			id: 'local',
-			name: '我',
-			stream: props.localStream,
-			videoEnabled: props.localVideoEnabled,
-			isLocal: true,
-		},
-		...formattedParticipants.value,
-	].filter(p => p.stream)
+	// 确保本地参与者数据正确
+	const local = {
+		id: 'local',
+		name: '我',
+		stream: props.localStream,
+		videoEnabled: props.localVideoEnabled,
+		audioEnabled: props.localAudioEnabled,
+		isLocal: true,
+	}
+
+	// 只包含远程参与者（已通过 formattedParticipants 过滤）
+	return [local, ...formattedParticipants.value].filter(p => p.stream)
 })
 const hasValidVideoTrack = participant => {
 	if (!participant.stream) return false

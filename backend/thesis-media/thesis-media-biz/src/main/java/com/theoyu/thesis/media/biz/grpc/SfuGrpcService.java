@@ -164,8 +164,8 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
                     .roomId(roomIdLong)
                     .userId(userIdLong)
                     .joinedAt(now)
-                    .audioMuted(true)
-                    .videoMuted(true)
+                    .audioMuted(false)
+                    .videoMuted(false)
                     .role(1) // 1-普通成员
                     .status(1) // 1-在线
                     .createdTime(now)
@@ -411,8 +411,8 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
         participantInfo.put("userId", userId);
         participantInfo.put("username", username);
         participantInfo.put("joinTime", timestamp);
-        participantInfo.put("audioMuted", true);
-        participantInfo.put("videoMuted", true);
+        participantInfo.put("audioMuted", false);
+        participantInfo.put("videoMuted", false);
 
         redisTemplate.opsForHash().putAll(participantInfoKey, participantInfo);
         redisTemplate.expire(

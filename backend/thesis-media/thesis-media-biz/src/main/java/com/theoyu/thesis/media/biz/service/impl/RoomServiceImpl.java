@@ -349,7 +349,6 @@ public class RoomServiceImpl implements RoomService {
             Long cacheSize = redisTemplate.opsForZSet().size(cacheKey);
 
             List<RecentRoomResVO> resultList;
-            long totalCount;
 
             if (cacheSize != null && cacheSize > 0) {
                 // 缓存命中：使用 ZSet 的范围查询
@@ -362,25 +361,21 @@ public class RoomServiceImpl implements RoomService {
 
                 if (cachedRoomIds != null && !cachedRoomIds.isEmpty()) {
                     resultList = buildRecentRoomsFromCache(cachedRoomIds, userId);
-                    totalCount = cacheSize;
-                    log.debug("[RoomService] 缓存命中 - userId: {}, count: {}", userId, totalCount);
                 } else {
                     resultList = Collections.emptyList();
                 }
             } else {
                 // 缓存未命中：查询数据库
-                log.debug("[RoomService] 缓存未命中，查询数据库 - userId: {}", userId);
-
-                long offset = PageResponse.getOffset(page, size);
-                List<RoomParticipantPO> participants = roomParticipantPOMapper
+                Long offset = PageResponse.getOffset(page, size);
+                List<RoomParticipantPO> records = roomParticipantPOMapper
                         .selectRecentRoomsByUserId(userId, offset, size);
 
 
-                if (!participants.isEmpty()) {
-                    resultList = buildRecentRoomsFromDB(participants);
+                if (!records.isEmpty()) {
+                    resultList = buildRecentRoomsFromDB(records);
 
                     // 异步回写缓存
-                    asyncCacheRecentRooms(userId, participants);
+                    asyncCacheRecentRooms(userId, records);
                 } else {
                     resultList = Collections.emptyList();
                 }

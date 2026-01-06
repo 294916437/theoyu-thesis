@@ -1271,7 +1271,6 @@ const confirmLeaveMeeting = async () => {
 		router.push('/')
 	} catch (error) {
 		console.error('Failed to leave meeting', error)
-		$notify.error('离开会议失败')
 		router.push('/')
 	} finally {
 		isLoading.value = false

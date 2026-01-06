@@ -111,8 +111,6 @@ export class MediasoupClient {
 				consuming: true,
 			})
 
-			console.log('Creating recv transport', transportInfo)
-
 			this.recvTransport = this.device.createRecvTransport({
 				id: transportInfo.id,
 				iceParameters: transportInfo.iceParameters,

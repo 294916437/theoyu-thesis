@@ -44,6 +44,7 @@ export function useMedia() {
 				audio: new MediaStream(localStream.value.getAudioTracks()),
 				video: new MediaStream(localStream.value.getVideoTracks()),
 			}
+			local.isLocal = true
 		}
 		return local
 	})
@@ -303,10 +304,6 @@ export function useMedia() {
 					participant.streams[kind].removeTrack(consumer.track)
 				}
 			}
-			// 如果是屏幕共享，发送通知
-			if (isScreenShare) {
-				$notify.info(`${participant.username} 开始共享屏幕`)
-			}
 
 			console.log(`Consumer track added ${remotePeerId} ${kind}`)
 
@@ -349,8 +346,6 @@ export function useMedia() {
 					consumers: {},
 					isLocal: false,
 				})
-
-				$notify.info(`${data.username} 加入了会议`)
 			}
 		})
 
@@ -444,9 +439,6 @@ export function useMedia() {
 					if (stream.getTracks().length === 0) {
 						delete participant.streams[kind]
 					}
-				}
-				if (isScreenShare) {
-					$notify.info(`${participant.username} 停止了屏幕共享`)
 				}
 
 				// 从生产者列表中移除
@@ -591,26 +583,24 @@ export function useMedia() {
 	}
 
 	/**
-	 * 开始屏幕共享
-	 */
-	/**
-	 * 开始屏幕共享 - 替换视频流方案
+	 * 开始屏幕共享,思路如下：
+	 * 1. 关闭原 camera video producer
+	 * 2. 创建新的 screen video producer
+	 * 3. 更新本地流状态
 	 */
 	async function startScreenShare() {
 		try {
-			// 1. 检查是否已经在共享
 			if (screenSharing.value) {
 				$notify.warning('您已在共享屏幕')
 				return
 			}
 
-			// 2. 检查是否有其他人在共享
 			if (hasScreenShare.value && !screenShareInfo.value.presenter.isLocal) {
 				$notify.warning('已有参与者正在共享屏幕')
 				return
 			}
 
-			// 3. 获取屏幕共享流
+			// 1. 获取屏幕共享流
 			const stream = await navigator.mediaDevices.getDisplayMedia({
 				video: {
 					cursor: 'always',
@@ -625,40 +615,41 @@ export function useMedia() {
 			screenStream.value = stream
 			const screenVideoTrack = stream.getVideoTracks()[0]
 
-			// 4. 保存原始摄像头轨道
+			// 2. 保存并关闭原 camera producer
 			const currentVideoProducer = mediasoupClient.producers.get('video')
 			if (currentVideoProducer) {
+				// 保存原始轨道（用于恢复）
 				originalVideoTrack.value = currentVideoProducer.track
 
-				// 暂停原摄像头 producer（不关闭，保留连接）
-				await mediasoupClient.pauseProducer('video')
-				await socketClient.emit('pauseProducer', {
+				// 通知服务器关闭原 producer
+				await socketClient.emit('closeProducer', {
 					roomId: roomId.value,
 					producerId: currentVideoProducer.id,
 				})
 
-				console.log('Original camera paused')
-			} else {
-				console.warn('No existing video producer to pause')
+				// 关闭本地 producer
+				currentVideoProducer.close()
+				mediasoupClient.producers.delete('video')
+
+				console.log('Original camera producer closed')
 			}
 
-			// 5. 创建新的屏幕共享 producer（使用 video kind）
+			// 3. 创建新的屏幕共享 producer（使用 video kind）
 			const screenProducer = await mediasoupClient.produce(screenVideoTrack, {
 				kind: 'video',
 				appData: {
 					source: 'screen',
 					shareType: 'display',
-					originalProducerId: currentVideoProducer?.id,
 				},
 			})
 
-			// 使用 'screen' 作为 key 存储（便于查找）
-			mediasoupClient.producers.set('screen', screenProducer)
+			// 存储为 video producer（替代原来的摄像头）
+			mediasoupClient.producers.set('video', screenProducer)
 
-			// 6. 更新本地参与者状态
+			// 4. 更新本地参与者状态
 			const localPeer = participants.value.find(p => p.peerId === peerId.value)
 			if (localPeer) {
-				// 标记当前 video producer 为屏幕共享
+				// 更新 producers 标记
 				localPeer.producers.video = {
 					id: screenProducer.id,
 					kind: 'video',
@@ -666,32 +657,38 @@ export function useMedia() {
 					appData: { source: 'screen' },
 				}
 
-				// 更新流（将屏幕轨道替换到 video 流中）
+				// 替换本地流中的视频轨道
 				if (localPeer.streams.video) {
 					const videoStream = localPeer.streams.video
 					const oldTracks = videoStream.getVideoTracks()
-					oldTracks.forEach(track => videoStream.removeTrack(track))
+					oldTracks.forEach(track => {
+						track.stop()
+						videoStream.removeTrack(track)
+					})
 					videoStream.addTrack(screenVideoTrack)
 				} else {
 					localPeer.streams.video = new MediaStream([screenVideoTrack])
+				}
+
+				// 同步到 localStream
+				if (localStream.value) {
+					const oldTracks = localStream.value.getVideoTracks()
+					oldTracks.forEach(track => {
+						track.stop()
+						localStream.value.removeTrack(track)
+					})
+					localStream.value.addTrack(screenVideoTrack)
 				}
 			}
 
 			screenSharing.value = true
 
-			// 7. 监听用户主动停止共享（浏览器按钮）
+			// 5. 监听用户主动停止共享
 			screenVideoTrack.onended = async () => {
-				console.log('Screen share ended by user via browser button')
+				console.log('Screen share ended by user')
 				await stopScreenShare()
 			}
 
-			// 8. 监听 producer 关闭
-			screenProducer.on('transportclose', () => {
-				console.log('Screen share transport closed')
-				stopScreenShare()
-			})
-
-			$notify.success('已开始屏幕共享')
 			console.log('Screen share started, producer ID:', screenProducer.id)
 
 			return screenProducer
@@ -700,21 +697,20 @@ export function useMedia() {
 
 			if (error.name === 'NotAllowedError') {
 				console.log('User cancelled screen share')
-				// 用户取消，不显示错误
 			} else {
 				console.error('Failed to start screen share:', error)
 				$notify.error('屏幕共享失败')
 			}
-
-			// 恢复原摄像头（如果之前暂停了）
-			await restoreCameraVideo()
 
 			throw error
 		}
 	}
 
 	/**
-	 * 停止屏幕共享 - 修复版
+	 * 停止屏幕共享
+	 * 1. 关闭 screen producer
+	 * 2. 重新创建 camera video producer
+	 * 3. 恢复本地流状态
 	 */
 	async function stopScreenShare() {
 		try {
@@ -725,7 +721,7 @@ export function useMedia() {
 
 			console.log('Stopping screen share...')
 
-			// 1. 停止屏幕共享流的所有轨道
+			// 1. 停止屏幕共享流
 			if (screenStream.value) {
 				screenStream.value.getTracks().forEach(track => {
 					track.stop()
@@ -735,104 +731,108 @@ export function useMedia() {
 			}
 
 			// 2. 关闭屏幕共享 producer
-			const screenProducer = mediasoupClient.producers.get('screen')
-			if (screenProducer) {
-				try {
-					// 通知服务器关闭
-					await socketClient.emit('closeProducer', {
-						roomId: roomId.value,
-						producerId: screenProducer.id,
-					})
-					console.log('Server notified about screen producer closure')
-				} catch (error) {
-					console.error('Failed to notify server:', error)
-				}
-
-				// 关闭本地 producer
-				screenProducer.close()
-				mediasoupClient.producers.delete('screen')
-			}
-
-			// 3. 恢复原摄像头视频流
-			await restoreCameraVideo()
-
-			// 4. 更新状态
-			screenSharing.value = false
-			originalVideoTrack.value = null
-
-			$notify.info('已停止屏幕共享')
-			console.log('Screen share stopped successfully')
-		} catch (error) {
-			console.error('Failed to stop screen share:', error)
-			screenSharing.value = false
-			screenStream.value = null
-
-			// 尝试恢复摄像头
-			await restoreCameraVideo()
-		}
-	}
-	/**
-	 * 恢复摄像头视频流（辅助函数）
-	 */
-	async function restoreCameraVideo() {
-		try {
-			const originalProducer = mediasoupClient.producers.get('video')
-
-			if (originalProducer && originalVideoTrack.value) {
-				// 如果原 producer 还存在，直接恢复
-				console.log('Restoring original camera producer...')
-
-				// 恢复轨道
-				await originalProducer.replaceTrack({ track: originalVideoTrack.value })
-
-				// 恢复 producer
-				await mediasoupClient.resumeProducer('video')
-				await socketClient.emit('resumeProducer', {
+			const screenProducer = mediasoupClient.producers.get('video')
+			if (screenProducer && screenProducer.appData?.source === 'screen') {
+				await socketClient.emit('closeProducer', {
 					roomId: roomId.value,
-					producerId: originalProducer.id,
+					producerId: screenProducer.id,
 				})
 
-				// 更新本地参与者状态
+				screenProducer.close()
+				mediasoupClient.producers.delete('video')
+				console.log('Screen producer closed')
+			}
+
+			// 3. 重新创建摄像头 producer
+			if (originalVideoTrack.value && originalVideoTrack.value.readyState === 'live') {
+				// 如果原轨道还活着，直接复用
+				const newProducer = await mediasoupClient.produce(originalVideoTrack.value, {
+					kind: 'video',
+					appData: { source: 'camera' },
+				})
+
+				mediasoupClient.producers.set('video', newProducer)
+				updateLocalProducer('video', newProducer)
+
+				// 更新本地流
 				const localPeer = participants.value.find(p => p.peerId === peerId.value)
 				if (localPeer) {
-					localPeer.producers.video = {
-						id: originalProducer.id,
-						kind: 'video',
-						paused: false,
-						appData: { source: 'camera' }, // 恢复为摄像头
-					}
-
-					// 更新流
 					if (localPeer.streams.video) {
 						const videoStream = localPeer.streams.video
 						const oldTracks = videoStream.getVideoTracks()
 						oldTracks.forEach(track => videoStream.removeTrack(track))
 						videoStream.addTrack(originalVideoTrack.value)
 					}
+
+					if (localStream.value) {
+						const oldTracks = localStream.value.getVideoTracks()
+						oldTracks.forEach(track => localStream.value.removeTrack(track))
+						localStream.value.addTrack(originalVideoTrack.value)
+					}
 				}
 
-				console.log('Camera video restored')
-			} else if (originalVideoTrack.value) {
-				// 原 producer 丢失，重新创建
-				console.log('Recreating camera producer...')
+				console.log('Camera video restored from original track')
+			} else {
+				// 原轨道失效，重新获取摄像头
+				console.log('Original track invalid, getting new camera stream...')
 
-				const newProducer = await mediasoupClient.produce(originalVideoTrack.value, {
+				const stream = await navigator.mediaDevices.getUserMedia({
+					video: {
+						width: { ideal: 1280, max: 1920 },
+						height: { ideal: 720, max: 1080 },
+						frameRate: { ideal: 30, max: 60 },
+					},
+				})
+
+				const newVideoTrack = stream.getVideoTracks()[0]
+
+				const newProducer = await mediasoupClient.produce(newVideoTrack, {
 					kind: 'video',
 					appData: { source: 'camera' },
 				})
 
+				mediasoupClient.producers.set('video', newProducer)
 				updateLocalProducer('video', newProducer)
 
-				console.log('New camera producer created')
-			} else {
-				console.warn('No original video track to restore')
+				// 更新本地流
+				const localPeer = participants.value.find(p => p.peerId === peerId.value)
+				if (localPeer) {
+					if (localPeer.streams.video) {
+						const videoStream = localPeer.streams.video
+						const oldTracks = videoStream.getVideoTracks()
+						oldTracks.forEach(track => {
+							track.stop()
+							videoStream.removeTrack(track)
+						})
+						videoStream.addTrack(newVideoTrack)
+					}
+
+					if (localStream.value) {
+						const oldTracks = localStream.value.getVideoTracks()
+						oldTracks.forEach(track => {
+							track.stop()
+							localStream.value.removeTrack(track)
+						})
+						localStream.value.addTrack(newVideoTrack)
+					}
+				}
+
+				console.log('New camera stream created')
 			}
+
+			// 4. 更新状态
+			screenSharing.value = false
+			originalVideoTrack.value = null
 
 			// 强制更新 UI
 			participants.value = [...participants.value]
+
+			console.log('Screen share stopped successfully')
 		} catch (error) {
-			console.error('Failed to restore camera video:', error)
-			$notify.warning('无法恢复摄像头，请重新打开')
+			console.error('Failed to stop screen share:', error)
+			screenSharing.value = false
+			screenStream.value = null
+			$notify.error('停止屏幕共享失败')
 		}
 	}
 
@@ -847,7 +847,9 @@ export function useMedia() {
 	 * 检查是否有人在共享屏幕
 	 */
 	const hasScreenShare = computed(() => {
-		return participants.value.some(p => p.producers?.video?.appData?.source === 'screen')
+		return participants.value.some(p => {
+			return p.producers?.video?.appData?.source === 'screen'
+		})
 	})
 	/**
 	 * 获取屏幕共享信息

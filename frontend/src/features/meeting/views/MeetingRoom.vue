@@ -748,7 +748,6 @@ import {
 	useDebounceFn,
 } from '@vueuse/core'
 import VideoGrid from '../components/VideoGrid.vue'
-import ScreenShare from '../components/ScreenShare.vue'
 import ParticipantsList from '../components/ParticipantsList.vue'
 import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
 import { useMediaDevices } from '@/composables/useMediaDevices'

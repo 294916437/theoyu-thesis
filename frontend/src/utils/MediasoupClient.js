@@ -14,7 +14,6 @@ export class MediasoupClient {
 		try {
 			this.device = new mediasoupClient.Device()
 			await this.device.load({ routerRtpCapabilities })
-			console.log('Device loaded', this.device.rtpCapabilities)
 			return this.device
 		} catch (error) {
 			console.error('Failed to load device', error)
@@ -34,8 +33,6 @@ export class MediasoupClient {
 				producing: true,
 				consuming: false,
 			})
-
-			console.log('Creating send transport', transportInfo)
 
 			this.sendTransport = this.device.createSendTransport(transportInfo)
 

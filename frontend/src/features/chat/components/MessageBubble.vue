@@ -38,27 +38,26 @@
 		<!-- 自己的消息 -->
 		<div v-else class="d-flex align-start justify-end ga-2 mb-3">
 			<div class="message-content text-right">
-				<div class="message-bubble message-bubble--outgoing">
+				<div v-if="message.messageType === 1" class="message-bubble message-bubble--outgoing">
 					<!-- 文本消息 -->
-					<p v-if="message.messageType === 1" class="message-text">{{ message.content }}</p>
+					<p class="message-text">{{ message.content }}</p>
+				</div>
+				<!-- 图片消息 -->
+				<div v-else-if="message.messageType === 2" class="message-images">
+					<v-img
+						v-for="(img, idx) in message.imgUris"
+						:key="idx"
+						:src="img"
+						width="180"
+						aspect-ratio="16/9"
+						cover
+						class="message-image"
+					></v-img>
+				</div>
 
-					<!-- 图片消息 -->
-					<div v-else-if="message.messageType === 2" class="message-images">
-						<v-img
-							v-for="(img, idx) in message.imgUris"
-							:key="idx"
-							:src="img"
-							width="180"
-							aspect-ratio="16/9"
-							cover
-							class="message-image"
-						></v-img>
-					</div>
-
-					<!-- 视频消息 -->
-					<div v-else-if="message.messageType === 4" class="message-video">
-						<video :src="message.videoUri" controls class="video-player"></video>
-					</div>
+				<!-- 视频消息 -->
+				<div v-else-if="message.messageType === 4" class="message-video">
+					<video :src="message.videoUri" controls class="video-player"></video>
 				</div>
 
 				<div class="message-meta mt-1 d-flex align-center justify-end ga-1">

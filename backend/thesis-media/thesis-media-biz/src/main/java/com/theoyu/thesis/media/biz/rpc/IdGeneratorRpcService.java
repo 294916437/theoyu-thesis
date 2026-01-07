@@ -18,7 +18,7 @@ public class IdGeneratorRpcService {
      */
     private static final String BIZ_TAG_ROOM_MSG_ID = "leaf-segment-room-message-id";
     /**
-     * 调用分布式 ID 生成服务生成用户应用 ID
+     * 调用分布式 ID 生成服务生成房间ID
      *
      * @return
      */
@@ -26,12 +26,14 @@ public class IdGeneratorRpcService {
         return idGeneratorFeignApi.getSegmentId(BIZ_TAG_ROOM_ID);
     }
     /**
-     * 调用分布式 ID 生成服务用户 ID
+     * 调用分布式 ID 生成房间内消息ID
      *
      * @return
      */
     public String getRoomMsgId() {
         return idGeneratorFeignApi.getSnowflakeId(BIZ_TAG_ROOM_MSG_ID);
     }
+
+
 
 }

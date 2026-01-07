@@ -13,13 +13,24 @@ public interface MQConstants {
      */
     public static final String TOPIC_MEDIA_STATS = "media-stats";
 
-    // ==================== Tag ====================
-
-
+    /**
+     * 房间消息Topic
+     */
+    public static final String ROOM_MESSAGE_TOPIC = "room-message";
     /**
      * 参与者事件主题
      */
     public static final String TOPIC_PARTICIPANT_EVENT = "participant-event";
+
+
+    // ==================== Tag ====================
+    /**
+     * 房间消息Tag
+     */
+    public static final String ROOM_MESSAGE_TAG = "send";
+
+
+
     /**
      * 参与者加入事件 Tag
      */

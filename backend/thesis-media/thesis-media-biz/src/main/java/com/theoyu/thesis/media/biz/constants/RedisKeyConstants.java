@@ -39,6 +39,11 @@ public class RedisKeyConstants {
      * media:stats:{roomId}:{peerId}:{timestamp}
      */
     public static final String MEDIA_STATS_KEY = "media:stats:%s:%s:%s";
+    /**
+     * 房间消息缓存 ZSet, score为时间戳
+     * room:message:{roomId}
+     */
+    public static final String ROOM_MESSAGE_KEY = "room:message:%s";
 
     /**
      * 用户房间创建配额 Key

@@ -27,10 +27,14 @@ public class SaTokenConfig {
                     SaRouter.match("/**") // 拦截所有路由
                             .notMatch("/auth/login") // 排除登录接口
                             .notMatch("/auth/verification/code/send") // 排除验证码发送接口
-                            .notMatch("/message/ws/signal") // 排除WebRTC所需信令接口
-                            .notMatch("/message/ws/chat") // 排查消息聊天WebSocket接口
-                            .notMatch("/message/user/*") // 排除WebSocket相关订阅接口
-                            .notMatch("/message/app/*") // 排除WebSocket相关订阅接口
+                            .notMatch("/message/ws/signal") // 排除P2P视频通话WebRTC所需信令接口
+                            .notMatch("/message/ws/chat") // 排查私聊WebSocket接口
+                            .notMatch("/media/ws/room") // 排查房间内聊天WebSocket接口
+                            .notMatch("/message/user/*") // 排除P2P私聊的WebSocket相关订阅接口
+                            .notMatch("/message/app*") // 排除P2P私聊的WebSocket相关订阅接口
+                            .notMatch("/media/user/*") // 排除房间内聊天的WebSocket相关订阅接口
+                            .notMatch("/media/app*") // 排除房间内聊天的WebSocket相关订阅接口
+
                             .check(r -> StpUtil.checkLogin()) // 校验是否登录
 
                     ;

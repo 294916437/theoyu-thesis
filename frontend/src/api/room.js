@@ -83,3 +83,9 @@ export function updateMeeting(roomId, meetingData) {
 export function deleteMeeting(roomId) {
 	return axios.delete(`${API_PREFIX}/${roomId}`)
 }
+/**
+ * 获取房间聊天历史
+ */
+export function fetchMessageHistory(roomId, page, size) {
+	return axios.get(`${MESSAGE_API_PREFIX}/history?roomId=${roomId}&page=${page}&size=${size}`)
+}

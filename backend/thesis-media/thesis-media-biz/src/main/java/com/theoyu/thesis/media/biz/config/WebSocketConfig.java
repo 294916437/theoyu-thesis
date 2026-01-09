@@ -19,6 +19,8 @@ import org.springframework.web.socket.config.annotation.WebSocketTransportRegist
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Resource
+    private WebSocketHandshakeInterceptor handshakeInterceptor;
+    @Resource
     private WebSocketAuthInterceptor webSocketAuthInterceptor;
 
     @Override
@@ -29,7 +31,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         config.setApplicationDestinationPrefixes("/app");
         // 设置用户目的地前缀
         config.setUserDestinationPrefix("/user");
-        log.info("WebSocket消息代理配置完成");
     }
 
     @Override
@@ -37,15 +38,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // 注册STOMP端点,允许跨域,支持SockJS
         registry.addEndpoint("/ws/room")
                 .setAllowedOriginPatterns("*")
-                .withSockJS();
-        log.info("WebSocket端点注册完成: /ws/room");
+                .addInterceptors(handshakeInterceptor);
     }
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
         // 注册拦截器,用于获取连接参数
         registration.interceptors(webSocketAuthInterceptor);
-        log.info("WebSocket拦截器配置完成");
     }
 
     @Override
@@ -54,6 +53,5 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registration.setMessageSizeLimit(128 * 1024) // 128KB
                 .setSendBufferSizeLimit(512 * 1024) // 512KB
                 .setSendTimeLimit(20 * 1000); // 20秒
-        log.info("WebSocket传输配置完成");
     }
 }

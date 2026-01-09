@@ -10,6 +10,7 @@ import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Component
@@ -20,22 +21,25 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
 
         if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
-            // 从原生头信息中获取查询参数
-            List<String> userIdList = accessor.getNativeHeader("userId");
-            List<String> roomIdList = accessor.getNativeHeader("roomId");
+            // 从 sessionAttributes 获取握手阶段存入的参数
+            Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
 
-            if (userIdList != null && !userIdList.isEmpty() && roomIdList != null && !roomIdList.isEmpty()) {
-                String userId = userIdList.get(0);
-                String roomId = roomIdList.get(0);
-
-                // 将用户信息存储到会话属性中
-                accessor.getSessionAttributes().put("userId", userId);
-                accessor.getSessionAttributes().put("roomId", roomId);
-
-                log.info("WebSocket连接建立, userId: {}, roomId: {}", userId, roomId);
-            } else {
-                log.warn("WebSocket连接缺少必要参数");
+            if (sessionAttributes == null) {
+                throw new IllegalArgumentException("会话属性缺失");
             }
+
+            String userId = (String) sessionAttributes.get("userId");
+            String roomId = (String) sessionAttributes.get("roomId");
+
+            if (userId == null || roomId == null) {
+                log.warn("STOMP CONNECT 缺少必要参数: userId={}, roomId={}", userId, roomId);
+                throw new IllegalArgumentException("缺少必要参数");
+            }
+
+            log.info("STOMP CONNECT 验证通过, userId: {}, roomId: {}", userId, roomId);
+
+            // 可选: 设置 Principal (用于 /user 订阅)
+            accessor.setUser(() -> userId);
         }
 
         return message;

@@ -34,10 +34,11 @@ public class RoomMessageController {
             String userId = (String) headerAccessor.getSessionAttributes().get("userId");
             String roomId = (String) headerAccessor.getSessionAttributes().get("roomId");
 
-            log.info("收到WebSocket消息, userId: {}, roomId: {}, reqRoomId: {}", userId, roomId, reqVO.getRoomId());
+            log.info("收到WebSocket消息, userId: {}, roomId: {}, ", userId, roomId);
 
             // 调用业务逻辑处理消息(会自动广播)
-            RoomMessageResVO resVO = roomMessageService.sendMessage(reqVO);
+            reqVO.setUserId(Long.valueOf(userId));
+            roomMessageService.sendMessage(reqVO);
         } catch (Exception e) {
             log.error("WebSocket消息处理失败", e);
         }
@@ -50,9 +51,9 @@ public class RoomMessageController {
     @ApiOperationLog(description = "查询房间消息历史")
     public Response<List<RoomMessageResVO>> getMessageHistory(
             @RequestParam Long roomId,
-            @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "20") Integer pageSize) {
-        List<RoomMessageResVO> result = roomMessageService.getMessageHistory(roomId, pageNum, pageSize);
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "20") Integer size) {
+        List<RoomMessageResVO> result = roomMessageService.getMessageHistory(roomId, page, size);
         return Response.success(result);
     }
 }

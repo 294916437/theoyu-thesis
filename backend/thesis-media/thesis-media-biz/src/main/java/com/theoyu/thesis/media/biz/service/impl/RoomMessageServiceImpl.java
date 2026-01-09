@@ -58,7 +58,7 @@ public class RoomMessageServiceImpl implements RoomMessageService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RoomMessageResVO sendMessage(RoomMessageReqVO reqVO) {
-        Long userId = LoginUserContextHolder.getUserId();
+        Long userId = reqVO.getUserId();
         Long roomId = reqVO.getRoomId();
 
 

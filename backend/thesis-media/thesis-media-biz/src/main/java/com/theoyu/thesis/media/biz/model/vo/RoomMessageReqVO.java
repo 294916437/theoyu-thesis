@@ -7,6 +7,11 @@ import jakarta.validation.constraints.NotNull;
 
 @Data
 public class RoomMessageReqVO {
+    /**
+     * 用户ID
+     */
+    @NotNull(message = "用户ID不能为空")
+    private Long userId;
 
     /**
      * 房间ID

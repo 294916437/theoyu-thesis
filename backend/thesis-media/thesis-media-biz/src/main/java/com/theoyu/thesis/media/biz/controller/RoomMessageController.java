@@ -1,6 +1,7 @@
 package com.theoyu.thesis.media.biz.controller;
 
 import com.theoyu.framework.common.response.Response;
+import com.theoyu.framework.logger.aspect.ApiOperationLog;
 import com.theoyu.thesis.media.biz.model.vo.RoomMessageReqVO;
 import com.theoyu.thesis.media.biz.model.vo.RoomMessageResVO;
 import com.theoyu.thesis.media.biz.service.RoomMessageService;
@@ -10,12 +11,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@RestController
-@RequestMapping("/room/message")
+@Controller
 @Slf4j
 public class RoomMessageController {
 
@@ -23,41 +24,35 @@ public class RoomMessageController {
     private RoomMessageService roomMessageService;
 
     /**
-     * 发送房间消息 (WebSocket)
+     * 接收客户端发送的消息
+     * 客户端发送到: /app/room/sendMessage
      */
-    @MessageMapping("/send")
-    public void sendMessage(@Payload @Valid RoomMessageReqVO reqVO,
-                            SimpMessageHeaderAccessor headerAccessor) {
-        log.info("收到房间消息发送请求, roomId: {}", reqVO.getRoomId());
-
+    @MessageMapping("/room/sendMessage")
+    public void handleMessage(@Payload RoomMessageReqVO reqVO, SimpMessageHeaderAccessor headerAccessor) {
         try {
-            // 从会话属性中获取用户信息
-            Object userId = headerAccessor.getSessionAttributes().get("userId");
-            Object roomId = headerAccessor.getSessionAttributes().get("roomId");
+            // 从会话中获取用户信息(可选,用于额外验证)
+            String userId = (String) headerAccessor.getSessionAttributes().get("userId");
+            String roomId = (String) headerAccessor.getSessionAttributes().get("roomId");
 
-            log.info("WebSocket会话信息, userId: {}, roomId: {}", userId, roomId);
+            log.info("收到WebSocket消息, userId: {}, roomId: {}, reqRoomId: {}", userId, roomId, reqVO.getRoomId());
 
-            // 发送消息
+            // 调用业务逻辑处理消息(会自动广播)
             RoomMessageResVO resVO = roomMessageService.sendMessage(reqVO);
-            log.info("房间消息发送成功, messageId: {}", resVO.getMessageId());
         } catch (Exception e) {
-            log.error("房间消息发送失败", e);
+            log.error("WebSocket消息处理失败", e);
         }
     }
 
     /**
      * 查询房间消息历史 (HTTP)
      */
-    @GetMapping("/history")
-    @ResponseBody
+    @GetMapping("/room/message/history")
+    @ApiOperationLog(description = "查询房间消息历史")
     public Response<List<RoomMessageResVO>> getMessageHistory(
             @RequestParam Long roomId,
             @RequestParam(defaultValue = "1") Integer pageNum,
             @RequestParam(defaultValue = "20") Integer pageSize) {
-
-        log.info("查询房间消息历史, roomId: {}, pageNum: {}, pageSize: {}", roomId, pageNum, pageSize);
         List<RoomMessageResVO> result = roomMessageService.getMessageHistory(roomId, pageNum, pageSize);
         return Response.success(result);
     }
-
 }

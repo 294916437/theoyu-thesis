@@ -79,6 +79,7 @@ public class RoomMessageServiceImpl implements RoomMessageService {
                 .senderId(userId)
                 .content(reqVO.getContent())
                 .messageType(reqVO.getMessageType())
+                .contentType(reqVO.getContentType())
                 .createdTime(now)
                 .updatedTime(now)
                 .build();
@@ -102,7 +103,7 @@ public class RoomMessageServiceImpl implements RoomMessageService {
         });
 
         // 构建响应VO
-        RoomMessageResVO resVO = buildMessageResVO(messagePO, currentTime);
+        RoomMessageResVO resVO = buildMessageResVO(messagePO);
 
         // 广播消息到房间订阅者
         messagingTemplate.convertAndSend("/topic/room/" + roomId, resVO);
@@ -139,11 +140,29 @@ public class RoomMessageServiceImpl implements RoomMessageService {
                 .map(RoomMessagePO::getSenderId)
                 .collect(Collectors.toSet());
 
-        // TODO:批量获取用户信息并转换为Map
+        // 批量获取用户信息并转换为Map映射
         List<FindUserByIdRspDTO> userInfoList = batchGetUserInfo(new ArrayList<>(userIds));
+        Map<Long, FindUserByIdRspDTO> userInfoMap = userInfoList.stream()
+                .collect(Collectors.toMap(FindUserByIdRspDTO::getId, user -> user, (existing, replacement) -> existing));
 
-        // TODO:构建响应
-        return null;
+        // 构建响应
+        return messageList.stream()
+                .map(messagePO -> {
+                    FindUserByIdRspDTO userInfo = userInfoMap.get(messagePO.getSenderId());
+
+                    return RoomMessageResVO.builder()
+                            .messageId(messagePO.getId())
+                            .roomId(messagePO.getRoomId())
+                            .senderId(messagePO.getSenderId())
+                            .senderNickname(userInfo.getNickName())
+                            .senderAvatar(userInfo.getAvatar())
+                            .contentType(messagePO.getContentType())
+                            .content(messagePO.getContent())
+                            .messageType(messagePO.getMessageType())
+                            .sendTime(messagePO.getCreatedTime())
+                            .build();
+                })
+                .collect(Collectors.toList());
     }
 
     /**
@@ -154,8 +173,9 @@ public class RoomMessageServiceImpl implements RoomMessageService {
             String redisKey = String.format(RedisKeyConstants.ROOM_MESSAGE_KEY, messagePO.getRoomId());
 
             // 构建缓存对象
-            RoomMessageResVO cacheVO = buildMessageResVO(messagePO, currentTime);
+            RoomMessageResVO cacheVO = buildMessageResVO(messagePO);
             String jsonValue = JsonUtils.toJsonString(cacheVO);
+
 
             // 添加到ZSet,使用时间戳作为score
             redisTemplate.opsForZSet().add(redisKey, jsonValue, currentTime);
@@ -199,7 +219,7 @@ public class RoomMessageServiceImpl implements RoomMessageService {
     /**
      * 构建消息响应VO
      */
-    private RoomMessageResVO buildMessageResVO(RoomMessagePO messagePO, long sendTime) {
+    private RoomMessageResVO buildMessageResVO(RoomMessagePO messagePO) {
         FindUserByIdRspDTO userInfo = getUserInfo(messagePO.getSenderId());
 
 
@@ -208,6 +228,7 @@ public class RoomMessageServiceImpl implements RoomMessageService {
                 .roomId(messagePO.getRoomId())
                 .senderId(messagePO.getSenderId())
                 .senderNickname(userInfo.getNickName())
+                .contentType(messagePO.getMessageType())
                 .senderAvatar(userInfo.getAvatar())
                 .content(messagePO.getContent())
                 .messageType(messagePO.getMessageType())

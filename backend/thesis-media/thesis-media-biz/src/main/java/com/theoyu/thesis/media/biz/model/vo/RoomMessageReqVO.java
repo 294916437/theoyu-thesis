@@ -25,4 +25,10 @@ public class RoomMessageReqVO {
      */
     @NotNull(message = "消息类型不能为空")
     private Integer messageType;
+
+    /**
+     * 消息类型: 1-文本 2-图片 3-文件
+     */
+    @NotNull(message = "消息内容类型不能为空")
+    private Integer contentType;
 }

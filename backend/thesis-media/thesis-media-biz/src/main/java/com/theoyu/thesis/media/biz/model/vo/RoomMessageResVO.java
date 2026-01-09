@@ -39,12 +39,17 @@ public class RoomMessageResVO {
     private String senderAvatar;
 
     /**
+     * 消息内容类型(1-文本 2-图片 3-文件)
+     */
+    private Integer contentType;
+
+    /**
      * 消息内容
      */
     private String content;
 
     /**
-     * 消息类型
+     * 消息类型(1-系统消息 2-用户消息)
      */
     private Integer messageType;
 

@@ -120,7 +120,6 @@ const handleLogin = async () => {
 		// 存储 token
 		userStore.setToken(response.data.token)
 		const userId = response.data.userId
-		console.log('登录成功，用户ID:' + userId + '，Token:' + response.data.token)
 
 		// 初始化用户ID
 		userStore.setUserId(userId)

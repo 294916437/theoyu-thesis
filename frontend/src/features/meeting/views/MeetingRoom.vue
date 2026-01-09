@@ -148,17 +148,17 @@
 										<v-divider></v-divider>
 
 										<!-- 消息列表 -->
+										<!-- 消息列表 -->
 										<div ref="messageContainer" class="message-container">
-											<!-- 加载更多按钮 -->
-											<div v-if="hasMoreMessages" class="load-more-wrapper">
-												<v-btn
-													variant="text"
-													size="small"
-													:loading="loadingMore"
-													@click="handleLoadMoreMessages"
-												>
-													加载更多消息
-												</v-btn>
+											<!-- 加载更多触发器 (无限滚动) -->
+											<div v-if="hasMoreMessages" ref="loadMoreTrigger" class="load-more-trigger">
+												<v-progress-circular
+													v-if="loadingMore"
+													indeterminate
+													size="24"
+													width="2"
+													color="primary"
+												></v-progress-circular>
 											</div>
 
 											<!-- 消息分组 -->
@@ -173,19 +173,36 @@
 													v-for="message in group"
 													:key="message.id"
 													class="message-wrapper"
-													:class="{ 'd-flex justify-end': message.isOwn }"
+													:class="{
+														'd-flex justify-end': message.isOwn,
+														'system-message': message.type === 'system',
+													}"
 												>
-													<div class="message-content">
+													<!-- 系统消息 -->
+													<div
+														v-if="message.type === 'system'"
+														class="system-message-content"
+													>
+														<v-icon
+															icon="mdi-information"
+															size="small"
+															class="mr-1"
+														></v-icon>
+														<span class="text-caption">{{ message.content }}</span>
+													</div>
+
+													<!-- 普通消息 -->
+													<div v-else class="message-content">
 														<!-- 他人消息头部 -->
 														<div
 															v-if="!message.isOwn"
 															class="d-flex align-center mb-2 px-1"
 														>
-															<v-avatar size="28" color="primary"
-																><span class="text-caption">{{
-																	getInitials(message.userName)
-																}}</span></v-avatar
-															>
+															<v-avatar :image="message.avatar" size="28" color="primary">
+																<span v-if="!message.avatar" class="text-caption">
+																	{{ getInitials(message.userName) }}
+																</span>
+															</v-avatar>
 															<span class="message-sender ml-2">{{
 																message.userName
 															}}</span>
@@ -203,14 +220,37 @@
 																{{ message.content }}
 															</div>
 
+															<!-- 图片消息 -->
+															<div
+																v-else-if="message.type === 'image'"
+																class="message-image"
+															>
+																<v-img
+																	:src="message.content"
+																	:alt="message.userName"
+																	max-width="300"
+																	max-height="300"
+																	cover
+																	class="rounded"
+																	@click="() => previewImage(message.content)"
+																>
+																	<template #placeholder>
+																		<v-progress-circular
+																			indeterminate
+																		></v-progress-circular>
+																	</template>
+																</v-img>
+															</div>
+
 															<!-- 文件消息 -->
 															<div
 																v-else-if="message.type === 'file'"
 																class="message-file"
 															>
-																<v-icon left size="20">{{
-																	getFileIcon(message.file.type)
-																}}</v-icon>
+																<v-icon
+																	:icon="getFileIcon(message.file.type)"
+																	size="20"
+																></v-icon>
 																<div class="file-info">
 																	<div class="file-name">{{ message.file.name }}</div>
 																	<div class="file-size text-caption">
@@ -234,19 +274,20 @@
 												</div>
 											</div>
 
-											<!-- 正在输入指示器 -->
-											<div v-if="typingUsers.length > 0" class="typing-indicator">
-												<v-avatar size="24" color="grey">
-													<span class="typing-dots">...</span>
-												</v-avatar>
-												<span class="ml-2 text-caption">
-													{{ typingUsers.join(', ') }} 正在输入...
-												</span>
-											</div>
+											<!-- 连接状态提示 -->
+											<v-alert
+												v-if="!roomMessageConnected"
+												type="warning"
+												variant="tonal"
+												density="compact"
+												class="mx-4"
+											>
+												聊天服务未连接
+											</v-alert>
 
 											<!-- 空状态 -->
 											<div
-												v-if="chatMessages.length === 0"
+												v-if="chatMessages.length === 0 && !loadingMore"
 												class="d-flex flex-column align-center justify-center fill-height text-on-surface-variant"
 											>
 												<v-icon
@@ -259,7 +300,6 @@
 												<div class="text-caption text-grey-darken-1">发送消息开始聊天</div>
 											</div>
 										</div>
-
 										<!-- 输入区域 -->
 										<v-divider></v-divider>
 
@@ -699,7 +739,6 @@
 								<div>
 									• 会议记录和聊天内容将会保留<br />
 									• 您的离开不会结束整个会议<br />
-									• 其他参与者将收到您离开的通知
 								</div>
 							</div>
 						</v-alert>
@@ -751,8 +790,12 @@ import VideoGrid from '../components/VideoGrid.vue'
 import ParticipantsList from '../components/ParticipantsList.vue'
 import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
 import { useMediaDevices } from '@/composables/useMediaDevices'
+import RoomMessageService from '@/services/RoomMessageService'
 import { useMedia } from '@/composables/useMedia'
-import { fetchMeetingDetail, fetchMeetingInfo } from '@/api/room'
+import { useIntersectionObserver } from '@vueuse/core'
+import { fetchMeetingInfo } from '@/api/room'
+import { uploadFile } from '@/api/file'
+import { fetchMessageHistory } from '@/api/message'
 import { $notify } from '@/plugins/notification'
 import { useUserStore } from '@/stores/user'
 
@@ -882,6 +925,8 @@ const enableHD = ref(true)
 const enableMirror = ref(false)
 
 // ==================== 聊天功能 ====================
+const roomMessageConnected = ref(false)
+const roomMessageError = ref(null)
 const messageContainer = ref(null)
 const fileInput = ref(null)
 const messageInput = ref('')
@@ -891,7 +936,10 @@ const typingUsers = ref([])
 const hasMoreMessages = ref(false)
 const loadingMore = ref(false)
 const uploadProgress = ref(0)
-
+// 历史消息分页
+const currentPage = ref(1)
+const pageSize = ref(20)
+const loadMoreTrigger = ref(null)
 // 滚动控制
 const { arrivedState } = useScroll(messageContainer, {
 	offset: { bottom: 50 },
@@ -940,7 +988,286 @@ const groupedMessages = computed(() => {
 	})
 	return groups
 })
+/**
+ * 将后端 RoomMessageResVO 转换为前端消息格式
+ */
+const transformMessage = resVO => {
+	const baseMessage = {
+		id: resVO.messageId,
+		userId: resVO.senderId,
+		userName: resVO.senderNickname,
+		avatar: resVO.senderAvatar,
+		timestamp: new Date(resVO.sendTime),
+		isOwn: resVO.senderId === currentUserId.value,
+	}
 
+	// 根据 contentType 转换消息类型
+	switch (resVO.contentType) {
+		case 1: // 文本消息
+			return {
+				...baseMessage,
+				type: 'text',
+				content: resVO.content,
+			}
+
+		case 2: // 图片消息
+			return {
+				...baseMessage,
+				type: 'image',
+				content: resVO.content, // 图片URL
+			}
+
+		case 3: // 从 content 中解析文件信息 (格式为 "filename|size|url") // 文件消息
+		{
+			const [fileName, fileSize, fileUrl] = resVO.content.split('|')
+			return {
+				...baseMessage,
+				type: 'file',
+				file: {
+					name: fileName,
+					size: parseInt(fileSize),
+					type: getFileTypeFromName(fileName),
+					url: fileUrl,
+				},
+			}
+		}
+
+		default:
+			return {
+				...baseMessage,
+				type: 'text',
+				content: resVO.content,
+			}
+	}
+}
+/**
+ * 发送文本消息
+ */
+const sendChatMessage = async () => {
+	const content = messageInput.value.trim()
+	if (!content) return
+
+	if (!roomMessageConnected.value) {
+		$notify.error('聊天服务未连接')
+		return
+	}
+
+	try {
+		// 发送消息
+		RoomMessageService.sendTextMessage(content)
+
+		// 清空输入框和草稿
+		messageInput.value = ''
+
+		console.log('消息发送成功')
+
+		// 注意: 不需要手动添加到 chatMessages
+		// 因为后端会广播回来,通过 'room-message' 事件接收
+	} catch (error) {
+		console.error('发送消息失败:', error)
+		$notify.error('发送失败,请重试')
+	}
+}
+
+/**
+ * 处理文件上传并发送
+ */
+const handleFileSelect = async event => {
+	const file = event.target.files[0]
+	if (!file) return
+
+	// 文件大小限制
+	const maxSize = 10 * 1024 * 1024 // 10MB
+	if (file.size > maxSize) {
+		$notify.error('文件大小不能超过10MB')
+		return
+	}
+
+	try {
+		uploadProgress.value = 0
+
+		// 上传文件到服务器
+		const fileUrl = await uploadFile(file)
+
+		// 模拟上传进度
+		const uploadInterval = setInterval(() => {
+			uploadProgress.value += 10
+			if (uploadProgress.value >= 100) {
+				clearInterval(uploadInterval)
+
+				// 根据文件类型发送不同消息
+				const fileType = file.type.split('/')[0]
+				const fileData = `${file.name}|${file.size}|${URL.createObjectURL(file)}`
+
+				if (fileType === 'image') {
+					RoomMessageService.sendImageMessage(fileData)
+				} else {
+					RoomMessageService.sendFileMessage(fileData)
+				}
+
+				uploadProgress.value = 0
+				$notify.success('文件发送成功')
+			}
+		}, 200)
+	} catch (error) {
+		console.error('文件上传失败:', error)
+		uploadProgress.value = 0
+	} finally {
+		fileInput.value.value = ''
+	}
+}
+/**
+ * 加载历史消息
+ */
+const loadMessageHistory = async (page = 1) => {
+	if (loadingMore.value) return
+
+	try {
+		loadingMore.value = true
+
+		const { data } = await fetchMessageHistory({
+			roomId: meetingInfo.value.roomId,
+			pageNum: page,
+			pageSize: pageSize.value,
+		})
+
+		if (data && data.length > 0) {
+			// 转换消息格式
+			const transformedMessages = data.map(transformMessage)
+
+			// 如果是第一页，直接替换
+			if (page === 1) {
+				chatMessages.value = transformedMessages
+			} else {
+				// 追加到顶部
+				chatMessages.value.unshift(...transformedMessages)
+			}
+
+			// 判断是否还有更多
+			hasMoreMessages.value = data.length === pageSize.value
+			currentPage.value = page
+		} else {
+			hasMoreMessages.value = false
+		}
+	} catch (error) {
+		console.error('加载历史消息失败:', error)
+	} finally {
+		loadingMore.value = false
+	}
+}
+/**
+ * 加载更多消息 (点击按钮)
+ */
+const handleLoadMoreMessages = async () => {
+	await loadMessageHistory(currentPage.value + 1)
+}
+// 使用 Intersection Observer 实现无限滚动
+useIntersectionObserver(
+	loadMoreTrigger,
+	([{ isIntersecting }]) => {
+		if (isIntersecting && hasMoreMessages.value && !loadingMore.value) {
+			handleLoadMoreMessages()
+		}
+	},
+	{ threshold: 0.5 },
+)
+/**
+ * 初始化房间消息服务
+ */
+const initRoomMessageService = async () => {
+	try {
+		// 1. 连接 WebSocket
+		await RoomMessageService.connect(
+			import.meta.env.VITE_WS_BASE_URL + '/ws/room',
+			currentUserId.value,
+			meetingInfo.value.roomId,
+		)
+
+		roomMessageConnected.value = true
+		console.log('房间消息服务连接成功')
+
+		// 2. 监听房间消息
+		RoomMessageService.on('room-message', data => {
+			console.log('收到房间消息:', data)
+
+			// 转换消息格式并添加到列表
+			const message = transformMessage(data)
+			chatMessages.value.push(message)
+
+			// 如果不在聊天标签页，增加未读计数
+			if (sidebarTab.value !== 'chat') {
+				unreadMessages.value++
+			}
+		})
+
+		// 3. 监听加入房间事件
+		RoomMessageService.on('room-joined', ({ roomId, userId }) => {
+			// 添加系统消息
+			if (userId !== currentUserId.value) {
+				addSystemMessage(`${userId} 加入了会议`)
+			}
+		})
+
+		// 4. 监听离开房间事件
+		RoomMessageService.on('room-left', ({ roomId, userId }) => {
+			console.log(`用户 ${userId} 离开房间 ${roomId}`)
+			if (userId !== currentUserId.value) {
+				addSystemMessage(`${userId} 离开了会议`)
+			}
+		})
+
+		// 5. 监听连接错误
+		RoomMessageService.on('connection-error', error => {
+			console.error('房间消息服务连接错误:', error)
+			roomMessageError.value = error
+			$notify.error('聊天服务连接失败')
+		})
+
+		// 6. 加载历史消息
+		await loadMessageHistory(1)
+	} catch (error) {
+		console.error('初始化房间消息服务失败:', error)
+		roomMessageError.value = error
+		$notify.error('聊天服务初始化失败')
+	}
+}
+
+/**
+ * 添加系统消息
+ */
+const addSystemMessage = content => {
+	chatMessages.value.push({
+		id: `system-${Date.now()}`,
+		type: 'system',
+		content,
+		timestamp: new Date(),
+	})
+}
+
+/**
+ * 从文件名推断文件类型
+ */
+const getFileTypeFromName = fileName => {
+	const ext = fileName.split('.').pop().toLowerCase()
+	const typeMap = {
+		jpg: 'image',
+		jpeg: 'image',
+		png: 'image',
+		gif: 'image',
+		mp4: 'video',
+		avi: 'video',
+		mov: 'video',
+		mp3: 'audio',
+		wav: 'audio',
+		pdf: 'pdf',
+		doc: 'document',
+		docx: 'document',
+		txt: 'document',
+		zip: 'archive',
+		rar: 'archive',
+	}
+	return typeMap[ext] || 'file'
+}
 // 输入节流
 const handleTyping = useThrottleFn(() => {
 	// TODO: 通知其他人正在输入
@@ -1130,68 +1457,9 @@ watch(connectionState, state => {
 })
 
 // ==================== 聊天功能 ====================
-const sendChatMessage = async () => {
-	if (!messageInput.value.trim()) return
-
-	const message = {
-		id: Date.now(),
-		userId: currentUserId.value,
-		userName: currentUsername.value,
-		content: messageInput.value.trim(),
-		type: 'text',
-		timestamp: new Date(),
-	}
-
-	chatMessages.value.push(message)
-	messageInput.value = ''
-
-	// TODO: 通过Socket.io发送给其他参与者
-	console.log('Send message:', message)
-}
 
 const addNewLine = () => {
 	messageInput.value += '\n'
-}
-
-const handleFileSelect = async event => {
-	const file = event.target.files[0]
-	if (!file) return
-
-	if (file.size > 10 * 1024 * 1024) {
-		$notify.error('文件大小不能超过10MB')
-		return
-	}
-
-	try {
-		uploadProgress.value = 0
-		const uploadInterval = setInterval(() => {
-			uploadProgress.value += 10
-			if (uploadProgress.value >= 100) {
-				clearInterval(uploadInterval)
-				setTimeout(() => {
-					uploadProgress.value = 0
-					chatMessages.value.push({
-						id: Date.now(),
-						userId: currentUserId.value,
-						userName: currentUsername.value,
-						type: 'file',
-						file: {
-							name: file.name,
-							size: file.size,
-							type: file.type.split('/')[0],
-							url: URL.createObjectURL(file),
-						},
-						timestamp: new Date(),
-					})
-				}, 500)
-			}
-		}, 200)
-	} catch (error) {
-		$notify.error('文件上传失败')
-		uploadProgress.value = 0
-	}
-
-	fileInput.value.value = ''
 }
 
 const downloadFile = file => {
@@ -1218,15 +1486,6 @@ const handleClearChat = () => {
 		chatMessages.value = []
 		$notify.success('聊天记录已清空')
 	}
-}
-
-const handleLoadMoreMessages = async () => {
-	loadingMore.value = true
-	// TODO: 加载更多消息
-	setTimeout(() => {
-		loadingMore.value = false
-		hasMoreMessages.value = false
-	}, 1000)
 }
 
 // ==================== 会议控制 ====================

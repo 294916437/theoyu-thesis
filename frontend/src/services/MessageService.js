@@ -114,7 +114,6 @@ class MessageService {
 					let data
 					try {
 						data = typeof message.body === 'string' ? JSON.parse(message.body) : message.body
-						console.log('解析后的数据:', data)
 					} catch (e) {
 						console.error('解析消息失败:', e)
 						data = message.body
@@ -122,8 +121,6 @@ class MessageService {
 
 					this.handleMessage({ type, data })
 				})
-
-				console.log(`订阅成功: ${destination}`)
 			} catch (error) {
 				console.error(`订阅失败: ${destination}`, error)
 			}
@@ -138,10 +135,6 @@ class MessageService {
 
 		const handlers = this.eventHandlers[message.type] || []
 
-		if (handlers.length === 0) {
-			console.warn(`没有为 ${message.type} 注册监听器！`)
-		}
-
 		handlers.forEach((handler, index) => {
 			try {
 				handler(message.data)
@@ -155,15 +148,11 @@ class MessageService {
 	 * 注册事件监听器
 	 */
 	on(eventType, handler) {
-		console.log('注册事件监听器:', eventType)
-
 		if (!this.eventHandlers[eventType]) {
 			this.eventHandlers[eventType] = []
 		}
 
 		this.eventHandlers[eventType].push(handler)
-		console.log(`监听器已注册 - 总数: ${this.eventHandlers[eventType].length}`)
-
 		// 返回取消订阅函数
 		return () => this.off(eventType, handler)
 	}
@@ -224,8 +213,6 @@ class MessageService {
 	 * @param {string[]} imgUris - 图片URL数组
 	 */
 	sendImageMessage(conversationId, imgUris) {
-		console.log('发送图片消息:', { conversationId, imgUris })
-
 		this.send(`/app/chat/${conversationId}/send`, {
 			messageType: 2, // 图片消息
 			imgUris,
@@ -238,8 +225,6 @@ class MessageService {
 	 * @param {string} videoUri - 视频URL
 	 */
 	sendVideoMessage(conversationId, videoUri) {
-		console.log('发送视频消息:', { conversationId, videoUri })
-
 		this.send(`/app/chat/${conversationId}/send`, {
 			messageType: 4, // 视频消息
 			videoUri,
@@ -251,7 +236,6 @@ class MessageService {
 	 */
 	disconnect() {
 		if (this.client) {
-			console.log(' 断开消息服务连接')
 			this.client.deactivate()
 			this.client = null
 			this.isConnected.value = false

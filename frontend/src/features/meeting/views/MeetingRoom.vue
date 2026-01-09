@@ -795,7 +795,7 @@ import { useMedia } from '@/composables/useMedia'
 import { useIntersectionObserver } from '@vueuse/core'
 import { fetchMeetingInfo } from '@/api/room'
 import { uploadFile } from '@/api/file'
-import { fetchMessageHistory } from '@/api/message'
+import { fetchMessageHistory } from '@/api/room'
 import { $notify } from '@/plugins/notification'
 import { useUserStore } from '@/stores/user'
 
@@ -932,13 +932,12 @@ const fileInput = ref(null)
 const messageInput = ref('')
 const chatMessages = ref([])
 const unreadMessages = ref(0)
-const typingUsers = ref([])
 const hasMoreMessages = ref(false)
 const loadingMore = ref(false)
 const uploadProgress = ref(0)
 // 历史消息分页
 const currentPage = ref(1)
-const pageSize = ref(20)
+const pageSize = 20
 const loadMoreTrigger = ref(null)
 // 滚动控制
 const { arrivedState } = useScroll(messageContainer, {
@@ -1017,8 +1016,8 @@ const transformMessage = resVO => {
 				content: resVO.content, // 图片URL
 			}
 
-		case 3: // 从 content 中解析文件信息 (格式为 "filename|size|url") // 文件消息
-		{
+		case 3: {
+			// 从 content 中解析文件信息 (格式为 "filename|size|url") // 文件消息
 			const [fileName, fileSize, fileUrl] = resVO.content.split('|')
 			return {
 				...baseMessage,
@@ -1059,8 +1058,6 @@ const sendChatMessage = async () => {
 		// 清空输入框和草稿
 		messageInput.value = ''
 
-		console.log('消息发送成功')
-
 		// 注意: 不需要手动添加到 chatMessages
 		// 因为后端会广播回来,通过 'room-message' 事件接收
 	} catch (error) {
@@ -1097,7 +1094,7 @@ const handleFileSelect = async event => {
 
 				// 根据文件类型发送不同消息
 				const fileType = file.type.split('/')[0]
-				const fileData = `${file.name}|${file.size}|${URL.createObjectURL(file)}`
+				const fileData = `${file.name}|${file.size}|${fileUrl}`
 
 				if (fileType === 'image') {
 					RoomMessageService.sendImageMessage(fileData)
@@ -1125,11 +1122,7 @@ const loadMessageHistory = async (page = 1) => {
 	try {
 		loadingMore.value = true
 
-		const { data } = await fetchMessageHistory({
-			roomId: meetingInfo.value.roomId,
-			pageNum: page,
-			pageSize: pageSize.value,
-		})
+		const { data } = await fetchMessageHistory(roomId.value, page, pageSize)
 
 		if (data && data.length > 0) {
 			// 转换消息格式
@@ -1178,7 +1171,7 @@ const initRoomMessageService = async () => {
 	try {
 		// 1. 连接 WebSocket
 		await RoomMessageService.connect(
-			import.meta.env.VITE_WS_BASE_URL + '/ws/room',
+			import.meta.env.VITE_WS_ROOM_MESSAGE_SERVER,
 			currentUserId.value,
 			meetingInfo.value.roomId,
 		)
@@ -1220,7 +1213,6 @@ const initRoomMessageService = async () => {
 		RoomMessageService.on('connection-error', error => {
 			console.error('房间消息服务连接错误:', error)
 			roomMessageError.value = error
-			$notify.error('聊天服务连接失败')
 		})
 
 		// 6. 加载历史消息
@@ -1228,7 +1220,6 @@ const initRoomMessageService = async () => {
 	} catch (error) {
 		console.error('初始化房间消息服务失败:', error)
 		roomMessageError.value = error
-		$notify.error('聊天服务初始化失败')
 	}
 }
 
@@ -1625,9 +1616,13 @@ onMounted(async () => {
 		// 3. 加入会议房间
 		loadingMessage.value = '正在加入会议...'
 		await joinMeeting(meetingInfo.value.roomId, currentUserId.value, currentUsername.value, authToken.value)
-
-		loadingProgress.value = 100
+		loadingProgress.value = 80
 		meetingStartTime.value = Date.now()
+
+		// 4. 初始化房间消息服务
+		loadingMessage.value = '正在连接聊天服务...'
+		await initRoomMessageService()
+		loadingProgress.value = 100
 	} catch (error) {
 		console.error('Failed to join meeting', error)
 		$notify.error(`加入会议失败: ${error.message}`)
@@ -1638,7 +1633,10 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(async () => {
+	// 离开会议
 	await leaveMeeting()
+	// 断开房间消息服务
+	RoomMessageService.disconnect()
 })
 
 // 监听页面刷新/关闭
@@ -1762,6 +1760,42 @@ useEventListener('beforeunload', e => {
 	margin: 16px 0;
 	position: relative;
 }
+.system-message {
+	justify-content: center !important;
+	margin: 8px 0;
+}
+
+.system-message-content {
+	display: flex;
+	align-items: center;
+	padding: 6px 12px;
+	background: rgba(var(--v-theme-info), 0.1);
+	border-radius: 12px;
+	color: rgb(var(--v-theme-info));
+}
+
+/* 图片消息样式 */
+.message-image {
+	cursor: pointer;
+	transition: transform 0.2s;
+}
+
+.message-image:hover {
+	transform: scale(1.02);
+}
+
+.message-image :deep(.v-img) {
+	border-radius: 12px;
+	overflow: hidden;
+}
+
+/* 加载更多触发器 */
+.load-more-trigger {
+	display: flex;
+	justify-content: center;
+	padding: 12px;
+	min-height: 48px;
+}
 
 .date-divider::before {
 	content: '';
@@ -1787,6 +1821,20 @@ useEventListener('beforeunload', e => {
 .message-wrapper {
 	margin-bottom: 12px;
 	animation: fadeIn 0.2s ease-in;
+}
+/* 连接状态动画 */
+@keyframes pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.5;
+	}
+}
+
+.v-alert {
+	animation: pulse 2s infinite;
 }
 
 @keyframes fadeIn {

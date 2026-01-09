@@ -262,8 +262,6 @@ class RoomMessageService {
 					timestamp: Date.now(),
 				}),
 			})
-
-			console.log('消息发送成功')
 		} catch (error) {
 			console.error('发送消息失败:', error)
 			throw error

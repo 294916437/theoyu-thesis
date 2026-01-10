@@ -138,12 +138,9 @@ class RoomMessageService {
 
 		try {
 			this.roomSubscription = this.client.subscribe(destination, message => {
-				console.log('收到房间消息:', message)
-
 				let data
 				try {
 					data = typeof message.body === 'string' ? JSON.parse(message.body) : message.body
-					console.log('解析后的消息数据:', data)
 				} catch (e) {
 					console.error('解析消息失败:', e)
 					data = message.body
@@ -267,13 +264,30 @@ class RoomMessageService {
 			throw error
 		}
 	}
+	/**
+	 * 发送系统文本消息
+	 * @param {string} content - 消息内容
+	 * @param {number} contentType - 内容类型
+	 */
+	sendSystemTextMessage(content) {
+		if (!this.currentRoomId) {
+			throw new Error('未加入任何房间')
+		}
+
+		this.send('/app/room/sendMessage', {
+			roomId: this.currentRoomId,
+			content: content.trim(),
+			messageType: 1, // 1-系统消息
+			contentType: 1, // 1-文本
+		})
+	}
 
 	/**
 	 * 发送文本消息到当前房间
 	 * @param {string} content - 消息内容
-	 * @param {number} contentType - 内容类型 (默认1-文本)
+	 * @param {number} contentType - 内容类型
 	 */
-	sendTextMessage(content, contentType = 1) {
+	sendTextMessage(content) {
 		if (!this.currentRoomId) {
 			console.error('未加入任何房间')
 			throw new Error('未加入任何房间')
@@ -283,7 +297,7 @@ class RoomMessageService {
 			roomId: this.currentRoomId,
 			content: content.trim(),
 			messageType: 2, // 2-用户消息
-			contentType: contentType, // 1-文本
+			contentType: 1, // 1-文本
 		})
 	}
 

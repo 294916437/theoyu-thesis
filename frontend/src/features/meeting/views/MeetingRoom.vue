@@ -147,8 +147,7 @@
 
 										<v-divider></v-divider>
 
-										<!-- 消息列表 -->
-										<!-- 消息列表 -->
+										<!-- 消息容器 -->
 										<div ref="messageContainer" class="message-container">
 											<!-- 加载更多触发器 (无限滚动) -->
 											<div v-if="hasMoreMessages" ref="loadMoreTrigger" class="load-more-trigger">
@@ -174,13 +173,14 @@
 													:key="message.id"
 													class="message-wrapper"
 													:class="{
-														'd-flex justify-end': message.isOwn,
-														'system-message': message.type === 'system',
+														'system-message': message.messageType === 1,
+														'user-message': !message.isOwn && message.messageType === 2,
+														'user-own-message': message.isOwn && message.messageType === 2,
 													}"
 												>
-													<!-- 系统消息 -->
+													<!-- 系统消息 (messageType === 1) -->
 													<div
-														v-if="message.type === 'system'"
+														v-if="message.messageType === 1"
 														class="system-message-content"
 													>
 														<v-icon
@@ -191,13 +191,10 @@
 														<span class="text-caption">{{ message.content }}</span>
 													</div>
 
-													<!-- 普通消息 -->
+													<!-- 用户消息 (messageType === 2) -->
 													<div v-else class="message-content">
 														<!-- 他人消息头部 -->
-														<div
-															v-if="!message.isOwn"
-															class="d-flex align-center mb-2 px-1"
-														>
+														<div v-if="!message.isOwn" class="d-flex align-center mb-2">
 															<v-avatar :image="message.avatar" size="28" color="primary">
 																<span v-if="!message.avatar" class="text-caption">
 																	{{ getInitials(message.userName) }}
@@ -211,18 +208,19 @@
 															}}</span>
 														</div>
 
+														<!-- 消息气泡 -->
 														<div
 															class="message-bubble"
 															:class="{ 'message-own-bubble': message.isOwn }"
 														>
-															<!-- 文本消息 -->
-															<div v-if="message.type === 'text'" class="message-text">
+															<!-- 文本消息 (type === 'text') -->
+															<div v-if="message.contentType === 1" class="message-text">
 																{{ message.content }}
 															</div>
 
-															<!-- 图片消息 -->
+															<!-- 图片消息 (type === 'image') -->
 															<div
-																v-else-if="message.type === 'image'"
+																v-else-if="message.contentType === 2"
 																class="message-image"
 															>
 																<v-img
@@ -232,7 +230,7 @@
 																	max-height="300"
 																	cover
 																	class="rounded"
-																	@click="() => previewImage(message.content)"
+																	@click="previewImage(message.content)"
 																>
 																	<template #placeholder>
 																		<v-progress-circular
@@ -242,9 +240,9 @@
 																</v-img>
 															</div>
 
-															<!-- 文件消息 -->
+															<!-- 文件消息 (type === 'file') -->
 															<div
-																v-else-if="message.type === 'file'"
+																v-else-if="message.contentType === 3"
 																class="message-file"
 															>
 																<v-icon
@@ -980,10 +978,7 @@ const groupedMessages = computed(() => {
 	chatMessages.value.forEach(msg => {
 		const date = useDateFormat(msg.timestamp, 'YYYY-MM-DD').value
 		if (!groups[date]) groups[date] = []
-		groups[date].push({
-			...msg,
-			isOwn: msg.userId === currentUserId.value,
-		})
+		groups[date].push(msg)
 	})
 	return groups
 })
@@ -996,6 +991,8 @@ const transformMessage = resVO => {
 		userId: resVO.senderId,
 		userName: resVO.senderNickname,
 		avatar: resVO.senderAvatar,
+		messageType: resVO.messageType, // 1:系统消息，2:用户消息
+		contentType: resVO.contentType, // 1:文本，2:图片，3:文件
 		timestamp: new Date(resVO.sendTime),
 		isOwn: resVO.senderId === currentUserId.value,
 	}
@@ -1005,14 +1002,12 @@ const transformMessage = resVO => {
 		case 1: // 文本消息
 			return {
 				...baseMessage,
-				type: 'text',
 				content: resVO.content,
 			}
 
 		case 2: // 图片消息
 			return {
 				...baseMessage,
-				type: 'image',
 				content: resVO.content, // 图片URL
 			}
 
@@ -1021,7 +1016,6 @@ const transformMessage = resVO => {
 			const [fileName, fileSize, fileUrl] = resVO.content.split('|')
 			return {
 				...baseMessage,
-				type: 'file',
 				file: {
 					name: fileName,
 					size: parseInt(fileSize),
@@ -1034,8 +1028,7 @@ const transformMessage = resVO => {
 		default:
 			return {
 				...baseMessage,
-				type: 'text',
-				content: resVO.content,
+				content: '消息解析错误',
 			}
 	}
 }
@@ -1057,9 +1050,6 @@ const sendChatMessage = async () => {
 
 		// 清空输入框和草稿
 		messageInput.value = ''
-
-		// 注意: 不需要手动添加到 chatMessages
-		// 因为后端会广播回来,通过 'room-message' 事件接收
 	} catch (error) {
 		console.error('发送消息失败:', error)
 		$notify.error('发送失败,请重试')
@@ -1124,7 +1114,7 @@ const loadMessageHistory = async (page = 1) => {
 
 		const { data } = await fetchMessageHistory(roomId.value, page, pageSize)
 
-		if (data && data.length > 0) {
+		if (data.length > 0) {
 			// 转换消息格式
 			const transformedMessages = data.map(transformMessage)
 
@@ -1192,47 +1182,18 @@ const initRoomMessageService = async () => {
 				unreadMessages.value++
 			}
 		})
-
-		// 3. 监听加入房间事件
-		RoomMessageService.on('room-joined', ({ roomId, userId }) => {
-			// 添加系统消息
-			if (userId !== currentUserId.value) {
-				addSystemMessage(`${userId} 加入了会议`)
-			}
-		})
-
-		// 4. 监听离开房间事件
-		RoomMessageService.on('room-left', ({ roomId, userId }) => {
-			console.log(`用户 ${userId} 离开房间 ${roomId}`)
-			if (userId !== currentUserId.value) {
-				addSystemMessage(`${userId} 离开了会议`)
-			}
-		})
-
-		// 5. 监听连接错误
+		// 3. 监听连接错误
 		RoomMessageService.on('connection-error', error => {
 			console.error('房间消息服务连接错误:', error)
 			roomMessageError.value = error
 		})
 
-		// 6. 加载历史消息
+		// 4. 加载历史消息
 		await loadMessageHistory(1)
 	} catch (error) {
 		console.error('初始化房间消息服务失败:', error)
 		roomMessageError.value = error
 	}
-}
-
-/**
- * 添加系统消息
- */
-const addSystemMessage = content => {
-	chatMessages.value.push({
-		id: `system-${Date.now()}`,
-		type: 'system',
-		content,
-		timestamp: new Date(),
-	})
 }
 
 /**
@@ -1760,28 +1721,48 @@ useEventListener('beforeunload', e => {
 	margin: 16px 0;
 	position: relative;
 }
+
+.message-wrapper {
+	display: flex;
+	margin-bottom: 12px;
+	animation: fadeIn 0.2s ease-in;
+}
 .system-message {
 	justify-content: center !important;
 	margin: 8px 0;
+}
+.user-message {
+	justify-content: flex-start !important;
+}
+.user-own-message {
+	justify-content: flex-end !important;
 }
 
 .system-message-content {
 	display: flex;
 	align-items: center;
+	justify-content: center;
 	padding: 6px 12px;
 	background: rgba(var(--v-theme-info), 0.1);
 	border-radius: 12px;
 	color: rgb(var(--v-theme-info));
+	font-size: 13px;
 }
-
+/* 系统消息居中 */
+.message-wrapper.system-message {
+	justify-content: center;
+	margin: 8px 0;
+}
 /* 图片消息样式 */
 .message-image {
 	cursor: pointer;
 	transition: transform 0.2s;
+	border-radius: 6px;
+	overflow: hidden;
 }
 
 .message-image:hover {
-	transform: scale(1.02);
+	transform: scale(1.1);
 }
 
 .message-image :deep(.v-img) {
@@ -1818,10 +1799,6 @@ useEventListener('beforeunload', e => {
 	letter-spacing: 0.5px;
 }
 
-.message-wrapper {
-	margin-bottom: 12px;
-	animation: fadeIn 0.2s ease-in;
-}
 /* 连接状态动画 */
 @keyframes pulse {
 	0%,
@@ -1849,7 +1826,11 @@ useEventListener('beforeunload', e => {
 }
 
 .message-content {
+	display: flex;
+	flex-direction: column;
 	max-width: 75%;
+}
+.message-content-own {
 }
 
 .message-sender {
@@ -1871,6 +1852,7 @@ useEventListener('beforeunload', e => {
 	word-wrap: break-word;
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 	transition: background-color 0.2s;
+	max-width: 100%;
 }
 
 .message-bubble:hover {
@@ -1882,11 +1864,17 @@ useEventListener('beforeunload', e => {
 	color: rgb(var(--v-theme-on-primary));
 	border-bottom-right-radius: 4px;
 }
-
+/* 他人消息：左下角小圆角 */
 .message-wrapper:not(.message-own) .message-bubble {
 	border-bottom-left-radius: 4px;
 }
-
+/* 自己消息：右下角小圆角 + 主题色背景 */
+.message-bubble.message-own-bubble {
+	background: rgb(var(--v-theme-primary));
+	color: rgb(var(--v-theme-on-primary));
+	border-bottom-right-radius: 4px;
+}
+/* 文本消息 */
 .message-text {
 	word-wrap: break-word;
 	white-space: pre-wrap;

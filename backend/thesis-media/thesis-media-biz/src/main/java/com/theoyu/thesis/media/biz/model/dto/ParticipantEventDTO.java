@@ -12,8 +12,8 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ParticipantEventDTO {
-    private String roomId;
-    private String userId;
+    private Long roomId;
+    private Long userId;
     private String username;
     private String eventType; // joined/left/media_changed
     private Long timestamp;

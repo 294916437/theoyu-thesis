@@ -16,8 +16,10 @@ import com.theoyu.thesis.media.biz.model.mapper.RoomMessagePOMapper;
 import com.theoyu.thesis.media.biz.model.mapper.RoomPOMapper;
 import com.theoyu.thesis.media.biz.model.mapper.RoomParticipantPOMapper;
 import com.theoyu.thesis.media.biz.model.vo.RoomConfigVO;
+import com.theoyu.thesis.media.biz.model.vo.RoomMessageResVO;
 import com.theoyu.thesis.media.biz.rpc.UserRpcService;
 import com.theoyu.thesis.media.biz.rpc.IdGeneratorRpcService;
+import com.theoyu.thesis.media.biz.service.RoomMessageService;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import jakarta.annotation.Resource;
@@ -25,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.server.service.GrpcService;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.time.LocalDateTime;
@@ -59,7 +62,10 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
     private RocketMQTemplate rocketMQTemplate;
 
     @Resource
-    private UserRpcService userRpcService;
+    private RoomMessageService roomMessageService;
+
+    @Resource
+    private SimpMessagingTemplate messagingTemplate;
 
     @Resource
     private IdGeneratorRpcService idGeneratorRpcService;
@@ -149,20 +155,21 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
 
         log.info("[SFU-gRPC] notifyParticipantJoined - roomId: {}, userId: {}, username: {}",
                 request.getRoomId(), request.getUserId(), request.getUsername());
-        String roomId = request.getRoomId();
-        String userId = request.getUserId();
+        String roomIdStr = request.getRoomId();
+        String userIdStr = request.getUserId();
+        Long roomId = Long.parseLong(roomIdStr);
+        Long userId = Long.parseLong(userIdStr);
         String username = request.getUsername();
         long timestamp = request.getTimestamp();
 
         try {
-            Long roomIdLong = Long.parseLong(roomId);
-            Long userIdLong = Long.parseLong(userId);
+
             LocalDateTime now = LocalDateTime.now();
 
             // 1. 使用 insertOrUpdate 方法处理参与者记录
             RoomParticipantPO participant = RoomParticipantPO.builder()
-                    .roomId(roomIdLong)
-                    .userId(userIdLong)
+                    .roomId(roomId)
+                    .userId(userId)
                     .joinedAt(now)
                     .audioMuted(false)
                     .videoMuted(false)
@@ -176,13 +183,13 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             log.info("[SFU-gRPC] 参与者记录已更新 - userId: {}", userId);
 
             // 2. 缓存参与者信息到 Redis
-            cacheParticipantInfo(roomId, userId, username, timestamp);
+            cacheParticipantInfo(roomIdStr, userIdStr, username, timestamp);
 
             // 3. 异步发送 MQ 消息
             sendParticipantEventToMQ(roomId, userId, username, "joined", timestamp);
 
             // 4. 异步记录房间系统消息
-            recordSystemMessage(roomIdLong, userIdLong, username, "加入了房间");
+            recordSystemMessage(roomId ,userId, username, "加入了房间");
 
             // 5. 返回成功响应
             sendAckSuccessResponse(responseObserver, "加入房间成功");
@@ -210,28 +217,30 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
                 request.getRoomId(), request.getUserId(), request.getUsername());
 
         try {
-            String roomId = request.getRoomId();
-            String userId = request.getUserId();
+            String roomIdStr = request.getRoomId();
+            String userIdStr = request.getUserId();
+            Long roomId = Long.parseLong(roomIdStr);
+            Long userId = Long.parseLong(userIdStr);
             String username = request.getUsername();
             long timestamp = request.getTimestamp();
 
             // 1. 更新参与者离线状态
             roomParticipantPOMapper.updateStatusToOffline(
-                    Long.parseLong(roomId),
-                    Long.parseLong(userId),
+                    roomId,
+                    userId,
                     LocalDateTime.now()
             );
 
             // 2. 清理 Redis 缓存
-            removeParticipantCache(roomId, userId);
+            removeParticipantCache(roomIdStr, userIdStr);
 
             // 3. 异步发送 MQ 消息
             sendParticipantEventToMQ(roomId, userId, username, "left", timestamp);
 
             // 4. 记录房间消息
             recordSystemMessage(
-                    Long.parseLong(roomId),
-                    Long.parseLong(userId),
+                    roomId,
+                    userId,
                     username,
                     "离开了房间"
             );
@@ -439,7 +448,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
     /**
      * 发送参与者事件到 MQ
      */
-    private void sendParticipantEventToMQ(String roomId, String userId,
+    private void sendParticipantEventToMQ(Long roomId, Long userId,
                                           String username, String eventType,
                                           long timestamp) {
         taskExecutor.execute(() -> {
@@ -478,22 +487,38 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
                                      String username, String action) {
         taskExecutor.execute(() -> {
             try {
+                // 1. 生成消息ID
                 Long messageId = Long.valueOf(idGeneratorRpcService.getRoomMsgId());
-
                 LocalDateTime now = LocalDateTime.now();
-                RoomMessagePO message = RoomMessagePO.builder()
+
+                // 2. 构建系统消息内容
+                String content = String.format("用户 %s %s", username, action);
+
+                // 3. 保存到数据库
+                RoomMessagePO messagePO = RoomMessagePO.builder()
                         .id(messageId)
                         .roomId(roomId)
                         .senderId(userId)
                         .messageType(1) // 1-系统消息
                         .contentType(1) // 1-文本
-                        .content("用户 " + username + " " + action)
+                        .content(content)
                         .createdTime(now)
                         .updatedTime(now)
                         .build();
 
-                roomMessagePOMapper.insert(message);
-                log.info("[SFU-gRPC] 房间消息记录成功 - messageId: {}", messageId);
+                roomMessagePOMapper.insert(messagePO);
+                log.info("[SFU-gRPC] 房间消息记录成功 - messageId: {}, content: {}",
+                        messageId, content);
+
+                // 4. 构建 WebSocket 消息响应体
+                RoomMessageResVO resVO = roomMessageService.buildMessageResVO(messagePO);
+
+                // 5. 通过 WebSocket 广播到房间
+                String destination = String.format("/topic/room/%s", roomId);
+                messagingTemplate.convertAndSend(destination, resVO);
+
+                log.info("[SFU-gRPC] 系统消息已广播 - roomId: {}, destination: {}",
+                        roomId, destination);
             } catch (Exception e) {
                 log.error("[SFU-gRPC] 房间消息记录失败", e);
             }

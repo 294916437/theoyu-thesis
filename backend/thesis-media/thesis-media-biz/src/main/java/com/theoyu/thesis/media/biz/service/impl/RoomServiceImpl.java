@@ -26,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -453,7 +454,252 @@ public class RoomServiceImpl implements RoomService {
         }
     }
 
+    @Override
+    public PageResponse<ParticipantListItemVO> getParticipants(GetParticipantsReqVO reqVO) {
+        Long roomId = reqVO.getRoomId();
+        long page = reqVO.getPage() > 0 ? reqVO.getPage() : 1;
+        long size = reqVO.getSize() > 0 ? reqVO.getSize() : 20;
+        Integer status = reqVO.getStatus();
+
+        try {
+            // 1. 检查房间是否存在
+            RoomPO room = getRoomFromCache(roomId);
+            if (room == null) {
+                throw new BusinessException(ResponseCodeEnum.ROOM_NOT_FOUND);
+            }
+
+            // 2. 尝试从 Set 缓存获取在线参与者列表
+            if (status == null || status == 1) {
+                List<ParticipantListItemVO> cachedList = getOnlineParticipantsFromCache(roomId, page, size);
+                if (!cachedList.isEmpty()) {
+                    log.debug("[RoomService] Set 缓存命中在线参与者列表 - roomId: {}", roomId);
+                    return PageResponse.success(cachedList, page, size);
+                }
+            }
+
+            // 3. 缓存未命中,查询数据库
+            Long offset = PageResponse.getOffset(page, size);
+            List<RoomParticipantPO> participants;
+
+            if (status != null) {
+                participants = roomParticipantPOMapper.selectByRoomIdAndStatusWithPage(
+                        roomId, status, offset, size);
+            } else {
+                participants = roomParticipantPOMapper.selectByRoomIdWithPage(
+                        roomId, offset, size);
+            }
+
+            if (participants.isEmpty()) {
+                return PageResponse.success(Collections.emptyList(), page, size);
+            }
+
+            // 4. 批量查询用户信息
+            List<Long> userIds = participants.stream()
+                    .map(RoomParticipantPO::getUserId)
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            List<FindUserByIdRspDTO> userInfos = userRpcService.findByIds(userIds);
+            Map<Long, FindUserByIdRspDTO> userInfoMap = userInfos != null
+                    ? userInfos.stream().collect(Collectors.toMap(FindUserByIdRspDTO::getId, u -> u))
+                    : new HashMap<>();
+
+            // 5. 构建返回结果
+            List<ParticipantListItemVO> resultList = participants.stream()
+                    .map(p -> buildParticipantVO(p, userInfoMap.get(p.getUserId())))
+                    .collect(Collectors.toList());
+
+            // 6. 异步缓存在线参与者列表到 Set (仅状态为1时)
+            if (status == null || status == 1) {
+                asyncCacheOnlineParticipants(roomId, participants, userInfoMap);
+            }
+
+            return PageResponse.success(resultList, page, size);
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[RoomService] 获取房间参与者列表失败 - roomId: {}", roomId, e);
+            throw new BusinessException(ResponseCodeEnum.SYSTEM_ERROR);
+        }
+    }
+    /**
+     * 添加单个在线参与者到 Set 缓存
+     * @param roomId 房间ID
+     * @param participant 参与者PO
+     * @param userId 用户ID
+     */
+    @Override
+    public void addOnlineParticipantToCache(Long roomId, RoomParticipantPO participant, Long userId) {
+        try {
+            // 1. 查询用户信息
+            FindUserByIdRspDTO userInfo = userRpcService.findById(userId);
+
+            // 2. 构建 VO 对象
+            ParticipantListItemVO vo = buildParticipantVO(participant, userInfo);
+
+            // 3. 序列化为 JSON
+            String memberJson = JsonUtils.toJsonString(vo);
+
+            // 4. 添加到 Set
+            String cacheKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
+            redisTemplate.opsForSet().add(cacheKey, memberJson);
+
+            // 5. 刷新过期时间
+            redisTemplate.expire(cacheKey,
+                    RedisKeyConstants.PARTICIPANT_INFO_EXPIRE_TIME,
+                    TimeUnit.SECONDS);
+
+            log.info("[RoomService] 添加在线参与者到 Set 缓存 - roomId: {}, userId: {}",
+                    roomId, userId);
+
+        } catch (Exception e) {
+            log.error("[RoomService] 添加在线参与者到 Set 缓存失败 - roomId: {}, userId: {}",
+                    roomId, userId, e);
+        }
+    }
+    /**
+     * 从 Set 缓存移除参与者
+     * @param roomId 房间ID
+     * @param userId 用户ID
+     */
+    @Override
+    public void removeOnlineParticipantFromCache(Long roomId, Long userId) {
+        try {
+            String cacheKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
+
+            // 获取所有成员并过滤删除
+            Set<Object> members = redisTemplate.opsForSet().members(cacheKey);
+
+            if (members != null) {
+                for (Object member : members) {
+                    ParticipantListItemVO vo = JsonUtils.parseObject(member.toString(),
+                            ParticipantListItemVO.class);
+
+                    if (vo != null && vo.getUserId().equals(userId)) {
+                        // 从 Set 中删除该成员
+                        redisTemplate.opsForSet().remove(cacheKey, member);
+                        log.info("[RoomService] 从 Set 缓存移除参与者 - roomId: {}, userId: {}",
+                                roomId, userId);
+                        break;
+                    }
+                }
+            }
+
+            // 如果 Set 为空,删除 Key
+            Long size = redisTemplate.opsForSet().size(cacheKey);
+            if (size != null && size == 0) {
+                redisTemplate.delete(cacheKey);
+                log.debug("[RoomService] Set 为空,已删除 Key - roomId: {}", roomId);
+            }
+
+        } catch (Exception e) {
+            log.error("[RoomService] 从 Set 缓存移除参与者失败 - roomId: {}, userId: {}",
+                    roomId, userId, e);
+        }
+    }
+
+
+
+
+
+
     // ==================== 私有辅助方法 ====================
+    /**
+     * 从 Set 缓存获取在线参与者列表 (带分页和排序)
+     */
+    private List<ParticipantListItemVO> getOnlineParticipantsFromCache(Long roomId, long page, long size) {
+        try {
+            String cacheKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
+
+            // 获取 Set 中的所有成员
+            Set<Object> members = redisTemplate.opsForSet().members(cacheKey);
+
+            if (members == null || members.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            // 反序列化为 VO 对象
+            List<ParticipantListItemVO> allParticipants = members.stream()
+                    .map(obj -> JsonUtils.parseObject(obj.toString(), ParticipantListItemVO.class))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+
+            // 按加入时间排序(升序,先加入的在前)
+            allParticipants.sort((a, b) -> {
+                if (a.getJoinedAt() == null) return 1;
+                if (b.getJoinedAt() == null) return -1;
+                return a.getJoinedAt().compareTo(b.getJoinedAt());
+            });
+
+            // 手动分页
+            long start = PageResponse.getOffset(page, size);
+            long end = Math.min(start + size, allParticipants.size());
+
+            if (start >= allParticipants.size()) {
+                return Collections.emptyList();
+            }
+
+            return allParticipants.subList((int) start, (int) end);
+
+        } catch (Exception e) {
+            log.warn("[RoomService] 从 Set 缓存获取在线参与者失败 - roomId: {}", roomId, e);
+            return Collections.emptyList();
+        }
+    }
+    /**
+     * 异步缓存在线参与者列表到 Set (简化版)
+     */
+    private void asyncCacheOnlineParticipants(Long roomId,
+                                              List<RoomParticipantPO> participants,
+                                              Map<Long, FindUserByIdRspDTO> userInfoMap) {
+        threadPoolTaskExecutor.execute(() -> {
+            try {
+                // 1. 过滤在线参与者
+                // 2. 构建缓存 Key
+                String cacheKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
+
+                // 3. 删除旧数据
+                redisTemplate.delete(cacheKey);
+
+                // 4. 批量添加新成员
+                for (RoomParticipantPO p : participants) {
+                    ParticipantListItemVO vo = buildParticipantVO(p, userInfoMap.get(p.getUserId()));
+                    String json = JsonUtils.toJsonString(vo);
+
+                    if (json != null && !json.isEmpty()) {
+                        redisTemplate.opsForSet().add(cacheKey, json);
+                    }
+                }
+
+                redisTemplate.expire(cacheKey,
+                            RedisKeyConstants.PARTICIPANT_LIST_EXPIRE_TIME,
+                            TimeUnit.SECONDS);
+
+                log.debug("[RoomService] 批量缓存成功 - roomId: {}", roomId);
+
+            } catch (Exception e) {
+                log.error("[RoomService] 异步缓存在线参与者列表失败 - roomId: {}", roomId, e);
+            }
+        });
+    }
+    /**
+     * 构建参与者 VO 对象
+     */
+    private ParticipantListItemVO buildParticipantVO(RoomParticipantPO participant,
+                                                     FindUserByIdRspDTO userInfo) {
+        return ParticipantListItemVO.builder()
+                .userId(participant.getUserId())
+                .userName(userInfo != null ? userInfo.getNickName() : "未知用户")
+                .avatar(userInfo != null ? userInfo.getAvatar() : "")
+                .role(participant.getRole())
+                .status(participant.getStatus())
+                .audioMuted(participant.getAudioMuted())
+                .videoMuted(participant.getVideoMuted())
+                .joinedAt(participant.getJoinedAt())
+                .leftAt(participant.getLeftAt())
+                .build();
+    }
     /**
      * 异步缓存最近参加的会议
      * 使用 Sorted Set，score 为参与时间戳（越大越新）

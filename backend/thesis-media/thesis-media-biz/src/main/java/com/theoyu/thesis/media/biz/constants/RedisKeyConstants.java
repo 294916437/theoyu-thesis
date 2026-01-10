@@ -80,6 +80,7 @@ public class RedisKeyConstants {
 
     // ==================== SFU 节点相关 ====================
 
+
     /**
      * SFU 节点列表 Key
      * media:sfu:nodes
@@ -93,6 +94,10 @@ public class RedisKeyConstants {
     public static final String SFU_NODE_INFO_KEY = "sfu:node:%s";
 
     // ==================== 缓存过期时间 ====================
+    /**
+     * 房间在线参与者列表过期时间: 5分钟
+     */
+    public static final Long ROOM_ONLINE_PARTICIPANTS_ZSET_EXPIRE_TIME = 1800L; // 5分钟
 
     /**
      * 会议号映射过期时间（7天）
@@ -129,9 +134,13 @@ public class RedisKeyConstants {
     public static final long ROOM_CONFIG_EXPIRE_TIME = 60 * 60;
 
     /**
-     * 参与者信息缓存过期时间：30分钟
+     * 参与者缓存过期时间：30分钟
      */
     public static final long PARTICIPANT_INFO_EXPIRE_TIME = 30 * 60;
+    /**
+     * 参与者列表缓存过期时间：30分钟
+     */
+    public static final long PARTICIPANT_LIST_EXPIRE_TIME = 30 * 60;
 
     /**
      * 媒体统计数据过期时间：1天

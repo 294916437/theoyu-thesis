@@ -241,6 +241,23 @@
       LIMIT #{offset}, #{size}
   </select>
 
+  <select id="selectByRoomIdAndStatusWithPage" resultMap="BaseResultMap">
+    SELECT <include refid="Base_Column_List" />
+    FROM t_room_participant
+    WHERE room_id = #{roomId}
+      AND status = #{status}
+    ORDER BY joined_at ASC
+      LIMIT #{offset}, #{size}
+  </select>
+
+  <select id="selectByRoomIdWithPage" resultMap="BaseResultMap">
+    SELECT <include refid="Base_Column_List" />
+    FROM t_room_participant
+    WHERE room_id = #{roomId}
+    ORDER BY status ASC, joined_at ASC
+      LIMIT #{offset}, #{size}
+  </select>
+
 
 
 </mapper>

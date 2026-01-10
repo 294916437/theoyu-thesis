@@ -74,6 +74,24 @@ public interface RoomParticipantPOMapper {
             @Param("oldStatus") Integer oldStatus,
             @Param("leaveTime") LocalDateTime leaveTime
     );
+    /**
+     * 分页查询房间参与者(按状态过滤)
+     */
+    List<RoomParticipantPO> selectByRoomIdAndStatusWithPage(
+            @Param("roomId") Long roomId,
+            @Param("status") Integer status,
+            @Param("offset") long offset,
+            @Param("size") long size
+    );
+
+    /**
+     * 分页查询房间所有参与者
+     */
+    List<RoomParticipantPO> selectByRoomIdWithPage(
+            @Param("roomId") Long roomId,
+            @Param("offset") long offset,
+            @Param("size") long size
+    );
 
 
 

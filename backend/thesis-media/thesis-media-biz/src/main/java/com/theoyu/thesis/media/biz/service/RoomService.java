@@ -1,7 +1,9 @@
 package com.theoyu.thesis.media.biz.service;
 
 import com.theoyu.framework.common.response.PageResponse;
+import com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO;
 import com.theoyu.thesis.media.biz.model.vo.*;
+import com.theoyu.thesis.user.dto.response.FindUserByIdRspDTO;
 
 public interface RoomService {
 
@@ -39,4 +41,14 @@ public interface RoomService {
      * 获取即将开始的会议
      */
     PageResponse<UpcomingRoomResVO> getUpcomingRooms(Long page, Long size);
+    /**
+     * 获取房间参与者列表
+     */
+    PageResponse<ParticipantListItemVO> getParticipants(GetParticipantsReqVO reqVO);
+
+    void removeOnlineParticipantFromCache(Long roomId, Long participantId);
+
+    void addOnlineParticipantToCache(Long roomId, RoomParticipantPO participant, Long userId);
+
+
 }

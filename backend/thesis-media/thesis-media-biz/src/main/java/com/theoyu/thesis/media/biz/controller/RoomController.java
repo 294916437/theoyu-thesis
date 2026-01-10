@@ -18,6 +18,7 @@ public class RoomController {
     @Resource
     private RoomService roomService;
 
+
     /**
      * 创建会议
      * POST /room/create
@@ -95,5 +96,14 @@ public class RoomController {
     public Response<?> closeRoom(@RequestBody @Valid CloseRoomReqVO reqVO) {
         roomService.closeRoom(reqVO.getRoomId());
         return Response.success();
+    }
+    /**
+     * 获取房间参与者列表
+     * GET /room/participants?roomId=123&status=1&page=1&size=20
+     */
+    @GetMapping("/participants")
+    @ApiOperationLog(description = "获取房间参与者列表")
+    public PageResponse<ParticipantListItemVO> getParticipants(@Valid GetParticipantsReqVO reqVO) {
+        return roomService.getParticipants(reqVO);
     }
 }

@@ -23,7 +23,7 @@ public class WebSocketHandshakeInterceptor implements HandshakeInterceptor {
             ServerHttpRequest request,
             ServerHttpResponse response,
             WebSocketHandler wsHandler,
-            Map<String, Object> attributes) throws Exception {
+            Map<String, Object> attributes){
 
         if (request instanceof ServletServerHttpRequest servletRequest) {
             // 从 URL 参数获取 userId 和 roomId

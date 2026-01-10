@@ -26,19 +26,19 @@ public class RedisKeyConstants {
      * 房间参与者列表 Key
      * media:room:participants:{roomId}
      */
-    public static final String ROOM_PARTICIPANTS_KEY = "media:room:participants:%s";
+    public static final String ROOM_PARTICIPANTS_KEY = "room:participants:%s";
 
     /**
      * 参与者详情 Key
      * media:participant:{roomId}:{userId}
      */
-    public static final String PARTICIPANT_INFO_KEY = "media:participant:%s:%s";
+    public static final String PARTICIPANT_INFO_KEY = "participant:%s:%s";
 
     /**
      * 媒体统计数据 Key
      * media:stats:{roomId}:{peerId}:{timestamp}
      */
-    public static final String MEDIA_STATS_KEY = "media:stats:%s:%s:%s";
+    public static final String MEDIA_STATS_KEY = "room:stats:%s:%s:%s";
     /**
      * 房间消息缓存 ZSet, score为时间戳
      * room:message:{roomId}
@@ -49,13 +49,13 @@ public class RedisKeyConstants {
      * 用户房间创建配额 Key
      * media:user:room:quota:{userId}
      */
-    public static final String USER_ROOM_QUOTA_KEY = "media:user:room:quota:%s";
+    public static final String USER_ROOM_QUOTA_KEY = "user:room:quota:%s";
 
     /**
      * 房间号唯一性检查 Key
      * media:room:no:{roomNo}
      */
-    public static final String ROOM_NO_SET_KEY = "media:room:no:set";
+    public static final String ROOM_NO_SET_KEY = "room:no:set";
 
     /**
      * 会议号映射 Hash Key
@@ -63,7 +63,7 @@ public class RedisKeyConstants {
      * 用于存储 roomNo -> roomId 的映射关系
      * Hash Field: roomNo, Hash Value: roomId
      */
-    public static final String ROOM_NO_MAPPING_KEY = "media:room:no:mapping";
+    public static final String ROOM_NO_MAPPING_KEY = "room:no:mapping";
 
 
     /**
@@ -84,13 +84,13 @@ public class RedisKeyConstants {
      * SFU 节点列表 Key
      * media:sfu:nodes
      */
-    public static final String SFU_NODES_KEY = "media:sfu:nodes";
+    public static final String SFU_NODES_KEY = "sfu:nodes";
 
     /**
      * SFU 节点详情 Key
      * media:sfu:node:{nodeId}
      */
-    public static final String SFU_NODE_INFO_KEY = "media:sfu:node:%s";
+    public static final String SFU_NODE_INFO_KEY = "sfu:node:%s";
 
     // ==================== 缓存过期时间 ====================
 

@@ -35,9 +35,6 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 log.warn("STOMP CONNECT 缺少必要参数: userId={}, roomId={}", userId, roomId);
                 throw new IllegalArgumentException("缺少必要参数");
             }
-
-            log.info("STOMP CONNECT 验证通过, userId: {}, roomId: {}", userId, roomId);
-
             // 可选: 设置 Principal (用于 /user 订阅)
             accessor.setUser(() -> userId);
         }

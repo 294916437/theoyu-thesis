@@ -20,6 +20,7 @@ import com.theoyu.thesis.media.biz.model.vo.RoomMessageResVO;
 import com.theoyu.thesis.media.biz.rpc.UserRpcService;
 import com.theoyu.thesis.media.biz.rpc.IdGeneratorRpcService;
 import com.theoyu.thesis.media.biz.service.RoomMessageService;
+import com.theoyu.thesis.media.biz.service.RoomService;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import jakarta.annotation.Resource;
@@ -63,6 +64,8 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
 
     @Resource
     private RoomMessageService roomMessageService;
+    @Resource
+    private RoomService roomService;
 
     @Resource
     private SimpMessagingTemplate messagingTemplate;
@@ -182,8 +185,11 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             roomParticipantPOMapper.insertOrUpdate(participant);
             log.info("[SFU-gRPC] 参与者记录已更新 - userId: {}", userId);
 
-            // 2. 缓存参与者信息到 Redis
+            // 2. 缓存参与者信息
+            // 缓存参与者详细信息
             cacheParticipantInfo(roomIdStr, userIdStr, username, timestamp);
+            // 将参与者添加到房间参与者列表缓存
+            roomService.addOnlineParticipantToCache(roomId,participant,userId);
 
             // 3. 异步发送 MQ 消息
             sendParticipantEventToMQ(roomId, userId, username, "joined", timestamp);
@@ -232,7 +238,10 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             );
 
             // 2. 清理 Redis 缓存
+            // 删除参与者用户信息缓存
             removeParticipantCache(roomIdStr, userIdStr);
+            // 从在线参与者列表缓存中移除
+            roomService.removeOnlineParticipantFromCache(roomId,userId);
 
             // 3. 异步发送 MQ 消息
             sendParticipantEventToMQ(roomId, userId, username, "left", timestamp);

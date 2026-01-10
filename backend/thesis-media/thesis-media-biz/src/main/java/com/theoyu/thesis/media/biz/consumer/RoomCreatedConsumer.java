@@ -4,6 +4,8 @@ import com.theoyu.framework.common.utils.MapUtils;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
 import com.theoyu.thesis.media.biz.model.dto.RoomCreatedEventDTO;
+import com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO;
+import com.theoyu.thesis.media.biz.model.mapper.RoomParticipantPOMapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
@@ -12,6 +14,7 @@ import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -37,6 +40,8 @@ public class RoomCreatedConsumer extends BaseRocketMQConsumer implements RocketM
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
+    @Resource
+    private RoomParticipantPOMapper roomParticipantPOMapper;
 
 
     @Override
@@ -67,6 +72,21 @@ public class RoomCreatedConsumer extends BaseRocketMQConsumer implements RocketM
 
             // 4. 初始化房间统计数据
             initRoomStats(event);
+
+            // 5. 新增房间参与者(创建者默认为主持人身份)
+            LocalDateTime now = LocalDateTime.now();
+            RoomParticipantPO roomParticipantPO = RoomParticipantPO.builder()
+                    .roomId(event.getRoomId())
+                    .userId(event.getHostId())
+                    .role(2)   //主持人
+                    .status(2) //离线
+                    .videoMuted(true)
+                    .audioMuted(true)
+                    .createdTime(now)
+                    .updatedTime(now)
+                    .build();
+
+            roomParticipantPOMapper.insert(roomParticipantPO);
 
         } catch (Exception e) {
             log.error("[RoomCreatedConsumer] Consume failed", e);

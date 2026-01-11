@@ -48,7 +48,7 @@
 					<!-- 视频网格 -->
 					<v-col :cols="showSidebar ? 9 : 12" class="video-main">
 						<VideoGrid
-							:participants="participants"
+							:participants="onlineParticipants"
 							:screen-share="screenShare"
 							:layout="videoLayout"
 							:local-stream="localStream"
@@ -103,9 +103,12 @@
 								<!-- 参与者列表 -->
 								<v-tabs-window-item value="participants" class="fill-height">
 									<ParticipantsList
-										:participants="participants"
+										:participants="mergedParticipants"
 										:current-user-id="currentUserId"
+										:meeting-no="meetingInfo.roomNo"
 										:meeting-id="meetingInfo.roomId"
+										:local-audio-enabled="audioEnabled"
+										:local-video-enabled="videoEnabled"
 										@mute-participant="handleMuteParticipant"
 										@remove-participant="handleRemoveParticipant"
 										@pin-participant="handlePinParticipant"
@@ -783,14 +786,15 @@ import {
 	useNetwork,
 	useOnline,
 	useDebounceFn,
+	useIntersectionObserver,
 } from '@vueuse/core'
 import VideoGrid from '../components/VideoGrid.vue'
 import ParticipantsList from '../components/ParticipantsList.vue'
 import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
+import { useParticipants } from '@/composables/useParticipants'
 import { useMediaDevices } from '@/composables/useMediaDevices'
 import RoomMessageService from '@/services/RoomMessageService'
 import { useMedia } from '@/composables/useMedia'
-import { useIntersectionObserver } from '@vueuse/core'
 import { fetchMeetingInfo } from '@/api/room'
 import { uploadFile } from '@/api/file'
 import { fetchMessageHistory } from '@/api/room'
@@ -863,7 +867,13 @@ const {
 	changeAudioDevice,
 	changeVideoDevice,
 } = useMedia()
-
+// ==================== 房间参与者 ====================
+const {
+	mergedParticipants,
+	onlineParticipants,
+	loading: participantsLoading,
+	loadParticipants,
+} = useParticipants(roomId, participants)
 // ==================== 网络状态监控 ====================
 const online = useOnline()
 const networkState = useNetwork()
@@ -1249,7 +1259,7 @@ useIntervalFn(() => {
 }, 1000)
 
 // ==================== 计算属性 ====================
-const participantCount = computed(() => participants.value.length)
+const participantCount = computed(() => onlineParticipants.value.length)
 
 const videoContainerHeight = computed(() => {
 	const topBarHeight = 48
@@ -1563,24 +1573,28 @@ const loadMeetingDetail = async () => {
 onMounted(async () => {
 	isLoading.value = true
 	loadingMessage.value = '正在初始化...'
-	loadingProgress.value = 20
+	loadingProgress.value = 0
 
 	try {
 		// 1. 枚举媒体设备
 		await enumerateDevices()
-		loadingProgress.value = 40
+		loadingProgress.value = 20
 
 		// 2. 加载会议详情
 		await loadMeetingDetail()
-		loadingProgress.value = 60
+		loadingProgress.value = 40
 
 		// 3. 加入会议房间
 		loadingMessage.value = '正在加入会议...'
 		await joinMeeting(meetingInfo.value.roomId, currentUserId.value, currentUsername.value, authToken.value)
-		loadingProgress.value = 80
+		loadingProgress.value = 60
 		meetingStartTime.value = Date.now()
 
-		// 4. 初始化房间消息服务
+		// 4. 加载参与者列表
+		await loadParticipants()
+		loadingProgress.value = 80
+
+		// 5. 初始化房间消息服务
 		loadingMessage.value = '正在连接聊天服务...'
 		await initRoomMessageService()
 		loadingProgress.value = 100

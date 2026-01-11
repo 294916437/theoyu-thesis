@@ -1,273 +1,3 @@
-<template>
-	<div class="participants-panel">
-		<!-- 顶部操作栏 -->
-		<div class="participants-header">
-			<div class="d-flex align-center">
-				<span class="text-subtitle-2 font-weight-medium">参与者 ({{ participants.length + 1 }})</span>
-			</div>
-
-			<div class="d-flex align-center gap-2">
-				<!-- 邀请按钮 - 修复图标 -->
-				<v-tooltip location="bottom">
-					<template #activator="{ props }">
-						<v-btn
-							v-bind="props"
-							icon="mdi-account-plus"
-							size="small"
-							variant="text"
-							@click="showInviteDialog = true"
-						></v-btn>
-					</template>
-					<span>邀请参与者</span>
-				</v-tooltip>
-
-				<!-- 更多选项 -->
-				<v-menu>
-					<template #activator="{ props }">
-						<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text"></v-btn>
-					</template>
-
-					<v-list density="compact" class="menu-list">
-						<v-list-item @click="handleMuteAll">
-							<template #prepend>
-								<v-icon>mdi-microphone-off</v-icon>
-							</template>
-							<v-list-item-title>全体静音</v-list-item-title>
-						</v-list-item>
-
-						<v-list-item @click="handleUnmuteAll">
-							<template #prepend>
-								<v-icon>mdi-microphone</v-icon>
-							</template>
-							<v-list-item-title>解除全体静音</v-list-item-title>
-						</v-list-item>
-
-						<v-divider></v-divider>
-
-						<v-list-item @click="handleLockMeeting">
-							<template #prepend>
-								<v-icon>{{ isMeetingLocked ? 'mdi-lock-open' : 'mdi-lock' }}</v-icon>
-							</template>
-							<v-list-item-title>
-								{{ isMeetingLocked ? '解锁会议' : '锁定会议' }}
-							</v-list-item-title>
-						</v-list-item>
-					</v-list>
-				</v-menu>
-			</div>
-		</div>
-
-		<v-divider></v-divider>
-
-		<!-- 参与者列表 -->
-		<div class="participants-list">
-			<!-- 当前用户 -->
-			<div class="participant-item current-user">
-				<v-avatar size="36" color="primary">
-					<v-icon>mdi-account</v-icon>
-				</v-avatar>
-
-				<div class="participant-info">
-					<div class="participant-name">
-						<span class="font-weight-medium">我</span>
-						<v-chip size="x-small" color="primary" variant="flat" class="ml-2">主持人</v-chip>
-					</div>
-					<div class="participant-status">
-						<v-icon size="small" :color="audioEnabled ? 'success' : 'error'">
-							{{ audioEnabled ? 'mdi-microphone' : 'mdi-microphone-off' }}
-						</v-icon>
-						<v-icon size="small" :color="videoEnabled ? 'success' : 'error'" class="ml-1">
-							{{ videoEnabled ? 'mdi-video' : 'mdi-video-off' }}
-						</v-icon>
-					</div>
-				</div>
-
-				<v-menu>
-					<template #activator="{ props }">
-						<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text"></v-btn>
-					</template>
-
-					<v-list density="compact" class="menu-list">
-						<v-list-item @click="toggleAudio">
-							<template #prepend>
-								<v-icon>{{ audioEnabled ? 'mdi-microphone-off' : 'mdi-microphone' }}</v-icon>
-							</template>
-							<v-list-item-title>
-								{{ audioEnabled ? '静音' : '取消静音' }}
-							</v-list-item-title>
-						</v-list-item>
-
-						<v-list-item @click="toggleVideo">
-							<template #prepend>
-								<v-icon>{{ videoEnabled ? 'mdi-video-off' : 'mdi-video' }}</v-icon>
-							</template>
-							<v-list-item-title>
-								{{ videoEnabled ? '关闭摄像头' : '开启摄像头' }}
-							</v-list-item-title>
-						</v-list-item>
-					</v-list>
-				</v-menu>
-			</div>
-
-			<!-- 其他参与者 -->
-			<div
-				v-for="participant in participants"
-				:key="participant.id"
-				class="participant-item"
-				:class="{ 'is-speaking': participant.isSpeaking }"
-			>
-				<v-avatar size="36" :color="participant.avatarColor || 'grey'">
-					<span class="text-white">{{ participant.name }}</span>
-				</v-avatar>
-
-				<div class="participant-info">
-					<div class="participant-name">
-						<span class="font-weight-medium">{{ participant.name }}</span>
-						<v-chip v-if="participant.isHost" size="x-small" color="primary" variant="flat" class="ml-2">
-							主持人
-						</v-chip>
-						<v-icon v-if="participant.handRaised" size="small" color="warning" class="ml-2">
-							mdi-hand-back-right
-						</v-icon>
-					</div>
-					<div class="participant-status">
-						<v-icon size="small" :color="participant.audioEnabled ? 'success' : 'error'">
-							{{ participant.audioEnabled ? 'mdi-microphone' : 'mdi-microphone-off' }}
-						</v-icon>
-						<v-icon size="small" :color="participant.videoEnabled ? 'success' : 'error'" class="ml-1">
-							{{ participant.videoEnabled ? 'mdi-video' : 'mdi-video-off' }}
-						</v-icon>
-						<span v-if="participant.connectionQuality" class="ml-2">
-							<v-icon size="small" :color="getConnectionColor(participant.connectionQuality)">
-								{{ getConnectionIcon(participant.connectionQuality) }}
-							</v-icon>
-						</span>
-					</div>
-				</div>
-
-				<v-menu>
-					<template #activator="{ props }">
-						<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text"></v-btn>
-					</template>
-
-					<v-list density="compact" class="menu-list">
-						<v-list-item @click="emit('pin-participant', participant.id)">
-							<template #prepend>
-								<v-icon>mdi-pin</v-icon>
-							</template>
-							<v-list-item-title>固定视频</v-list-item-title>
-						</v-list-item>
-
-						<v-list-item @click="emit('spotlight-participant', participant.id)">
-							<template #prepend>
-								<v-icon>mdi-spotlight-beam</v-icon>
-							</template>
-							<v-list-item-title>聚焦参与者</v-list-item-title>
-						</v-list-item>
-
-						<v-divider></v-divider>
-
-						<v-list-item @click="emit('mute-participant', participant.id)">
-							<template #prepend>
-								<v-icon>mdi-microphone-off</v-icon>
-							</template>
-							<v-list-item-title>静音</v-list-item-title>
-						</v-list-item>
-
-						<v-list-item @click="emit('remove-participant', participant.id)" class="text-error">
-							<template #prepend>
-								<v-icon color="error">mdi-account-remove</v-icon>
-							</template>
-							<v-list-item-title>移除参与者</v-list-item-title>
-						</v-list-item>
-					</v-list>
-				</v-menu>
-			</div>
-
-			<!-- 空状态 -->
-			<div v-if="participants.length === 0" class="empty-state">
-				<v-icon size="64" color="grey-darken-1">mdi-account-group-outline</v-icon>
-				<div class="text-body-2 text-grey mt-4">暂无其他参与者</div>
-				<v-btn
-					color="primary"
-					variant="flat"
-					prepend-icon="mdi-account-plus"
-					class="mt-4"
-					@click="showInviteDialog = true"
-				>
-					邀请参与者
-				</v-btn>
-			</div>
-		</div>
-
-		<!-- 邀请对话框 -->
-		<v-dialog v-model="showInviteDialog" max-width="500">
-			<v-card class="invite-dialog">
-				<v-card-title class="d-flex align-center justify-space-between">
-					<span class="text-h6">邀请参与者</span>
-					<v-btn icon="mdi-close" variant="text" size="small" @click="showInviteDialog = false"></v-btn>
-				</v-card-title>
-
-				<v-divider></v-divider>
-
-				<v-card-text class="pa-6">
-					<div class="mb-4">
-						<label class="text-subtitle-2 mb-2 d-block">会议链接</label>
-						<v-text-field
-							:model-value="meetingLink"
-							readonly
-							variant="outlined"
-							density="comfortable"
-							hide-details
-						>
-							<template #append-inner>
-								<v-btn
-									icon="mdi-content-copy"
-									size="small"
-									variant="text"
-									@click="copyMeetingLink"
-								></v-btn>
-							</template>
-						</v-text-field>
-					</div>
-
-					<div>
-						<label class="text-subtitle-2 mb-2 d-block">会议 ID</label>
-						<v-text-field
-							:model-value="meetingId"
-							readonly
-							variant="outlined"
-							density="comfortable"
-							hide-details
-						>
-							<template #append-inner>
-								<v-btn
-									icon="mdi-content-copy"
-									size="small"
-									variant="text"
-									@click="copyMeetingId"
-								></v-btn>
-							</template>
-						</v-text-field>
-					</div>
-
-					<v-divider class="my-4"></v-divider>
-
-					<div class="text-caption text-medium-emphasis">将会议链接或 ID 分享给他人即可邀请参与</div>
-				</v-card-text>
-
-				<v-divider></v-divider>
-
-				<v-card-actions class="pa-4">
-					<v-spacer></v-spacer>
-					<v-btn variant="text" @click="showInviteDialog = false">关闭</v-btn>
-					<v-btn color="primary" variant="flat" @click="shareInvite">分享邀请</v-btn>
-				</v-card-actions>
-			</v-card>
-		</v-dialog>
-	</div>
-</template>
-
 <script setup>
 import { $notify } from '@/plugins/notification'
 import { ref, computed } from 'vue'
@@ -285,18 +15,54 @@ const props = defineProps({
 		type: String,
 		required: true,
 	},
+	meetingNo: {
+		type: String,
+		required: true,
+	},
+	localAudioEnabled: {
+		type: Boolean,
+		default: true,
+	},
+	localVideoEnabled: {
+		type: Boolean,
+		default: true,
+	},
 })
 
-const emit = defineEmits(['mute-participant', 'remove-participant', 'pin-participant', 'spotlight-participant'])
-
+const emit = defineEmits([
+	'mute-participant',
+	'remove-participant',
+	'pin-participant',
+	'spotlight-participant',
+	'toggle-audio',
+	'toggle-video',
+])
+// 按角色分组
+const participantsByRole = computed(() => {
+	const members = props.participants.filter(p => p.role === 1 && p.status === 1)
+	const hosts = props.participants.filter(p => p.role === 2 && p.status === 1)
+	console.log('Participants by role:', { hosts, members })
+	return { hosts, members }
+})
 const showInviteDialog = ref(false)
 const isMeetingLocked = ref(false)
-const audioEnabled = ref(true)
-const videoEnabled = ref(true)
+const isHost = () => {
+	return participantsByRole.value.hosts.some(p => p.userId === props.currentUserId && p.role === 2)
+}
 
 const meetingLink = computed(() => {
-	return `${window.location.origin}/meeting/${props.meetingId}`
+	return window.location.href
 })
+const onlineParticipants = computed(() => props.participants.filter(p => p.status === 1))
+// 获取用户名首字母的工具函数
+const getInitials = name => {
+	if (!name) return '?'
+	const names = name.trim().split(' ')
+	if (names.length === 1) {
+		return names[0].charAt(0).toUpperCase()
+	}
+	return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase()
+}
 
 const getConnectionColor = quality => {
 	const colors = {
@@ -327,7 +93,7 @@ const copyMeetingLink = async () => {
 	}
 }
 
-const copyMeetingId = async () => {
+const copyMeetingNo = async () => {
 	try {
 		await navigator.clipboard.writeText(props.meetingId)
 		$notify.success('会议 ID 已复制')
@@ -364,22 +130,444 @@ const handleLockMeeting = () => {
 	isMeetingLocked.value = !isMeetingLocked.value
 	$notify.success(isMeetingLocked.value ? '会议已锁定' : '会议已解锁')
 }
-
-const toggleAudio = () => {
-	audioEnabled.value = !audioEnabled.value
-}
-
-const toggleVideo = () => {
-	videoEnabled.value = !videoEnabled.value
-}
 </script>
+<template>
+	<div class="participants-panel">
+		<!-- 顶部操作栏 -->
+		<div class="participants-header">
+			<div class="d-flex align-center">
+				<v-icon size="small" color="primary" class="mr-2">mdi-account-group</v-icon>
+				<span class="text-subtitle-2 font-weight-medium"> 参与者 ({{ onlineParticipants.length }}) </span>
+			</div>
+
+			<div class="d-flex align-center ga-2">
+				<!-- 邀请按钮 -->
+				<v-tooltip location="bottom">
+					<template #activator="{ props }">
+						<v-btn
+							v-bind="props"
+							icon="mdi-account-plus"
+							size="small"
+							variant="text"
+							color="primary"
+							@click="showInviteDialog = true"
+						></v-btn>
+					</template>
+					<span>邀请参与者</span>
+				</v-tooltip>
+
+				<!-- 更多选项 -->
+				<v-menu v-if="isHost">
+					<template #activator="{ props }">
+						<v-btn
+							v-bind="props"
+							icon="mdi-dots-vertical"
+							size="small"
+							variant="text"
+							color="primary"
+						></v-btn>
+					</template>
+
+					<v-list density="compact" class="menu-list">
+						<v-list-item @click="handleMuteAll">
+							<template #prepend>
+								<v-icon color="warning">mdi-microphone-off</v-icon>
+							</template>
+							<v-list-item-title>全体静音</v-list-item-title>
+						</v-list-item>
+
+						<v-list-item @click="handleUnmuteAll">
+							<template #prepend>
+								<v-icon color="success">mdi-microphone</v-icon>
+							</template>
+							<v-list-item-title>解除全体静音</v-list-item-title>
+						</v-list-item>
+
+						<v-divider class="my-1"></v-divider>
+
+						<v-list-item @click="handleLockMeeting">
+							<template #prepend>
+								<v-icon :color="isMeetingLocked ? 'success' : 'primary'">
+									{{ isMeetingLocked ? 'mdi-lock-open' : 'mdi-lock' }}
+								</v-icon>
+							</template>
+							<v-list-item-title>
+								{{ isMeetingLocked ? '解锁会议' : '锁定会议' }}
+							</v-list-item-title>
+						</v-list-item>
+					</v-list>
+				</v-menu>
+			</div>
+		</div>
+
+		<v-divider></v-divider>
+
+		<!-- 参与者列表 -->
+		<div class="participants-list">
+			<!-- 主持人列表 -->
+			<div v-if="participantsByRole.hosts.length > 0" class="participants-section">
+				<div class="section-title">
+					<v-icon size="small" color="primary">mdi-shield-star</v-icon>
+					<span>主持人 ({{ participantsByRole.hosts.length }})</span>
+				</div>
+
+				<div
+					v-for="participant in participantsByRole.hosts"
+					:key="participant.userId"
+					class="participant-item"
+					:class="{
+						'current-user': participant.userId === currentUserId,
+						'is-speaking': participant.isSpeaking,
+					}"
+				>
+					<!-- 头像 -->
+					<v-avatar size="36" :image="participant.avatar" color="primary-lighten-1">
+						<template #placeholder>
+							<v-progress-circular indeterminate size="20" color="primary"></v-progress-circular>
+						</template>
+						<span v-if="!participant.avatar" class="text-white text-caption font-weight-bold">
+							{{ getInitials(participant.username) }}
+						</span>
+					</v-avatar>
+
+					<!-- 参与者信息 -->
+					<div class="participant-info">
+						<div class="participant-name">
+							<span class="font-weight-medium">
+								{{ participant.username }}
+								<span v-if="participant.userId === currentUserId" class="text-caption text-primary">
+									（我）
+								</span>
+							</span>
+							<v-chip size="x-small" color="primary" variant="flat" class="ml-2"> 主持人 </v-chip>
+							<v-icon v-if="participant.handRaised" size="small" color="warning" class="ml-1">
+								mdi-hand-back-right
+							</v-icon>
+						</div>
+						<div class="participant-status">
+							<v-icon size="small" :color="participant.audioEnabled ? 'success' : 'error'">
+								{{ participant.audioEnabled ? 'mdi-microphone' : 'mdi-microphone-off' }}
+							</v-icon>
+							<v-icon size="small" :color="participant.videoEnabled ? 'success' : 'error'" class="ml-1">
+								{{ participant.videoEnabled ? 'mdi-video' : 'mdi-video-off' }}
+							</v-icon>
+							<v-icon
+								v-if="participant.connectionQuality"
+								size="small"
+								:color="getConnectionColor(participant.connectionQuality)"
+								class="ml-2"
+							>
+								{{ getConnectionIcon(participant.connectionQuality) }}
+							</v-icon>
+						</div>
+					</div>
+
+					<!-- 操作菜单 -->
+					<v-menu>
+						<template #activator="{ props }">
+							<v-btn
+								v-bind="props"
+								icon="mdi-dots-vertical"
+								size="small"
+								variant="text"
+								color="primary"
+							></v-btn>
+						</template>
+
+						<v-list density="compact" class="menu-list">
+							<v-list-item v-if="participant.userId === currentUserId" @click="emit('toggle-audio')">
+								<template #prepend>
+									<v-icon :color="participant.audioEnabled ? 'warning' : 'success'">
+										{{ participant.audioEnabled ? 'mdi-microphone-off' : 'mdi-microphone' }}
+									</v-icon>
+								</template>
+								<v-list-item-title>
+									{{ participant.audioEnabled ? '静音' : '取消静音' }}
+								</v-list-item-title>
+							</v-list-item>
+
+							<v-list-item v-if="participant.userId === currentUserId" @click="emit('toggle-video')">
+								<template #prepend>
+									<v-icon :color="participant.videoEnabled ? 'warning' : 'success'">
+										{{ participant.videoEnabled ? 'mdi-video-off' : 'mdi-video' }}
+									</v-icon>
+								</template>
+								<v-list-item-title>
+									{{ participant.videoEnabled ? '关闭摄像头' : '开启摄像头' }}
+								</v-list-item-title>
+							</v-list-item>
+
+							<v-divider v-if="participant.userId === currentUserId" class="my-1"></v-divider>
+
+							<v-list-item @click="emit('pin-participant', participant.peerId)">
+								<template #prepend>
+									<v-icon color="info">mdi-pin</v-icon>
+								</template>
+								<v-list-item-title>固定视频</v-list-item-title>
+							</v-list-item>
+
+							<v-list-item @click="emit('spotlight-participant', participant.peerId)">
+								<template #prepend>
+									<v-icon color="secondary">mdi-spotlight-beam</v-icon>
+								</template>
+								<v-list-item-title>聚焦参与者</v-list-item-title>
+							</v-list-item>
+
+							<template v-if="participant.userId !== currentUserId">
+								<v-divider class="my-1"></v-divider>
+
+								<v-list-item @click="emit('mute-participant', participant.peerId)">
+									<template #prepend>
+										<v-icon color="warning">mdi-microphone-off</v-icon>
+									</template>
+									<v-list-item-title>静音</v-list-item-title>
+								</v-list-item>
+
+								<v-list-item @click="emit('remove-participant', participant.peerId)" class="text-error">
+									<template #prepend>
+										<v-icon color="error">mdi-account-remove</v-icon>
+									</template>
+									<v-list-item-title>移除参与者</v-list-item-title>
+								</v-list-item>
+							</template>
+						</v-list>
+					</v-menu>
+				</div>
+			</div>
+
+			<!-- 参与者列表 -->
+			<div v-if="participantsByRole.members.length > 0" class="participants-section">
+				<div class="section-title">
+					<v-icon size="small" color="secondary">mdi-account-group</v-icon>
+					<span>参与者 ({{ participantsByRole.members.length }})</span>
+				</div>
+
+				<div
+					v-for="participant in participantsByRole.members"
+					:key="participant.userId"
+					class="participant-item"
+					:class="{
+						'current-user': participant.userId === currentUserId,
+						'is-speaking': participant.isSpeaking,
+					}"
+				>
+					<!-- 头像 -->
+					<v-avatar size="36" :image="participant.avatar" color="secondary-lighten-1">
+						<template #placeholder>
+							<v-progress-circular indeterminate size="20" color="secondary"></v-progress-circular>
+						</template>
+						<span v-if="!participant.avatar" class="text-white text-caption font-weight-bold">
+							{{ getInitials(participant.username) }}
+						</span>
+					</v-avatar>
+
+					<!-- 参与者信息 -->
+					<div class="participant-info">
+						<div class="participant-name">
+							<span class="font-weight-medium">
+								{{ participant.username }}
+								<span v-if="participant.userId === currentUserId" class="text-caption text-primary">
+									（我）
+								</span>
+							</span>
+							<v-icon v-if="participant.handRaised" size="small" color="warning" class="ml-2">
+								mdi-hand-back-right
+							</v-icon>
+						</div>
+						<div class="participant-status">
+							<v-icon size="small" :color="participant.audioEnabled ? 'success' : 'error'">
+								{{ participant.audioEnabled ? 'mdi-microphone' : 'mdi-microphone-off' }}
+							</v-icon>
+							<v-icon size="small" :color="participant.videoEnabled ? 'success' : 'error'" class="ml-1">
+								{{ participant.videoEnabled ? 'mdi-video' : 'mdi-video-off' }}
+							</v-icon>
+							<v-icon
+								v-if="participant.connectionQuality"
+								size="small"
+								:color="getConnectionColor(participant.connectionQuality)"
+								class="ml-2"
+							>
+								{{ getConnectionIcon(participant.connectionQuality) }}
+							</v-icon>
+						</div>
+					</div>
+
+					<!-- 操作菜单 -->
+					<v-menu>
+						<template #activator="{ props }">
+							<v-btn
+								v-bind="props"
+								icon="mdi-dots-vertical"
+								size="small"
+								variant="text"
+								color="primary"
+							></v-btn>
+						</template>
+
+						<v-list density="compact" class="menu-list">
+							<v-list-item v-if="participant.userId === currentUserId" @click="emit('toggle-audio')">
+								<template #prepend>
+									<v-icon :color="participant.audioEnabled ? 'warning' : 'success'">
+										{{ participant.audioEnabled ? 'mdi-microphone-off' : 'mdi-microphone' }}
+									</v-icon>
+								</template>
+								<v-list-item-title>
+									{{ participant.audioEnabled ? '静音' : '取消静音' }}
+								</v-list-item-title>
+							</v-list-item>
+
+							<v-list-item v-if="participant.userId === currentUserId" @click="emit('toggle-video')">
+								<template #prepend>
+									<v-icon :color="participant.videoEnabled ? 'warning' : 'success'">
+										{{ participant.videoEnabled ? 'mdi-video-off' : 'mdi-video' }}
+									</v-icon>
+								</template>
+								<v-list-item-title>
+									{{ participant.videoEnabled ? '关闭摄像头' : '开启摄像头' }}
+								</v-list-item-title>
+							</v-list-item>
+
+							<v-divider v-if="participant.userId === currentUserId" class="my-1"></v-divider>
+
+							<v-list-item @click="emit('pin-participant', participant.peerId)">
+								<template #prepend>
+									<v-icon color="info">mdi-pin</v-icon>
+								</template>
+								<v-list-item-title>固定视频</v-list-item-title>
+							</v-list-item>
+
+							<v-list-item @click="emit('spotlight-participant', participant.peerId)">
+								<template #prepend>
+									<v-icon color="secondary">mdi-spotlight-beam</v-icon>
+								</template>
+								<v-list-item-title>聚焦参与者</v-list-item-title>
+							</v-list-item>
+
+							<template v-if="participant.userId !== currentUserId">
+								<v-divider class="my-1"></v-divider>
+
+								<v-list-item @click="emit('mute-participant', participant.peerId)">
+									<template #prepend>
+										<v-icon color="warning">mdi-microphone-off</v-icon>
+									</template>
+									<v-list-item-title>静音</v-list-item-title>
+								</v-list-item>
+
+								<v-list-item @click="emit('remove-participant', participant.peerId)" class="text-error">
+									<template #prepend>
+										<v-icon color="error">mdi-account-remove</v-icon>
+									</template>
+									<v-list-item-title>移除参与者</v-list-item-title>
+								</v-list-item>
+							</template>
+						</v-list>
+					</v-menu>
+				</div>
+			</div>
+
+			<!-- 空状态 -->
+			<div v-if="onlineParticipants.length === 0" class="empty-state">
+				<v-icon size="64" color="primary-lighten-1">mdi-account-group-outline</v-icon>
+				<div class="text-body-2 text-medium-emphasis mt-4">暂无其他参与者</div>
+				<v-btn
+					color="primary"
+					variant="elevated"
+					prepend-icon="mdi-account-plus"
+					class="mt-4"
+					@click="showInviteDialog = true"
+				>
+					邀请参与者
+				</v-btn>
+			</div>
+		</div>
+
+		<!-- 邀请对话框 -->
+		<v-dialog v-model="showInviteDialog" max-width="500">
+			<v-card class="invite-dialog">
+				<v-card-title class="d-flex align-center justify-space-between bg-primary">
+					<span class="text-h6 text-white">邀请参与者</span>
+					<v-btn
+						icon="mdi-close"
+						variant="text"
+						size="small"
+						color="white"
+						@click="showInviteDialog = false"
+					></v-btn>
+				</v-card-title>
+
+				<v-divider></v-divider>
+
+				<v-card-text class="pa-6">
+					<div class="mb-4">
+						<label class="text-subtitle-2 mb-2 d-block text-primary">会议链接</label>
+						<v-text-field
+							:model-value="meetingLink"
+							readonly
+							variant="outlined"
+							density="comfortable"
+							color="primary"
+							hide-details
+						>
+							<template #append-inner>
+								<v-btn
+									icon="mdi-content-copy"
+									size="small"
+									variant="text"
+									color="primary"
+									@click="copyMeetingLink"
+								></v-btn>
+							</template>
+						</v-text-field>
+					</div>
+
+					<div>
+						<label class="text-subtitle-2 mb-2 d-block text-primary">会议号</label>
+						<v-text-field
+							:model-value="meetingNo"
+							readonly
+							variant="outlined"
+							density="comfortable"
+							color="primary"
+							hide-details
+						>
+							<template #append-inner>
+								<v-btn
+									icon="mdi-content-copy"
+									size="small"
+									variant="text"
+									color="primary"
+									@click="copyMeetingNo"
+								></v-btn>
+							</template>
+						</v-text-field>
+					</div>
+
+					<v-divider class="my-4"></v-divider>
+
+					<div class="text-caption text-medium-emphasis d-flex align-center">
+						<v-icon size="small" color="info" class="mr-2">mdi-information</v-icon>
+						将会议链接或 ID 分享给他人即可邀请参与
+					</div>
+				</v-card-text>
+
+				<v-divider></v-divider>
+
+				<v-card-actions class="pa-4 bg-surface-variant">
+					<v-spacer></v-spacer>
+					<v-btn variant="text" color="primary" @click="showInviteDialog = false">关闭</v-btn>
+					<v-btn color="primary" variant="elevated" @click="shareInvite">分享邀请</v-btn>
+				</v-card-actions>
+			</v-card>
+		</v-dialog>
+	</div>
+</template>
 
 <style scoped>
 .participants-panel {
 	display: flex;
 	flex-direction: column;
 	height: 100%;
-	background: transparent;
+	background: rgb(var(--v-theme-background));
 	overflow: hidden;
 }
 
@@ -389,12 +577,8 @@ const toggleVideo = () => {
 	align-items: center;
 	justify-content: space-between;
 	padding: 12px 16px;
-	background: rgba(255, 255, 255, 0.02);
-	border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.gap-2 {
-	gap: 8px;
+	background: rgb(var(--v-theme-surface));
+	border-bottom: 1px solid rgb(var(--v-theme-border));
 }
 
 .participants-list {
@@ -403,6 +587,7 @@ const toggleVideo = () => {
 	overflow-x: hidden;
 	padding: 8px;
 	min-height: 0;
+	background: rgb(var(--v-theme-background));
 }
 
 .participants-list::-webkit-scrollbar {
@@ -410,75 +595,141 @@ const toggleVideo = () => {
 }
 
 .participants-list::-webkit-scrollbar-track {
-	background: rgba(255, 255, 255, 0.05);
+	background: rgb(var(--v-theme-surface-variant));
 	border-radius: 3px;
 }
 
 .participants-list::-webkit-scrollbar-thumb {
-	background: rgba(255, 255, 255, 0.2);
+	background: rgb(var(--v-theme-primary));
+	opacity: 0.5;
 	border-radius: 3px;
 }
 
 .participants-list::-webkit-scrollbar-thumb:hover {
-	background: rgba(255, 255, 255, 0.3);
+	background: rgb(var(--v-theme-primary-darken-1));
+	opacity: 0.8;
 }
 
+/* 分组区域 */
+.participants-section {
+	margin-bottom: 16px;
+}
+
+.participants-section:last-child {
+	margin-bottom: 0;
+}
+
+.section-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	margin-bottom: 4px;
+	font-size: 12px;
+	font-weight: 600;
+	color: rgb(var(--v-theme-on-surface-variant));
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	background: rgb(var(--v-theme-surface-variant));
+	border-radius: 8px;
+}
+
+/* 参与者卡片 */
 .participant-item {
 	display: flex;
 	align-items: center;
 	padding: 12px;
 	border-radius: 8px;
 	margin-bottom: 4px;
-	transition: all 0.2s;
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	cursor: pointer;
+	background: rgb(var(--v-theme-surface));
+	border: 1px solid transparent;
 }
 
 .participant-item:hover {
-	background: rgba(255, 255, 255, 0.05);
+	background: rgb(var(--v-theme-surface-variant));
+	border-color: rgb(var(--v-theme-primary));
+	transform: translateX(4px);
+	box-shadow: 0 2px 8px rgba(var(--v-theme-primary), 0.15);
 }
 
 .participant-item.current-user {
-	background: rgba(102, 126, 234, 0.1);
-	border: 1px solid rgba(102, 126, 234, 0.3);
+	background: rgba(var(--v-theme-primary), 0.1);
+	border: 1px solid rgb(var(--v-theme-primary));
+}
+
+.participant-item.current-user:hover {
+	background: rgba(var(--v-theme-primary), 0.15);
+	box-shadow: 0 2px 12px rgba(var(--v-theme-primary), 0.25);
 }
 
 .participant-item.is-speaking {
-	background: rgba(76, 175, 80, 0.1);
-	border: 2px solid rgba(76, 175, 80, 0.5);
-	animation: pulse 1.5s ease-in-out infinite;
+	background: rgba(var(--v-theme-success), 0.1);
+	border: 2px solid rgb(var(--v-theme-success));
+	animation: speaking-pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes pulse {
+@keyframes speaking-pulse {
 	0%,
 	100% {
-		border-color: rgba(76, 175, 80, 0.5);
+		border-color: rgb(var(--v-theme-success));
+		box-shadow: 0 0 0 0 rgba(var(--v-theme-success), 0.4);
 	}
 	50% {
-		border-color: rgba(76, 175, 80, 0.8);
+		border-color: rgb(var(--v-theme-success));
+		box-shadow: 0 0 0 4px rgba(var(--v-theme-success), 0.1);
 	}
 }
 
+/* 头像 */
+.participant-item :deep(.v-avatar) {
+	flex-shrink: 0;
+	border: 2px solid rgb(var(--v-theme-border));
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.participant-item:hover :deep(.v-avatar) {
+	border-color: rgb(var(--v-theme-primary));
+	box-shadow: 0 2px 8px rgba(var(--v-theme-primary), 0.3);
+}
+
+.participant-item.is-speaking :deep(.v-avatar) {
+	border-color: rgb(var(--v-theme-success));
+	box-shadow: 0 0 8px rgba(var(--v-theme-success), 0.6);
+}
+
+/* 参与者信息 */
 .participant-info {
 	flex: 1;
 	margin-left: 12px;
 	min-width: 0;
+	overflow: hidden;
 }
 
 .participant-name {
 	display: flex;
 	align-items: center;
 	font-size: 14px;
-	color: rgba(255, 255, 255, 0.95);
+	color: rgb(var(--v-theme-on-surface));
 	margin-bottom: 4px;
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+.participant-name > span:first-child {
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .participant-status {
 	display: flex;
 	align-items: center;
 	font-size: 12px;
-	color: rgba(255, 255, 255, 0.6);
+	color: rgb(var(--v-theme-on-surface-variant));
 }
 
+/* 空状态 */
 .empty-state {
 	display: flex;
 	flex-direction: column;
@@ -486,30 +737,82 @@ const toggleVideo = () => {
 	justify-content: center;
 	height: 100%;
 	padding: 40px 20px;
-	color: rgba(255, 255, 255, 0.5);
+	color: rgb(var(--v-theme-on-surface-variant));
 }
 
+/* 菜单样式 */
 .menu-list {
-	background-color: rgba(40, 40, 58, 0.98);
-	border: 1px solid rgba(255, 255, 255, 0.12);
+	background-color: rgb(var(--v-theme-surface));
+	border: 1px solid rgb(var(--v-theme-border));
+	backdrop-filter: blur(10px);
+}
+
+.menu-list .v-list-item {
+	border-radius: 4px;
+	margin: 2px 4px;
+	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .menu-list .v-list-item:hover {
-	background-color: rgba(255, 255, 255, 0.08);
+	background-color: rgb(var(--v-theme-surface-variant));
 }
 
+.menu-list .v-list-item.text-error:hover {
+	background-color: rgba(var(--v-theme-error), 0.1);
+}
+
+/* 邀请对话框 */
 .invite-dialog {
-	background: linear-gradient(to bottom, rgba(40, 40, 58, 0.98) 0%, rgba(35, 35, 51, 0.98) 100%);
-	backdrop-filter: blur(10px);
-	color: rgba(255, 255, 255, 0.95);
+	border: 1px solid rgb(var(--v-theme-border));
 }
 
 .invite-dialog :deep(.v-field) {
-	background-color: rgba(255, 255, 255, 0.05);
-	border-color: rgba(255, 255, 255, 0.12);
+	background-color: rgb(var(--v-theme-surface-variant));
 }
 
 .invite-dialog :deep(.v-field__input) {
-	color: rgba(255, 255, 255, 0.95);
+	color: rgb(var(--v-theme-on-surface));
+}
+
+.invite-dialog :deep(.v-field:hover) {
+	background-color: rgb(var(--v-theme-surface-bright));
+}
+
+/* 响应式调整 */
+@media (max-width: 960px) {
+	.participant-item {
+		padding: 10px;
+	}
+
+	.participant-name {
+		font-size: 13px;
+	}
+
+	.participant-status {
+		font-size: 11px;
+	}
+
+	.section-title {
+		padding: 6px 10px;
+		font-size: 11px;
+	}
+}
+
+/* 深色模式优化 */
+.v-theme--dark .participants-panel {
+	background: rgb(var(--v-theme-background));
+}
+
+.v-theme--dark .participant-item {
+	background: rgb(var(--v-theme-surface));
+}
+
+.v-theme--dark .participant-item:hover {
+	background: rgb(var(--v-theme-surface-bright));
+}
+
+.v-theme--dark .menu-list {
+	background-color: rgb(var(--v-theme-surface));
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 </style>

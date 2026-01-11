@@ -7,6 +7,9 @@ const API_PREFIX = '/media/room'
 
 const MESSAGE_API_PREFIX = '/media/room/message'
 
+// 房间参与者接口前缀
+const PARTICIPANT_API_PREFIX = '/media/room/participants'
+
 /**
  * 验证会议号
  */
@@ -88,4 +91,10 @@ export function deleteMeeting(roomId) {
  */
 export function fetchMessageHistory(roomId, page, size) {
 	return axios.get(`${MESSAGE_API_PREFIX}/history?roomId=${roomId}&page=${page}&size=${size}`)
+}
+/**
+ * 获取房间参与者列表
+ */
+export function fetchParticipantsList(roomId, status, page, size) {
+	return axios.get(`${PARTICIPANT_API_PREFIX}?roomId=${roomId}&status=${status}&page=${page}&size=${size}`)
 }

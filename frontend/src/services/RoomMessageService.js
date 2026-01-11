@@ -67,9 +67,6 @@ class RoomMessageService {
 					// 订阅房间消息
 					this.subscribeToRoom(roomId)
 
-					// 触发加入房间事件
-					this.triggerEvent('room-joined', { roomId, userId })
-
 					resolve(frame)
 				},
 
@@ -96,12 +93,6 @@ class RoomMessageService {
 				onDisconnect: () => {
 					this.isConnected.value = false
 					console.log('房间消息服务 WebSocket 连接断开')
-					if (this.currentRoomId) {
-						this.triggerEvent('room-left', {
-							roomId: this.currentRoomId,
-							userId: this.userId,
-						})
-					}
 				},
 
 				// WebSocket 关闭回调

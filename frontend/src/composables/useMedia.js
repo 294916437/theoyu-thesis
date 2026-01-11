@@ -1,4 +1,4 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { socketClient } from '@/utils/SocketClient'
 import { MediasoupClient } from '@/utils/MediasoupClient'
 import { $notify } from '@/plugins/notification'
@@ -1104,16 +1104,6 @@ export function useMedia() {
 			$notify.error('更换视频设备失败')
 		}
 	}
-
-	// 监听连接质量变化
-	watch(connectionQuality, quality => {
-		if (quality.send.quality === 'poor' || quality.send.quality === 'bad') {
-			console.warn('Poor send quality detected', quality.send)
-		}
-		if (quality.recv.quality === 'poor' || quality.recv.quality === 'bad') {
-			console.warn('Poor recv quality detected', quality.recv)
-		}
-	})
 
 	return {
 		// 状态

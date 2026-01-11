@@ -477,7 +477,7 @@ public class RoomServiceImpl implements RoomService {
             }
 
             // 3. 缓存未命中,查询数据库
-            Long offset = PageResponse.getOffset(page, size);
+            long offset = PageResponse.getOffset(page, size);
             List<RoomParticipantPO> participants;
 
             if (status != null) {

@@ -1,6 +1,6 @@
 logging:
   level:
-    com.theoyu.thesis.user.model.mapper: debug
+    com.theoyu.thesis.media.model.mapper: debug
 
 storage:
   minio:

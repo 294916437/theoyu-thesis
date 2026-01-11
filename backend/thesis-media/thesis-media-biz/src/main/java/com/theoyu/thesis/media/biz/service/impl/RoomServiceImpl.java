@@ -26,7 +26,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -156,7 +155,7 @@ public class RoomServiceImpl implements RoomService {
 
             if (cachedRoomId != null) {
                 roomId = Long.parseLong(cachedRoomId.toString());
-                log.debug("[RoomService] Found roomId from Hash cache: {}", roomId);
+                log.info("[RoomService] Found roomId from Hash cache: {}", roomId);
             } else {
                 // 缓存未命中，从数据库查询
                 RoomPO room = roomPOMapper.selectByRoomNo(roomIdOrNo);
@@ -173,7 +172,7 @@ public class RoomServiceImpl implements RoomService {
                                 TimeUnit.SECONDS);
                     }
 
-                    log.debug("[RoomService] Found roomId from DB and cached to Hash: {}", roomId);
+                    log.info("[RoomService] Found roomId from DB and cached to Hash: {}", roomId);
                 }
             }
 
@@ -423,14 +422,14 @@ public class RoomServiceImpl implements RoomService {
                 if (cachedRoomIds != null && !cachedRoomIds.isEmpty()) {
                     resultList = buildUpcomingRoomsFromCache(cachedRoomIds, userId);
                     totalCount = cacheSize;
-                    log.debug("[RoomService] 缓存命中 - userId: {}, count: {}", userId, totalCount);
+                    log.info("[RoomService] 缓存命中 - userId: {}, count: {}", userId, totalCount);
                 } else {
                     resultList = Collections.emptyList();
                     totalCount = 0;
                 }
             } else {
                 // 缓存未命中：查询数据库
-                log.debug("[RoomService] 缓存未命中，查询数据库 - userId: {}", userId);
+                log.info("[RoomService] 缓存未命中，查询数据库 - userId: {}", userId);
 
                 long offset = PageResponse.getOffset(page, size);
                 List<RoomPO> rooms = roomPOMapper
@@ -472,7 +471,7 @@ public class RoomServiceImpl implements RoomService {
             if (status == null || status == 1) {
                 List<ParticipantListItemVO> cachedList = getOnlineParticipantsFromCache(roomId, page, size);
                 if (!cachedList.isEmpty()) {
-                    log.debug("[RoomService] Set 缓存命中在线参与者列表 - roomId: {}", roomId);
+                    log.info("[RoomService] Set 缓存命中在线参与者列表 - roomId: {}", roomId);
                     return PageResponse.success(cachedList, page, size);
                 }
             }
@@ -590,7 +589,7 @@ public class RoomServiceImpl implements RoomService {
             Long size = redisTemplate.opsForSet().size(cacheKey);
             if (size != null && size == 0) {
                 redisTemplate.delete(cacheKey);
-                log.debug("[RoomService] Set 为空,已删除 Key - roomId: {}", roomId);
+                log.info("[RoomService] Set 为空,已删除 Key - roomId: {}", roomId);
             }
 
         } catch (Exception e) {
@@ -676,7 +675,7 @@ public class RoomServiceImpl implements RoomService {
                             RedisKeyConstants.PARTICIPANT_LIST_EXPIRE_TIME,
                             TimeUnit.SECONDS);
 
-                log.debug("[RoomService] 批量缓存成功 - roomId: {}", roomId);
+                log.info("[RoomService] 批量缓存成功 - roomId: {}", roomId);
 
             } catch (Exception e) {
                 log.error("[RoomService] 异步缓存在线参与者列表失败 - roomId: {}", roomId, e);
@@ -726,7 +725,7 @@ public class RoomServiceImpl implements RoomService {
                 // 保留最新的 100 条记录
                 redisTemplate.opsForZSet().removeRange(cacheKey, 0, -101);
 
-                log.debug("[RoomService] 异步缓存最近参加的会议成功 - userId: {}", userId);
+                log.info("[RoomService] 异步缓存最近参加的会议成功 - userId: {}", userId);
 
             } catch (Exception e) {
                 log.error("[RoomService] 异步缓存最近参加的会议失败 - userId: {}", userId, e);
@@ -757,7 +756,7 @@ public class RoomServiceImpl implements RoomService {
                         RedisKeyConstants.USER_UPCOMING_ROOMS_EXPIRE_TIME,
                         TimeUnit.SECONDS);
 
-                log.debug("[RoomService] 异步缓存即将开始的会议成功 - userId: {}", userId);
+                log.info("[RoomService] 异步缓存即将开始的会议成功 - userId: {}", userId);
 
             } catch (Exception e) {
                 log.error("[RoomService] 异步缓存即将开始的会议失败 - userId: {}", userId, e);
@@ -965,7 +964,7 @@ public class RoomServiceImpl implements RoomService {
                     TimeUnit.SECONDS);
 
 
-            log.debug("[RoomService] Cached room info to Hash - roomId: {}, roomNo: {}",
+            log.info("[RoomService] Cached room info to Hash - roomId: {}, roomNo: {}",
                     room.getId(), room.getRoomNo());
 
         } catch (Exception e) {
@@ -985,7 +984,7 @@ public class RoomServiceImpl implements RoomService {
 
             if (hashMap.isEmpty()) {
                 // 缓存未命中，从DB查询
-                log.debug("[RoomService] Cache miss, query from DB - roomId: {}", roomId);
+                log.info("[RoomService] Cache miss, query from DB - roomId: {}", roomId);
                 RoomPO room = roomPOMapper.selectByPrimaryKey(roomId);
 
                 if (room != null) {
@@ -1020,7 +1019,7 @@ public class RoomServiceImpl implements RoomService {
             long currentTimestamp = System.currentTimeMillis();
             redisTemplate.opsForHash().put(roomKey, "updatedTime", String.valueOf(currentTimestamp));
 
-            log.debug("[RoomService] Updated room status in cache - roomId: {}, status: {}",
+            log.info("[RoomService] Updated room status in cache - roomId: {}, status: {}",
                     roomId, status);
 
         } catch (Exception e) {
@@ -1070,7 +1069,7 @@ public class RoomServiceImpl implements RoomService {
 
             if (addResult != null && addResult > 0) {
                 // 添加成功，说明 roomNo 是唯一的
-                log.debug("[RoomService] Generated unique roomNo: {}", roomNo);
+                log.info("[RoomService] Generated unique roomNo: {}", roomNo);
 
                 // 为整个 Set 设置过期时间（只在第一次添加时设置）
                 Long setSize = redisTemplate.opsForSet().size(roomNoSetKey);
@@ -1084,7 +1083,7 @@ public class RoomServiceImpl implements RoomService {
                 return roomNo;
             }
 
-            log.debug("[RoomService] RoomNo {} already exists, retry {}/{}",
+            log.info("[RoomService] RoomNo {} already exists, retry {}/{}",
                     roomNo, i + 1, maxRetries);
         }
 

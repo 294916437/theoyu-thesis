@@ -31,6 +31,8 @@ const props = defineProps({
 
 const emit = defineEmits([
 	'mute-participant',
+	'mute-all',
+	'unmute-all',
 	'remove-participant',
 	'pin-participant',
 	'spotlight-participant',
@@ -45,9 +47,64 @@ const participantsByRole = computed(() => {
 	return { hosts, members }
 })
 const showInviteDialog = ref(false)
-const isMeetingLocked = ref(false)
-const isHost = () => {
-	return participantsByRole.value.hosts.some(p => p.userId === props.currentUserId && p.role === 2)
+const currentUserRole = computed(() => {
+	const currentUser = props.participants.find(p => p.userId === props.currentUserId)
+	return currentUser?.role || 1 // 默认为普通成员
+})
+
+// 判断是否为主持人
+const isHost = computed(() => currentUserRole.value === 2)
+
+/**
+ * 检查是否可以控制目标参与者
+ * @param {Object} targetParticipant - 目标参与者对象
+ * @returns {boolean}
+ */
+const canControlParticipant = targetParticipant => {
+	// 1. 如果是自己，总是可以控制
+	if (targetParticipant.userId === props.currentUserId) {
+		return true
+	}
+
+	// 2. 如果不是主持人，不能控制他人
+	if (!isHost.value) {
+		return false
+	}
+
+	// 3. 主持人不能控制其他主持人
+	if (targetParticipant.role === 2) {
+		return false
+	}
+
+	// 4. 主持人可以控制普通成员
+	return true
+}
+/**
+ * 检查是否可以静音目标参与者
+ */
+const canMuteParticipant = targetParticipant => {
+	return canControlParticipant(targetParticipant)
+}
+
+/**
+ * 检查是否可以移除目标参与者
+ */
+const canRemoveParticipant = targetParticipant => {
+	// 只有主持人可以移除他人
+	return isHost.value && targetParticipant.role === 1
+}
+
+/**
+ * 检查是否显示控制菜单项
+ */
+const shouldShowControlMenu = targetParticipant => {
+	// 如果是自己，显示自己的控制项
+	if (targetParticipant.userId === props.currentUserId) {
+		return true
+	}
+
+	// 如果是主持人且目标不是主持人，显示控制项
+	return isHost.value && targetParticipant.role === 1
 }
 
 const meetingLink = computed(() => {
@@ -115,20 +172,44 @@ const shareInvite = () => {
 }
 
 const handleMuteAll = () => {
-	// 预留API: 全体静音
+	if (!isHost.value) {
+		$notify.warning('仅主持人可执行此操作')
+		return
+	}
+
+	// TODO: 调用后端 API 实现全体静音
+	emit('mute-all')
 	console.log('Mute all participants')
 	$notify.success('已全体静音')
 }
 
 const handleUnmuteAll = () => {
-	// 预留API: 解除全体静音
+	if (!isHost.value) {
+		$notify.warning('仅主持人可执行此操作')
+		return
+	}
+
+	// TODO: 调用后端 API 解除全体静音
+	emit('unmute-all')
 	console.log('Unmute all participants')
 	$notify.success('已解除全体静音')
 }
 
-const handleLockMeeting = () => {
-	isMeetingLocked.value = !isMeetingLocked.value
-	$notify.success(isMeetingLocked.value ? '会议已锁定' : '会议已解锁')
+const handleMuteParticipant = participant => {
+	if (!canMuteParticipant(participant)) {
+		$notify.warning('您没有权限执行此操作')
+		return
+	}
+
+	emit('mute-participant', participant.peerId)
+}
+const handleRemoveParticipant = participant => {
+	if (!canRemoveParticipant(participant)) {
+		$notify.warning('您没有权限移除该参与者')
+		return
+	}
+
+	emit('remove-participant', participant.peerId)
 }
 </script>
 <template>
@@ -184,17 +265,6 @@ const handleLockMeeting = () => {
 						</v-list-item>
 
 						<v-divider class="my-1"></v-divider>
-
-						<v-list-item @click="handleLockMeeting">
-							<template #prepend>
-								<v-icon :color="isMeetingLocked ? 'success' : 'primary'">
-									{{ isMeetingLocked ? 'mdi-lock-open' : 'mdi-lock' }}
-								</v-icon>
-							</template>
-							<v-list-item-title>
-								{{ isMeetingLocked ? '解锁会议' : '锁定会议' }}
-							</v-list-item-title>
-						</v-list-item>
 					</v-list>
 				</v-menu>
 			</div>
@@ -263,7 +333,7 @@ const handleLockMeeting = () => {
 					</div>
 
 					<!-- 操作菜单 -->
-					<v-menu>
+					<v-menu v-if="shouldShowControlMenu(participant)">
 						<template #activator="{ props }">
 							<v-btn
 								v-bind="props"
@@ -443,17 +513,17 @@ const handleLockMeeting = () => {
 								<v-list-item-title>聚焦参与者</v-list-item-title>
 							</v-list-item>
 
-							<template v-if="participant.userId !== currentUserId">
+							<template v-if="canControlParticipant(participant) && participant.userId !== currentUserId">
 								<v-divider class="my-1"></v-divider>
 
-								<v-list-item @click="emit('mute-participant', participant.peerId)">
+								<v-list-item @click="handleMuteParticipant(participant)">
 									<template #prepend>
 										<v-icon color="warning">mdi-microphone-off</v-icon>
 									</template>
 									<v-list-item-title>静音</v-list-item-title>
 								</v-list-item>
 
-								<v-list-item @click="emit('remove-participant', participant.peerId)" class="text-error">
+								<v-list-item class="text-error" @click="handleRemoveParticipant(participant)">
 									<template #prepend>
 										<v-icon color="error">mdi-account-remove</v-icon>
 									</template>

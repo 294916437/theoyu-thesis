@@ -26,17 +26,5 @@ public class GetRoomInfoResVO {
     /**
      * 当前在线参与者列表
      */
-    private List<ParticipantInfoVO> participants;
-
-    @Data
-    @Builder
-    public static class ParticipantInfoVO {
-        private Long userId;
-        private String username;
-        private String avatar;
-        private Integer role;
-        private Boolean audioMuted;
-        private Boolean videoMuted;
-        private LocalDateTime joinedAt;
-    }
+    private List<ParticipantListItemVO> participants;
 }

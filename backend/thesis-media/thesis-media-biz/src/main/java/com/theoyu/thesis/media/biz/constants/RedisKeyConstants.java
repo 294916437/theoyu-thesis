@@ -143,7 +143,7 @@ public class RedisKeyConstants {
     /**
      * 参与者列表缓存过期时间：30分钟
      */
-    public static final long PARTICIPANT_LIST_EXPIRE_TIME = 30 * 60;
+    public static final long PARTICIPANT_LIST_EXPIRE_TIME = 10 * 60;
 
     /**
      * 媒体统计数据过期时间：1天

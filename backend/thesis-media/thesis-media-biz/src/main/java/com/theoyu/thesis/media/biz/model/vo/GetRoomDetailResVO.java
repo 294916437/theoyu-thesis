@@ -1,6 +1,6 @@
 package com.theoyu.thesis.media.biz.model.vo;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
+import com.theoyu.thesis.user.dto.response.FindUserByIdRspDTO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -23,54 +23,23 @@ public class GetRoomDetailResVO {
 
     private String description;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime startTime;
+
+    private LocalDateTime endTime;
 
     private Integer duration;
 
     private Integer status;
 
-    private HostInfo host;
+    private FindUserByIdRspDTO host;
 
     private Integer participantCount;
 
-    private List<ParticipantInfo> participants;
+    private List<ParticipantListItemVO> participants;
 
     private RecordingInfo recording;
 
     private TranscriptInfo transcript;
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class HostInfo {
-        private Long userId;
-        private String userName;
-        private String email;
-        private String avatar;
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ParticipantInfo {
-        private Long userId;
-        private String userName;
-        private String email;
-        private String avatar;
-        private Integer role;
-        private Integer status;
-        private Boolean audioMuted;
-        private Boolean videoMuted;
-
-        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-        private LocalDateTime joinedAt;
-
-        @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-        private LocalDateTime leftAt;
-    }
 
     @Data
     @Builder

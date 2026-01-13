@@ -47,7 +47,7 @@ public interface RoomService {
 
     void removeOnlineParticipantFromCache(Long roomId, Long participantId);
 
-    void addOnlineParticipantToCache(Long roomId, RoomParticipantPO participant, Long userId);
+    void addParticipantToCache(Long roomId, RoomParticipantPO participant);
 
 
 }

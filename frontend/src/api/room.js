@@ -29,8 +29,8 @@ export function fetchMeetingInfo(roomId) {
 /**
  * 获取会议详情
  */
-export function fetchMeetingDetail(roomId) {
-	return axios.get(`${API_PREFIX}/detail/${roomId}`)
+export function fetchMeetingDetail(roomIdOrNo) {
+	return axios.get(`${API_PREFIX}/detail/${roomIdOrNo}`)
 }
 
 //

@@ -198,10 +198,12 @@
 													<div v-else class="message-content">
 														<!-- 他人消息头部 -->
 														<div v-if="!message.isOwn" class="d-flex align-center mb-2">
-															<v-avatar :image="message.avatar" size="28" color="primary">
-																<span v-if="!message.avatar" class="text-caption">
-																	{{ getInitials(message.userName) }}
-																</span>
+															<v-avatar size="28" color="primary">
+																<v-img
+																	v-if="participant.avatar"
+																	:src="participant.avatar"
+																></v-img>
+																<v-icon v-else icon="mdi-account" size="16"></v-icon>
 															</v-avatar>
 															<span class="message-sender ml-2">{{
 																message.userName
@@ -1349,15 +1351,6 @@ const formatDate = date => {
 }
 
 const formatTime = timestamp => useDateFormat(timestamp, 'HH:mm').value
-
-const getInitials = name => {
-	return name
-		.split(' ')
-		.map(word => word[0])
-		.join('')
-		.toUpperCase()
-		.slice(0, 2)
-}
 
 const getFileIcon = fileType => {
 	const iconMap = {

@@ -156,7 +156,7 @@ public class ParticipantLeftConsumer extends BaseRocketMQConsumer implements Roc
      */
     private Long updateOnlineCount(String roomId, boolean isJoin) {
         try {
-            String participantsKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
+            String participantsKey = String.format(RedisKeyConstants.ROOM_ONLINE_PARTICIPANTS_KEY, roomId);
 
             // 获取当前在线人数
             Long onlineCount = redisTemplate.opsForSet().size(participantsKey);

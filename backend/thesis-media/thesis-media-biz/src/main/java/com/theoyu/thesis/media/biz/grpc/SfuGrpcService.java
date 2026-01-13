@@ -441,7 +441,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
 
         // Set 存储房间参与者列表
         String participantsSetKey = String.format(
-                RedisKeyConstants.ROOM_PARTICIPANTS_KEY,
+                RedisKeyConstants.ROOM_ONLINE_PARTICIPANTS_KEY,
                 roomId
         );
         redisTemplate.opsForSet().add(participantsSetKey, userId);
@@ -613,7 +613,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
 
         // 从 Set 中移除参与者ID
         String participantsSetKey = String.format(
-                RedisKeyConstants.ROOM_PARTICIPANTS_KEY,
+                RedisKeyConstants.ROOM_ONLINE_PARTICIPANTS_KEY,
                 roomId
         );
         redisTemplate.opsForSet().remove(participantsSetKey, userId);

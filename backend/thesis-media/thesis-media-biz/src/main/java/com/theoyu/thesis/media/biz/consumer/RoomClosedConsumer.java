@@ -98,7 +98,7 @@ public class RoomClosedConsumer extends BaseRocketMQConsumer implements RocketMQ
 
         if(Boolean.TRUE.equals(isAutoClose)) {
             // 验证房间确实为空
-            String participantsKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
+            String participantsKey = String.format(RedisKeyConstants.ROOM_ONLINE_PARTICIPANTS_KEY, roomId);
             Long participantCount = redisTemplate.opsForSet().size(participantsKey);
 
             if (participantCount != null && participantCount > 0) {
@@ -157,7 +157,7 @@ public class RoomClosedConsumer extends BaseRocketMQConsumer implements RocketMQ
             List<String> keysToDelete = Arrays.asList(
                     String.format(RedisKeyConstants.ROOM_INFO_KEY, roomId),
                     String.format(RedisKeyConstants.ROOM_CONFIG_KEY, roomId),
-                    String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId),
+                    String.format(RedisKeyConstants.ROOM_ONLINE_PARTICIPANTS_KEY, roomId),
                     String.format("media:room:stats:%s", roomId)
             );
 

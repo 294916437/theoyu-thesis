@@ -73,7 +73,11 @@ public class RoomCreatedConsumer extends BaseRocketMQConsumer implements RocketM
             // 4. 初始化房间统计数据
             initRoomStats(event);
 
-            // 5. 新增房间参与者(创建者默认为主持人身份)
+            // 5. 初始化房间缓存Key
+            // 无需该操作，因为Redis遵循: 直接写:不存在则创建，存在则更新。直接读:不存在返回空，不报错。
+
+
+            // 6. 新增房间参与者(创建者默认为主持人身份)
             LocalDateTime now = LocalDateTime.now();
             RoomParticipantPO roomParticipantPO = RoomParticipantPO.builder()
                     .roomId(event.getRoomId())

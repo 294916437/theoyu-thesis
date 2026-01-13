@@ -6,27 +6,31 @@ public class RedisKeyConstants {
 
     /**
      * 房间信息缓存 Key
-     * media:room:{roomId}
+     * room:{roomId}
      */
-    public static final String ROOM_INFO_KEY = "media:room:%s";
+    public static final String ROOM_INFO_KEY = "room:%s";
 
     /**
      * 房间配置缓存 Key
-     * media:room:config:{roomId}
+     * room:config:{roomId}
      */
-    public static final String ROOM_CONFIG_KEY = "media:room:config:%s";
+    public static final String ROOM_CONFIG_KEY = "room:config:%s";
 
     /**
      * 房间自动关闭 Key
-     * media:room:auto-close:{roomId}
      */
-    public static final String ROOM_AUTO_CLOSE_KEY = "media:room:auto_close:%s";
+    public static final String ROOM_AUTO_CLOSE_KEY = "room:auto_close:%s";
 
     /**
-     * 房间参与者列表 Key
-     * media:room:participants:{roomId}
+     * 房间在线参与者列表 Key
+     * room:participants:{roomId}
      */
-    public static final String ROOM_PARTICIPANTS_KEY = "room:participants:%s";
+    public static final String ROOM_ONLINE_PARTICIPANTS_KEY = "room:online-participants:%s";
+    /**
+     * 会议所有参与者列表（Set）
+     * room:all-participants:{roomId}
+     */
+    public static final String ROOM_ALL_PARTICIPANTS_KEY = "room:all-participants:%s";
 
     /**
      * 参与者详情 Key
@@ -95,10 +99,9 @@ public class RedisKeyConstants {
 
     // ==================== 缓存过期时间 ====================
     /**
-     * 房间在线参与者列表过期时间: 5分钟
+     * 房间所有参与者
      */
-    public static final Long ROOM_ONLINE_PARTICIPANTS_ZSET_EXPIRE_TIME = 1800L; // 5分钟
-
+    public static final long ROOM_ALL_PARTICIPANTS_EXPIRE_TIME = 30 * 60;
     /**
      * 会议号映射过期时间（7天）
      */

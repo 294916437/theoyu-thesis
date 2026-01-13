@@ -21,6 +21,7 @@ public enum ResponseCodeEnum implements BaseExceptionInterface {
     USER_NOT_IN_ROOM("ROOM-1008", "用户不在房间内"),
     MESSAGE_SEND_FAILED("ROOM-1009", "消息发送失败"),
     MESSAGE_CONTENT_EMPTY("ROOM-1010", "消息内容为空"),
+    ROOM_DETAIL_QUERY_FAILED("ROOM-10011", "查询会议详情失败"),
 
     // ==================== 用户相关 20xx ====================
     USER_NOT_FOUND("MEDIA-2001", "用户不存在"),

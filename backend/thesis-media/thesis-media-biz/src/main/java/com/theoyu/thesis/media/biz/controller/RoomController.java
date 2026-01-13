@@ -106,4 +106,5 @@ public class RoomController {
     public PageResponse<ParticipantListItemVO> getParticipants(@Valid GetParticipantsReqVO reqVO) {
         return roomService.getParticipants(reqVO);
     }
+
 }

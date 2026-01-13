@@ -33,7 +33,7 @@ public interface RoomParticipantPOMapper {
     Integer countByRoomIdAndStatus(@Param("roomId") Long roomId, @Param("status") Integer status);
 
     /**
-     * 查询房间所有在线参与者
+     * 根据status查询房间所有参与者
      */
     List<RoomParticipantPO> selectByRoomIdAndStatus(
             @Param("roomId") Long roomId,

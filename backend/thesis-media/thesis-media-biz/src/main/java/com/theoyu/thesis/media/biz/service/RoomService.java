@@ -3,7 +3,6 @@ package com.theoyu.thesis.media.biz.service;
 import com.theoyu.framework.common.response.PageResponse;
 import com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO;
 import com.theoyu.thesis.media.biz.model.vo.*;
-import com.theoyu.thesis.user.dto.response.FindUserByIdRspDTO;
 
 public interface RoomService {
 

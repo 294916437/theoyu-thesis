@@ -142,44 +142,8 @@ public class RoomServiceImpl implements RoomService {
     public GetRoomInfoResVO getRoomInfo(String roomIdOrNo) {
         log.info("[RoomService] getRoomInfo - roomIdOrNo: {}", roomIdOrNo);
 
-        Long roomId = null;
-
         // 1. 判断入参是 roomId 还是 roomNo
-        try {
-            // 尝试解析为 Long，如果成功则认为是 roomId
-            roomId = Long.parseLong(roomIdOrNo);
-        } catch (NumberFormatException e) {
-            // 从 Hash 中直接获取 roomId
-            String mappingKey = RedisKeyConstants.ROOM_NO_MAPPING_KEY;
-            Object cachedRoomId = redisTemplate.opsForHash().get(mappingKey, roomIdOrNo);
-
-            if (cachedRoomId != null) {
-                roomId = Long.parseLong(cachedRoomId.toString());
-                log.info("[RoomService] Found roomId from Hash cache: {}", roomId);
-            } else {
-                // 缓存未命中，从数据库查询
-                RoomPO room = roomPOMapper.selectByRoomNo(roomIdOrNo);
-                if (room != null) {
-                    roomId = room.getId();
-
-                    // 回写缓存到 Hash
-                    redisTemplate.opsForHash().put(mappingKey, roomIdOrNo, roomId.toString());
-
-                    // 设置 Hash 的过期时间（首次写入时）
-                    if (!Boolean.TRUE.equals(redisTemplate.hasKey(mappingKey))) {
-                        redisTemplate.expire(mappingKey,
-                                RedisKeyConstants.ROOM_NO_MAPPING_EXPIRE_TIME,
-                                TimeUnit.SECONDS);
-                    }
-
-                    log.info("[RoomService] Found roomId from DB and cached to Hash: {}", roomId);
-                }
-            }
-
-            if (roomId == null) {
-                throw new BusinessException(ResponseCodeEnum.ROOM_NOT_FOUND);
-            }
-        }
+        Long roomId = parseRoomId(roomIdOrNo);
 
         // 2. 从缓存获取会议信息（Hash 优化）
         RoomPO room = getRoomFromCache(roomId);
@@ -217,12 +181,54 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     public GetRoomDetailResVO getRoomDetail(String roomIdOrNo) {
-        return null;
+        log.info("[RoomService] 获取会议详情 - roomIdOrNo: {}", roomIdOrNo);
+
+        try {
+            // 1. 解析 roomId
+            Long roomId = parseRoomId(roomIdOrNo);
+
+            // 2. 获取会议基础信息
+            RoomPO room = getRoomFromCache(roomId);
+            if (room == null) {
+                throw new BusinessException(ResponseCodeEnum.ROOM_NOT_FOUND);
+            }
+
+            // 3. 获取主持人信息
+            GetRoomDetailResVO.HostInfo hostInfo = getHostInfo(room.getHostId());
+
+            // 4. 获取全部参与者列表（优先从缓存）
+            List<GetRoomDetailResVO.ParticipantInfo> participants =
+                    getAllParticipantsWithCache(roomId);
+
+            // 5. 计算持续时间（分钟）
+            Integer duration = calculateDuration(room);
+
+            // 6. 构建响应
+            return GetRoomDetailResVO.builder()
+                    .roomId(room.getId())
+                    .roomNo(room.getRoomNo())
+                    .title(room.getTitle())
+                    .description(room.getSettings()) // 假设 settings 包含描述信息
+                    .startTime(room.getStartTime())
+                    .duration(duration)
+                    .status(room.getStatus())
+                    .host(hostInfo)
+                    .participantCount(participants.size())
+                    .participants(participants)
+                    .recording(buildRecordingInfo())
+                    .transcript(buildTranscriptInfo())
+                    .build();
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[RoomService] 获取会议详情失败 - roomIdOrNo: {}", roomIdOrNo, e);
+            throw new BusinessException(ResponseCodeEnum.ROOM_DETAIL_QUERY_FAILED);
+        }
     }
 
     /**
      * 加入会议（预验证阶段）
-     * 
      * 此方法不会执行持久化操作。真正的参与者记录将在用户成功连接到 SFU 服务器后，
      * 由 SFU 通过 gRPC 调用 {@link SfuGrpcService#notifyParticipantJoined} 时创建。
      * 这样可以避免"幽灵参与者"问题（用户调用 API 但未实际连接）。
@@ -541,7 +547,7 @@ public class RoomServiceImpl implements RoomService {
             String memberJson = JsonUtils.toJsonString(vo);
 
             // 4. 添加到 Set
-            String cacheKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
+            String cacheKey = String.format(RedisKeyConstants.ROOM_ONLINE_PARTICIPANTS_KEY, roomId);
             redisTemplate.opsForSet().add(cacheKey, memberJson);
 
             // 5. 刷新过期时间
@@ -565,7 +571,7 @@ public class RoomServiceImpl implements RoomService {
     @Override
     public void removeOnlineParticipantFromCache(Long roomId, Long userId) {
         try {
-            String cacheKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
+            String cacheKey = String.format(RedisKeyConstants.ROOM_ONLINE_PARTICIPANTS_KEY, roomId);
 
             // 获取所有成员并过滤删除
             Set<Object> members = redisTemplate.opsForSet().members(cacheKey);
@@ -605,11 +611,234 @@ public class RoomServiceImpl implements RoomService {
 
     // ==================== 私有辅助方法 ====================
     /**
+     * 解析 roomId（兼容 roomId 和 roomNo）
+     */
+    private Long parseRoomId(String roomIdOrNo) {
+        try {
+            // 尝试直接解析为 Long
+            return Long.parseLong(roomIdOrNo);
+        } catch (NumberFormatException e) {
+            // 从 Hash 缓存获取映射
+            String mappingKey = RedisKeyConstants.ROOM_NO_MAPPING_KEY;
+            Object cachedRoomId = redisTemplate.opsForHash().get(mappingKey, roomIdOrNo);
+
+            if (cachedRoomId != null) {
+                return Long.parseLong(cachedRoomId.toString());
+            }
+
+            // 缓存未命中，查询 DB
+            RoomPO room = roomPOMapper.selectByRoomNo(roomIdOrNo);
+            if (room == null) {
+                throw new BusinessException(ResponseCodeEnum.ROOM_NOT_FOUND);
+            }
+
+            // 回写缓存
+            redisTemplate.opsForHash().put(mappingKey, roomIdOrNo, room.getId().toString());
+            // 设置 Hash 的过期时间
+            redisTemplate.expire(mappingKey,
+                    RedisKeyConstants.ROOM_NO_MAPPING_EXPIRE_TIME,
+                    TimeUnit.SECONDS);
+
+
+            return room.getId();
+        }
+    }
+
+    /**
+     * 获取主持人信息
+     */
+    private GetRoomDetailResVO.HostInfo getHostInfo(Long hostId) {
+        FindUserByIdRspDTO userInfo = userRpcService.findById(hostId);
+
+        if (userInfo == null) {
+            return GetRoomDetailResVO.HostInfo.builder()
+                    .userId(hostId)
+                    .userName("未知用户")
+                    .email("")
+                    .avatar("")
+                    .build();
+        }
+
+        return GetRoomDetailResVO.HostInfo.builder()
+                .userId(userInfo.getId())
+                .userName(userInfo.getNickName())
+                .avatar(userInfo.getAvatar())
+                .build();
+    }
+
+    /**
+     * 获取全部参与者列表（带缓存优化）
+     */
+    private List<GetRoomDetailResVO.ParticipantInfo> getAllParticipantsWithCache(Long roomId) {
+        // 1. 尝试从 Set 缓存获取
+        List<GetRoomDetailResVO.ParticipantInfo> cachedParticipants =
+                getAllParticipantsFromCache(roomId);
+
+        if (!cachedParticipants.isEmpty()) {
+            log.info("[RoomService] 缓存命中全部参与者列表 - roomId: {}, count: {}",
+                    roomId, cachedParticipants.size());
+            return cachedParticipants;
+        }
+
+        // 2. 缓存未命中，查询 DB
+        log.info("[RoomService] 缓存未命中，从 DB 查询全部参与者 - roomId: {}", roomId);
+        List<RoomParticipantPO> participantPOs =
+                roomParticipantPOMapper.selectByRoomIdAndStatus(roomId,null);
+
+        if (participantPOs.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 3. 批量查询用户信息
+        List<Long> userIds = participantPOs.stream()
+                .map(RoomParticipantPO::getUserId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        List<FindUserByIdRspDTO> userInfos = userRpcService.findByIds(userIds);
+        Map<Long, FindUserByIdRspDTO> userInfoMap = userInfos != null
+                ? userInfos.stream().collect(Collectors.toMap(
+                FindUserByIdRspDTO::getId, u -> u))
+                : new HashMap<>();
+
+        // 4. 构建参与者列表
+        List<GetRoomDetailResVO.ParticipantInfo> participants = participantPOs.stream()
+                .map(p -> buildParticipantDetailVO(p, userInfoMap.get(p.getUserId())))
+                .collect(Collectors.toList());
+
+        // 5. 异步回写缓存
+        asyncCacheAllParticipants(roomId, participants);
+
+        return participants;
+    }
+
+    /**
+     * 从 Set 缓存获取全部参与者
+     */
+    private List<GetRoomDetailResVO.ParticipantInfo> getAllParticipantsFromCache(Long roomId) {
+        try {
+            String cacheKey = String.format(RedisKeyConstants.ROOM_ALL_PARTICIPANTS_KEY, roomId);
+            Set<Object> members = redisTemplate.opsForSet().members(cacheKey);
+
+            if (members == null || members.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            return members.stream()
+                    .map(obj -> JsonUtils.parseObject(obj.toString(),
+                            GetRoomDetailResVO.ParticipantInfo.class))
+                    .filter(Objects::nonNull)
+                    .sorted(Comparator.comparing(
+                            p -> p.getJoinedAt() != null ? p.getJoinedAt() : LocalDateTime.MIN))
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.warn("[RoomService] 从缓存获取全部参与者失败 - roomId: {}", roomId, e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 异步缓存全部参与者到 Set
+     */
+    private void asyncCacheAllParticipants(Long roomId,
+                                           List<GetRoomDetailResVO.ParticipantInfo> participants) {
+
+        threadPoolTaskExecutor.execute(() -> {
+            try {
+                String cacheKey = String.format(
+                        RedisKeyConstants.ROOM_ALL_PARTICIPANTS_KEY, roomId);
+
+                // 删除旧缓存
+                redisTemplate.delete(cacheKey);
+
+                // 批量添加到 Set
+                for (GetRoomDetailResVO.ParticipantInfo p : participants) {
+                    String json = JsonUtils.toJsonString(p);
+                    if (json != null && !json.isEmpty()) {
+                        redisTemplate.opsForSet().add(cacheKey, json);
+                    }
+                }
+
+                // 设置过期时间
+                redisTemplate.expire(cacheKey,
+                        RedisKeyConstants.ROOM_ALL_PARTICIPANTS_EXPIRE_TIME,
+                        TimeUnit.SECONDS);
+
+                log.info("[RoomService] 异步缓存全部参与者成功 - roomId: {}, count: {}",
+                        roomId, participants.size());
+
+            } catch (Exception e) {
+                log.error("[RoomService] 异步缓存全部参与者失败 - roomId: {}", roomId, e);
+            }
+        });
+    }
+
+    /**
+     * 构建参与者详情 VO
+     */
+    private GetRoomDetailResVO.ParticipantInfo buildParticipantDetailVO(
+            RoomParticipantPO participant, FindUserByIdRspDTO userInfo) {
+
+        return GetRoomDetailResVO.ParticipantInfo.builder()
+                .userId(participant.getUserId())
+                .userName(userInfo != null ? userInfo.getNickName() : "未知用户")
+                .avatar(userInfo != null ? userInfo.getAvatar() : "")
+                .role(participant.getRole())
+                .status(participant.getStatus())
+                .audioMuted(participant.getAudioMuted())
+                .videoMuted(participant.getVideoMuted())
+                .joinedAt(participant.getJoinedAt())
+                .leftAt(participant.getLeftAt())
+                .build();
+    }
+
+    /**
+     * 计算会议持续时间（分钟）
+     */
+    private Integer calculateDuration(RoomPO room) {
+        if (room.getEndTime() == null) {
+            return 0;
+        }
+
+        LocalDateTime start = room.getStartTime();
+        LocalDateTime end = room.getEndTime();
+
+        if (start == null) {
+            return 0;
+        }
+
+        return (int) java.time.Duration.between(start, end).toMinutes();
+    }
+
+    /**
+     * 构建录像信息（预留）
+     */
+    private GetRoomDetailResVO.RecordingInfo buildRecordingInfo() {
+        return GetRoomDetailResVO.RecordingInfo.builder()
+                .available(false)
+                .url("")
+                .size(0L)
+                .duration(0)
+                .build();
+    }
+
+    /**
+     * 构建记录信息（预留）
+     */
+    private GetRoomDetailResVO.TranscriptInfo buildTranscriptInfo() {
+        return GetRoomDetailResVO.TranscriptInfo.builder()
+                .available(false)
+                .url("")
+                .build();
+    }
+
+    /**
      * 从 Set 缓存获取在线参与者列表 (带分页和排序)
      */
     private List<ParticipantListItemVO> getOnlineParticipantsFromCache(Long roomId, long page, long size) {
         try {
-            String cacheKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
+            String cacheKey = String.format(RedisKeyConstants.ROOM_ONLINE_PARTICIPANTS_KEY, roomId);
 
             // 获取 Set 中的所有成员
             Set<Object> members = redisTemplate.opsForSet().members(cacheKey);
@@ -656,7 +885,7 @@ public class RoomServiceImpl implements RoomService {
             try {
                 // 1. 过滤在线参与者
                 // 2. 构建缓存 Key
-                String cacheKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
+                String cacheKey = String.format(RedisKeyConstants.ROOM_ONLINE_PARTICIPANTS_KEY, roomId);
 
                 // 3. 删除旧数据
                 redisTemplate.delete(cacheKey);
@@ -1093,7 +1322,7 @@ public class RoomServiceImpl implements RoomService {
     }
 
     private Integer getCurrentParticipantCount(Long roomId) {
-        String participantsKey = String.format(RedisKeyConstants.ROOM_PARTICIPANTS_KEY, roomId);
+        String participantsKey = String.format(RedisKeyConstants.ROOM_ONLINE_PARTICIPANTS_KEY, roomId);
         Long redisCount = redisTemplate.opsForSet().size(participantsKey);
 
         if (redisCount == null) {

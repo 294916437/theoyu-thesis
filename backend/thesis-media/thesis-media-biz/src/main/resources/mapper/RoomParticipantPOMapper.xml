@@ -214,12 +214,12 @@
   </update>
 
 
-  <!-- 查询房间在线参与者列表 -->
+  <!-- 查询房间参与者列表 -->
   <select id="selectByRoomIdAndStatus" resultMap="BaseResultMap">
     SELECT <include refid="Base_Column_List" />
     FROM t_room_participant
     WHERE room_id = #{roomId}
-    AND `status` = #{status}
+    <if test="status != null">AND `status` = #{status}</if>
     ORDER BY joined_at ASC
   </select>
 

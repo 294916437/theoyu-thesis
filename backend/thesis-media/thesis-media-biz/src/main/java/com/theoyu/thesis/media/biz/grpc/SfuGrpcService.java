@@ -158,6 +158,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
 
         log.info("[SFU-gRPC] notifyParticipantJoined - roomId: {}, userId: {}, username: {}",
                 request.getRoomId(), request.getUserId(), request.getUsername());
+
         String roomIdStr = request.getRoomId();
         String userIdStr = request.getUserId();
         Long roomId = Long.parseLong(roomIdStr);
@@ -166,7 +167,6 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
         long timestamp = request.getTimestamp();
 
         try {
-
             LocalDateTime now = LocalDateTime.now();
 
             // 1. 使用 insertOrUpdate 方法处理参与者记录
@@ -185,19 +185,19 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             roomParticipantPOMapper.insertOrUpdate(participant);
             log.info("[SFU-gRPC] 参与者记录已更新 - userId: {}", userId);
 
-            // 2. 缓存参与者信息
-            // 缓存参与者详细信息
+            // 2. 缓存参与者信息（旧逻辑，保留用于其他用途）
             cacheParticipantInfo(roomIdStr, userIdStr, username, timestamp);
-            // 将参与者添加到房间参与者列表缓存
-            roomService.addOnlineParticipantToCache(roomId,participant,userId);
 
-            // 3. 异步发送 MQ 消息
+            // 3. 统一更新参与者缓存（在线 + 全部）
+            roomService.addParticipantToCache(roomId, participant);
+
+            // 4. 异步发送 MQ 消息
             sendParticipantEventToMQ(roomId, userId, username, "joined", timestamp);
 
-            // 4. 异步记录房间系统消息
-            recordSystemMessage(roomId ,userId, username, "加入了房间");
+            // 5. 异步记录房间系统消息
+            recordSystemMessage(roomId, userId, username, "加入了房间");
 
-            // 5. 返回成功响应
+            // 6. 返回成功响应
             sendAckSuccessResponse(responseObserver, "加入房间成功");
 
         } catch (NumberFormatException e) {

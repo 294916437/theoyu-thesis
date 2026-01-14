@@ -88,7 +88,11 @@
 													<v-img
 														v-if="meetingDetail.host.avatar"
 														:src="meetingDetail.host.avatar"
-													></v-img>
+													>
+														<template #error>
+															<v-icon icon="mdi-account" size="16"></v-icon>
+														</template>
+													</v-img>
 													<v-icon v-else size="16">mdi-account</v-icon>
 												</v-avatar>
 												<span class="text-body-1 font-weight-medium">

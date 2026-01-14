@@ -200,9 +200,14 @@
 														<div v-if="!message.isOwn" class="d-flex align-center mb-2">
 															<v-avatar size="28" color="primary">
 																<v-img
-																	v-if="participant.avatar"
-																	:src="participant.avatar"
-																></v-img>
+																	v-if="message.avatar"
+																	:src="message.avatar"
+																	:alt="message.userName"
+																>
+																	<template #error>
+																		<v-icon icon="mdi-account" size="16"></v-icon>
+																	</template>
+																</v-img>
 																<v-icon v-else icon="mdi-account" size="16"></v-icon>
 															</v-avatar>
 															<span class="message-sender ml-2">{{
@@ -215,37 +220,16 @@
 
 														<!-- 消息气泡 -->
 														<div
+															v-if="message.contentType !== 2"
 															class="message-bubble"
 															:class="{ 'message-own-bubble': message.isOwn }"
 														>
-															<!-- 文本消息 (type === 'text') -->
+															<!-- 文本消息 (contentType === 1) -->
 															<div v-if="message.contentType === 1" class="message-text">
 																{{ message.content }}
 															</div>
 
-															<!-- 图片消息 (type === 'image') -->
-															<div
-																v-else-if="message.contentType === 2"
-																class="message-image"
-															>
-																<v-img
-																	:src="message.content"
-																	:alt="message.userName"
-																	max-width="300"
-																	max-height="300"
-																	cover
-																	class="rounded"
-																	@click="previewImage(message.content)"
-																>
-																	<template #placeholder>
-																		<v-progress-circular
-																			indeterminate
-																		></v-progress-circular>
-																	</template>
-																</v-img>
-															</div>
-
-															<!-- 文件消息 (type === 'file') -->
+															<!-- 文件消息 (contentType === 3) -->
 															<div
 																v-else-if="message.contentType === 3"
 																class="message-file"
@@ -264,12 +248,54 @@
 																	icon="mdi-download"
 																	size="x-small"
 																	variant="text"
-																	@click="downloadFile(message.file)"
+																	@click="clickShowDownloadDialog(message.file)"
 																></v-btn>
 															</div>
 
 															<!-- 自己消息的时间 -->
 															<div v-if="message.isOwn" class="message-time-own">
+																{{ formatTime(message.timestamp) }}
+															</div>
+														</div>
+
+														<!-- 图片消息 (contentType === 2)-->
+														<div v-else class="message-image-wrapper">
+															<v-img
+																:src="message.content"
+																:alt="message.userName"
+																max-width="300"
+																max-height="300"
+																cover
+																class="message-image rounded-lg"
+																@click="previewImage(message.content)"
+															>
+																<template #placeholder>
+																	<div
+																		class="d-flex align-center justify-center fill-height"
+																	>
+																		<v-progress-circular
+																			indeterminate
+																			color="primary"
+																		></v-progress-circular>
+																	</div>
+																</template>
+																<template #error>
+																	<div
+																		class="d-flex flex-column align-center justify-center fill-height"
+																	>
+																		<v-icon
+																			icon="mdi-image-broken"
+																			size="48"
+																			color="error"
+																		></v-icon>
+																		<span class="text-caption mt-2"
+																			>图片加载失败</span
+																		>
+																	</div>
+																</template>
+															</v-img>
+															<!-- 图片消息时间 -->
+															<div v-if="message.isOwn" class="message-time-own-image">
 																{{ formatTime(message.timestamp) }}
 															</div>
 														</div>
@@ -318,13 +344,6 @@
 
 											<!-- 消息输入框 -->
 											<div class="d-flex align-end ga-2">
-												<v-btn
-													icon="mdi-emoticon-happy-outline"
-													variant="text"
-													size="small"
-													class="emoji-btn"
-												></v-btn>
-
 												<v-textarea
 													v-model="messageInput"
 													variant="outlined"
@@ -769,6 +788,63 @@
 				</v-card>
 			</v-dialog>
 
+			<!-- 文件下载确认对话框 -->
+			<v-dialog v-model="showDownloadDialog" max-width="480" transition="dialog-bottom-transition">
+				<v-card>
+					<v-card-title class="d-flex align-center pa-4">
+						<v-icon icon="mdi-download" color="primary" class="mr-2"></v-icon>
+						<span class="text-h6 font-weight-medium">下载文件</span>
+					</v-card-title>
+
+					<v-divider></v-divider>
+
+					<v-card-text class="pa-6">
+						<div class="d-flex align-center mb-4">
+							<v-avatar size="48" color="primary-lighten-1" rounded>
+								<v-icon :icon="getFileIcon(downloadFileInfo.type)" size="32"></v-icon>
+							</v-avatar>
+							<div class="ml-4 flex-grow-1">
+								<div class="text-subtitle-1 font-weight-medium">{{ downloadFileInfo.name }}</div>
+								<div class="text-caption text-on-surface-variant">
+									{{ formatFileSize(downloadFileInfo.size) }}
+								</div>
+							</div>
+						</div>
+					</v-card-text>
+
+					<v-divider></v-divider>
+
+					<v-card-actions class="pa-4">
+						<v-btn variant="text" @click="showDownloadDialog = false"> 取消 </v-btn>
+						<v-spacer></v-spacer>
+						<v-btn variant="flat" color="primary" prepend-icon="mdi-download" @click="confirmDownloadFile">
+							确认下载
+						</v-btn>
+					</v-card-actions>
+				</v-card>
+			</v-dialog>
+
+			<!-- 图片预览对话框 -->
+			<v-dialog v-model="showImagePreview" max-width="90vw" max-height="90vh">
+				<v-card class="image-preview-card">
+					<v-toolbar density="compact" color="transparent" flat>
+						<v-toolbar-title class="text-subtitle-1">图片预览</v-toolbar-title>
+						<v-spacer></v-spacer>
+						<v-btn icon="mdi-download" variant="text" @click="downloadPreviewImage"></v-btn>
+						<v-btn icon="mdi-close" variant="text" @click="showImagePreview = false"></v-btn>
+					</v-toolbar>
+					<v-card-text class="pa-0">
+						<v-img :src="previewImageUrl" contain max-height="80vh">
+							<template #placeholder>
+								<div class="d-flex align-center justify-center fill-height">
+									<v-progress-circular indeterminate color="primary"></v-progress-circular>
+								</div>
+							</template>
+						</v-img>
+					</v-card-text>
+				</v-card>
+			</v-dialog>
+
 			<!-- 加载覆盖层 -->
 			<LoadingOverlay :visible="isLoading" :message="loadingMessage" :progress="loadingProgress" />
 		</v-main>
@@ -897,9 +973,6 @@ const handleNetworkChange = useDebounceFn(online => {
 	}
 }, 500)
 
-// 监听网络状态 - 使用防抖函数
-watch(online, handleNetworkChange)
-
 // 网络质量计算
 const networkQuality = computed(() => {
 	if (!online) {
@@ -928,6 +1001,10 @@ const loadingMessage = ref('')
 const loadingProgress = ref(0)
 const controlBarCollapsed = ref(false)
 const showLeaveConfirm = ref(false)
+const showDownloadDialog = ref(false)
+const downloadFileInfo = ref({ name: '', size: 0, type: '', url: '' })
+const showImagePreview = ref(false)
+const previewImageUrl = ref('')
 
 // 视频设置
 const videoQuality = ref(2)
@@ -961,28 +1038,6 @@ const scrollToBottom = async () => {
 		messageContainer.value.scrollTop = messageContainer.value.scrollHeight
 	}
 }
-
-// 监听滚动到底部时标记已读
-watch(
-	() => arrivedState.bottom,
-	isBottom => {
-		if (isBottom && unreadMessages.value > 0) {
-			unreadMessages.value = 0
-		}
-	},
-)
-
-// 监听新消息自动滚动
-watch(
-	() => chatMessages.value.length,
-	() => {
-		if (sidebarTab.value === 'chat' || arrivedState.bottom) {
-			scrollToBottom()
-		} else {
-			unreadMessages.value++
-		}
-	},
-)
 
 // 按日期分组消息
 const groupedMessages = computed(() => {
@@ -1024,15 +1079,15 @@ const transformMessage = resVO => {
 			}
 
 		case 3: {
-			// 从 content 中解析文件信息 (格式为 "filename|size|url") // 文件消息
-			const [fileName, fileSize, fileUrl] = resVO.content.split('|')
+			// 从 content 中解析文件信息 (格式为 "name|type|size|url") // 文件消息
+			const [name, type, size, url] = resVO.content.split('|')
 			return {
 				...baseMessage,
 				file: {
-					name: fileName,
-					size: parseInt(fileSize),
-					type: getFileTypeFromName(fileName),
-					url: fileUrl,
+					name: name,
+					size: parseInt(size),
+					type: getFileType(type),
+					url: url,
 				},
 			}
 		}
@@ -1084,9 +1139,11 @@ const handleFileSelect = async event => {
 
 	try {
 		uploadProgress.value = 0
+		const formData = new FormData()
+		formData.append('file', file)
 
-		// 上传文件到服务器
-		const fileUrl = await uploadFile(file)
+		// 上传文件到服务器,获取文件URL
+		const { data } = await uploadFile(formData)
 
 		// 模拟上传进度
 		const uploadInterval = setInterval(() => {
@@ -1096,18 +1153,19 @@ const handleFileSelect = async event => {
 
 				// 根据文件类型发送不同消息
 				const fileType = file.type.split('/')[0]
-				const fileData = `${file.name}|${file.size}|${fileUrl}`
 
 				if (fileType === 'image') {
-					RoomMessageService.sendImageMessage(fileData)
+					// 图片直接上传URL
+					RoomMessageService.sendImageMessage(data)
 				} else {
-					RoomMessageService.sendFileMessage(fileData)
+					// 其他文件格式发送 "filename|type|size|url"
+					const content = `${file.name}|${fileType}|${file.size}|${data}`
+					RoomMessageService.sendFileMessage(content)
 				}
 
 				uploadProgress.value = 0
-				$notify.success('文件发送成功')
 			}
-		}, 200)
+		}, 100)
 	} catch (error) {
 		console.error('文件上传失败:', error)
 		uploadProgress.value = 0
@@ -1183,8 +1241,6 @@ const initRoomMessageService = async () => {
 
 		// 2. 监听房间消息
 		RoomMessageService.on('room-message', data => {
-			console.log('收到房间消息:', data)
-
 			// 转换消息格式并添加到列表
 			const message = transformMessage(data)
 			chatMessages.value.push(message)
@@ -1209,28 +1265,47 @@ const initRoomMessageService = async () => {
 }
 
 /**
- * 从文件名推断文件类型
+ * 类型映射函数
  */
-const getFileTypeFromName = fileName => {
-	const ext = fileName.split('.').pop().toLowerCase()
+const getFileType = fileType => {
 	const typeMap = {
+		// 图片
 		jpg: 'image',
 		jpeg: 'image',
 		png: 'image',
 		gif: 'image',
+		webp: 'image',
+		svg: 'image',
+		// 视频
 		mp4: 'video',
 		avi: 'video',
 		mov: 'video',
+		mkv: 'video',
+		// 音频
 		mp3: 'audio',
 		wav: 'audio',
+		flac: 'audio',
+		// 文档
 		pdf: 'pdf',
-		doc: 'document',
-		docx: 'document',
+		doc: 'word',
+		docx: 'word',
+		xls: 'excel',
+		xlsx: 'excel',
+		ppt: 'powerpoint',
+		pptx: 'powerpoint',
 		txt: 'document',
-		zip: 'archive',
-		rar: 'archive',
+		// 压缩
+		zip: 'zip',
+		rar: 'rar',
+		'7z': 'archive',
+		// 代码
+		js: 'code',
+		ts: 'code',
+		vue: 'code',
+		py: 'code',
+		java: 'code',
 	}
-	return typeMap[ext] || 'file'
+	return typeMap[fileType] || 'file'
 }
 // 输入节流
 const handleTyping = useThrottleFn(() => {
@@ -1238,6 +1313,107 @@ const handleTyping = useThrottleFn(() => {
 	console.log('User is typing...')
 }, 1000)
 
+// ==================== 文件下载&图片预览 ====================
+
+// 显示文件下载对话框
+const clickShowDownloadDialog = file => {
+	downloadFileInfo.value = file
+	showDownloadDialog.value = true
+}
+/**
+ * 确认下载文件
+ */
+const confirmDownloadFile = async () => {
+	try {
+		const file = downloadFileInfo.value
+
+		// 方案1: 使用 a 标签下载 (适用于同源文件)
+		const link = document.createElement('a')
+		link.href = file.url
+		link.download = file.name
+		link.target = '_blank'
+		document.body.appendChild(link)
+		link.click()
+		document.body.removeChild(link)
+
+		$notify.success('文件下载已开始')
+		showDownloadDialog.value = false
+	} catch (error) {
+		console.error('下载失败:', error)
+		$notify.error('下载失败，请重试')
+	}
+}
+/**
+ * 使用 Fetch API 下载文件 (支持跨域和进度监控)
+ */
+const downloadFileWithProgress = async (url, filename) => {
+	try {
+		const response = await fetch(url)
+
+		if (!response.ok) {
+			throw new Error('下载失败')
+		}
+
+		// 获取文件总大小
+		const contentLength = response.headers.get('content-length')
+		const total = parseInt(contentLength, 10)
+		let loaded = 0
+
+		// 读取流
+		const reader = response.body.getReader()
+		const chunks = []
+
+		while (true) {
+			const { done, value } = await reader.read()
+
+			if (done) break
+
+			chunks.push(value)
+			loaded += value.length
+
+			// 更新进度
+			uploadProgress.value = Math.round((loaded / total) * 100)
+		}
+
+		// 合并数据
+		const blob = new Blob(chunks)
+		const blobUrl = URL.createObjectURL(blob)
+
+		// 触发下载
+		const link = document.createElement('a')
+		link.href = blobUrl
+		link.download = filename
+		document.body.appendChild(link)
+		link.click()
+		document.body.removeChild(link)
+
+		// 释放 URL
+		URL.revokeObjectURL(blobUrl)
+
+		uploadProgress.value = 0
+		$notify.success('下载完成')
+	} catch (error) {
+		console.error('下载失败:', error)
+		uploadProgress.value = 0
+		$notify.error('下载失败，请重试')
+	}
+}
+// 显示图片预览
+const previewImage = url => {
+	previewImageUrl.value = url
+	showImagePreview.value = true
+}
+
+// 下载预览图片
+const downloadPreviewImage = async () => {
+	try {
+		const filename = `image_${Date.now()}.jpg`
+		await downloadFileWithProgress(previewImageUrl.value, filename)
+	} catch (error) {
+		console.error('图片下载失败:', error)
+		$notify.error('图片下载失败')
+	}
+}
 // ==================== 会议控制 ====================
 const isRecording = ref(false)
 const handRaised = ref(false)
@@ -1354,14 +1530,29 @@ const formatTime = timestamp => useDateFormat(timestamp, 'HH:mm').value
 
 const getFileIcon = fileType => {
 	const iconMap = {
-		image: 'mdi-file-image',
-		video: 'mdi-file-video',
-		audio: 'mdi-file-music',
+		// 图片
+		image: 'mdi-file-image-outline',
+		// 视频
+		video: 'mdi-file-video-outline',
+		// 音频
+		audio: 'mdi-file-music-outline',
+		// PDF
 		pdf: 'mdi-file-pdf-box',
-		document: 'mdi-file-document',
-		archive: 'mdi-folder-zip',
+		// 文档
+		document: 'mdi-file-document-outline',
+		word: 'mdi-file-word-box',
+		excel: 'mdi-file-excel-box',
+		powerpoint: 'mdi-file-powerpoint-box',
+		// 压缩包
+		archive: 'mdi-folder-zip-outline',
+		zip: 'mdi-folder-zip-outline',
+		rar: 'mdi-folder-zip-outline',
+		// 代码
+		code: 'mdi-file-code-outline',
+		// 默认
+		file: 'mdi-file-outline',
 	}
-	return iconMap[fileType] || 'mdi-file'
+	return iconMap[fileType] || iconMap.file
 }
 
 const formatFileSize = bytes => {
@@ -1372,8 +1563,30 @@ const formatFileSize = bytes => {
 	return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
 }
 
-// ==================== 事件处理 ====================
+// ==================== 状态与事件监听 ====================
+// 监听网络状态 - 使用防抖函数
+watch(online, handleNetworkChange)
+// 监听滚动到底部时标记已读
+watch(
+	() => arrivedState.bottom,
+	isBottom => {
+		if (isBottom && unreadMessages.value > 0) {
+			unreadMessages.value = 0
+		}
+	},
+)
 
+// 监听新消息自动滚动
+watch(
+	() => chatMessages.value.length,
+	() => {
+		if (sidebarTab.value === 'chat' || arrivedState.bottom) {
+			scrollToBottom()
+		} else {
+			unreadMessages.value++
+		}
+	},
+)
 // 音视频控制
 watch(audioEnabled, async enabled => {
 	console.log('Audio state changed', enabled)
@@ -1761,15 +1974,21 @@ useEventListener('beforeunload', e => {
 	margin: 8px 0;
 }
 /* 图片消息样式 */
+.message-image-wrapper {
+	max-width: 300px;
+	margin: 4px 0;
+}
 .message-image {
 	cursor: pointer;
-	transition: transform 0.2s;
-	border-radius: 6px;
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	border-radius: 12px;
 	overflow: hidden;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .message-image:hover {
 	transform: scale(1.1);
+	box-shadow: 0 4px 16px rgba(var(--v-theme-primary), 0.2);
 }
 
 .message-image :deep(.v-img) {
@@ -1837,7 +2056,15 @@ useEventListener('beforeunload', e => {
 	flex-direction: column;
 	max-width: 75%;
 }
-.message-content-own {
+.message-time-own-image {
+	font-size: 10px;
+	color: rgb(var(--v-theme-on-surface-variant));
+	text-align: right;
+	margin-top: 4px;
+}
+/* 自己发送的图片靠右 */
+.message-wrapper.user-own-message .message-image-wrapper {
+	margin-left: auto;
 }
 
 .message-sender {
@@ -1892,10 +2119,15 @@ useEventListener('beforeunload', e => {
 .message-file {
 	display: flex;
 	align-items: center;
-	gap: 10px;
-	padding: 8px;
-	background: rgba(var(--v-theme-surface), 0.5);
-	border-radius: 10px;
+	gap: 12px;
+	padding: 12px;
+	background: rgba(var(--v-theme-surface-light), 0.5);
+	border-radius: 12px;
+	cursor: pointer;
+	transition: background-color 0.2s;
+}
+.message-file:hover {
+	background: rgba(var(--v-theme-surface-light), 0.8);
 }
 
 .file-info {
@@ -1904,17 +2136,42 @@ useEventListener('beforeunload', e => {
 }
 
 .file-name {
-	font-size: 13px;
+	font-size: 14px;
 	font-weight: 500;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	color: rgb(var(--v-theme-on-surface));
 }
 
 .file-size {
 	opacity: 0.7;
-	font-size: 11px;
+	font-size: 12px;
 	margin-top: 2px;
+	color: rgb(var(--v-theme-on-surface-variant));
+}
+/* 图片预览对话框 */
+.image-preview-card {
+	background: rgb(var(--v-theme-surface));
+}
+
+.image-preview-card :deep(.v-img) {
+	background: rgb(var(--v-theme-background));
+}
+
+/* 下载对话框动画 */
+.v-dialog > .v-overlay__content {
+	animation: dialogSlideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes dialogSlideUp {
+	from {
+		opacity: 0;
+		transform: translateY(20px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 
 .message-time-own {

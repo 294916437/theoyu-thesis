@@ -89,7 +89,6 @@
 <script setup>
 import { computed } from 'vue'
 import { useThemeStore } from '@/stores/theme'
-import { $notify } from '@/plugins/notification'
 
 // 使用 Pinia Store
 const themeStore = useThemeStore()
@@ -106,13 +105,6 @@ const systemThemeLabel = computed(() => {
  */
 const handleThemeChange = theme => {
 	themeStore.setTheme(theme)
-
-	// 可选：显示通知
-	const label = theme === 'dark' ? '深色' : '浅色'
-	$notify.success(`已切换到${label}模式`, {
-		timeout: 1500,
-		icon: theme === 'dark' ? 'mdi-weather-night' : 'mdi-weather-sunny',
-	})
 }
 
 /**
@@ -120,11 +112,6 @@ const handleThemeChange = theme => {
  */
 const handleFollowSystem = () => {
 	themeStore.setFollowSystem()
-
-	$notify.success('已设置为跟随系统主题', {
-		timeout: 1500,
-		icon: 'mdi-theme-light-dark',
-	})
 }
 </script>
 

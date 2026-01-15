@@ -1,0 +1,13 @@
+[package]
+name = "meet-background-effect"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+tract-onnx = { version = "0.21", default-features = false } 
+anyhow = "1.0"
+console_error_panic_hook = "0.1"

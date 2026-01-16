@@ -3,7 +3,7 @@ import numpy as np
 
 try:
     # 加载模型
-    model = onnx.load("d:/git/monorepo/theoyu-thesis/test/model_float32_opt.onnx")
+    model = onnx.load("d:/git/monorepo/theoyu-thesis/test/model_float32.onnx")
     # 检查输入
     print("输入信息:")
     for inp in model.graph.input:

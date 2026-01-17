@@ -196,7 +196,7 @@
 
 													<!-- 用户消息 (messageType === 2) -->
 													<div v-else class="message-content">
-														<!-- 他人消息头部 -->
+														<!-- 他人消息头部：左对齐-->
 														<div v-if="!message.isOwn" class="d-flex align-center mb-2">
 															<v-avatar size="28" color="primary">
 																<v-img
@@ -218,54 +218,49 @@
 															}}</span>
 														</div>
 
+														<!-- 自己消息头部：右对齐-->
+														<div v-else class="d-flex align-center mb-2 justify-end">
+															<span class="message-time mr-2">{{
+																formatTime(message.timestamp)
+															}}</span>
+															<span class="message-sender mr-2">{{
+																message.userName
+															}}</span>
+															<v-avatar size="28" color="primary">
+																<v-img
+																	v-if="message.avatar"
+																	:src="message.avatar"
+																	:alt="message.userName"
+																>
+																	<template #error>
+																		<v-icon icon="mdi-account" size="16"></v-icon>
+																	</template>
+																</v-img>
+																<v-icon v-else icon="mdi-account" size="16"></v-icon>
+															</v-avatar>
+														</div>
+
 														<!-- 消息气泡 -->
 														<div
-															v-if="message.contentType !== 2"
+															v-if="message.contentType == 1"
 															class="message-bubble"
-															:class="{ 'message-own-bubble': message.isOwn }"
+															:class="{ 'message-own': message.isOwn }"
 														>
 															<!-- 文本消息 (contentType === 1) -->
-															<div v-if="message.contentType === 1" class="message-text">
+															<div class="message-text">
 																{{ message.content }}
-															</div>
-
-															<!-- 文件消息 (contentType === 3) -->
-															<div
-																v-else-if="message.contentType === 3"
-																class="message-file"
-															>
-																<v-icon
-																	:icon="getFileIcon(message.file.type)"
-																	size="20"
-																></v-icon>
-																<div class="file-info">
-																	<div class="file-name">{{ message.file.name }}</div>
-																	<div class="file-size text-caption">
-																		{{ formatFileSize(message.file.size) }}
-																	</div>
-																</div>
-																<v-btn
-																	icon="mdi-download"
-																	size="x-small"
-																	variant="text"
-																	@click="clickShowDownloadDialog(message.file)"
-																></v-btn>
-															</div>
-
-															<!-- 自己消息的时间 -->
-															<div v-if="message.isOwn" class="message-time-own">
-																{{ formatTime(message.timestamp) }}
 															</div>
 														</div>
 
 														<!-- 图片消息 (contentType === 2)-->
-														<div v-else class="message-image-wrapper">
+														<div
+															v-if="message.contentType == 2"
+															class="message-image-wrapper"
+														>
 															<v-img
 																:src="message.content"
 																:alt="message.userName"
-																max-width="300"
-																max-height="300"
-																cover
+																max-width="240"
 																class="message-image rounded-lg"
 																@click="previewImage(message.content)"
 															>
@@ -294,9 +289,29 @@
 																	</div>
 																</template>
 															</v-img>
-															<!-- 图片消息时间 -->
-															<div v-if="message.isOwn" class="message-time-own-image">
-																{{ formatTime(message.timestamp) }}
+														</div>
+														<!-- 文件消息 (contentType === 3) -->
+														<div
+															v-else-if="message.contentType === 3"
+															class="message-file-wrapper"
+														>
+															<div class="message-file">
+																<v-icon
+																	:icon="getFileIcon(message.file.type)"
+																	size="20"
+																></v-icon>
+																<div class="file-info">
+																	<div class="file-name">{{ message.file.name }}</div>
+																	<div class="file-size text-caption">
+																		{{ formatFileSize(message.file.size) }}
+																	</div>
+																</div>
+																<v-btn
+																	icon="mdi-download"
+																	size="x-small"
+																	variant="text"
+																	@click="clickShowDownloadDialog(message.file)"
+																></v-btn>
 															</div>
 														</div>
 													</div>
@@ -1326,18 +1341,20 @@ const clickShowDownloadDialog = file => {
 const confirmDownloadFile = async () => {
 	try {
 		const file = downloadFileInfo.value
+		showDownloadDialog.value = false
 
-		// 方案1: 使用 a 标签下载 (适用于同源文件)
-		const link = document.createElement('a')
-		link.href = file.url
-		link.download = file.name
-		link.target = '_blank'
-		document.body.appendChild(link)
-		link.click()
-		document.body.removeChild(link)
+		// 使用 iframe 下载
+		const iframe = document.createElement('iframe')
+		iframe.style.display = 'none'
+		iframe.src = file.url
+		document.body.appendChild(iframe)
+
+		// 3秒后移除 iframe
+		setTimeout(() => {
+			document.body.removeChild(iframe)
+		}, 3000)
 
 		$notify.success('文件下载已开始')
-		showDownloadDialog.value = false
 	} catch (error) {
 		console.error('下载失败:', error)
 		$notify.error('下载失败，请重试')
@@ -1391,7 +1408,6 @@ const downloadFileWithProgress = async (url, filename) => {
 		URL.revokeObjectURL(blobUrl)
 
 		uploadProgress.value = 0
-		$notify.success('下载完成')
 	} catch (error) {
 		console.error('下载失败:', error)
 		uploadProgress.value = 0
@@ -1975,7 +1991,8 @@ useEventListener('beforeunload', e => {
 }
 /* 图片消息样式 */
 .message-image-wrapper {
-	max-width: 300px;
+	min-width: 160px;
+	max-width: 240px;
 	margin: 4px 0;
 }
 .message-image {
@@ -2086,6 +2103,7 @@ useEventListener('beforeunload', e => {
 	word-wrap: break-word;
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 	transition: background-color 0.2s;
+	border-bottom-left-radius: 4px;
 	max-width: 100%;
 }
 
@@ -2093,20 +2111,11 @@ useEventListener('beforeunload', e => {
 	opacity: 0.9;
 }
 
-.message-own-bubble {
+.message-own {
 	background: rgb(var(--v-theme-primary));
 	color: rgb(var(--v-theme-on-primary));
 	border-bottom-right-radius: 4px;
-}
-/* 他人消息：左下角小圆角 */
-.message-wrapper:not(.message-own) .message-bubble {
-	border-bottom-left-radius: 4px;
-}
-/* 自己消息：右下角小圆角 + 主题色背景 */
-.message-bubble.message-own-bubble {
-	background: rgb(var(--v-theme-primary));
-	color: rgb(var(--v-theme-on-primary));
-	border-bottom-right-radius: 4px;
+	border-bottom-left-radius: 16px;
 }
 /* 文本消息 */
 .message-text {

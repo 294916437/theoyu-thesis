@@ -1,36 +1,44 @@
 <template>
-	<div :class="['message-bubble-wrapper', { 'message-bubble-wrapper--self': message.isSelf }]">
+	<div class="message-bubble-wrapper">
 		<!-- 对方消息 -->
-		<div v-if="!message.isSelf" class="d-flex align-start ga-2 mb-3">
-			<v-avatar :image="message.senderAvatar" size="32" color="grey-lighten-2">
-				<v-icon v-if="!message.senderAvatar" icon="mdi-account" size="20"></v-icon>
+		<div v-if="!message.isSelf" class="d-flex align-start justify-start ga-2 mb-3">
+			<v-avatar size="28" color="primary">
+				<v-img v-if="!message.senderAvatar" :src="message.senderAvatar" :alt="message.senderNickname" size="32">
+					<template #error>
+						<v-icon icon="mdi-account" size="20"></v-icon>
+					</template>
+				</v-img>
+				<v-icon v-else icon="mdi-account" size="20"></v-icon>
 			</v-avatar>
 
-			<div class="message-content">
-				<div class="message-bubble message-bubble--incoming">
+			<div class="message-content text-left">
+				<!-- 文本消息 -->
+				<div v-if="message.messageType === 1" class="message-bubble message-bubble--incoming">
 					<!-- 文本消息 -->
-					<p v-if="message.messageType === 1" class="message-text">{{ message.content }}</p>
-
-					<!-- 图片消息 -->
-					<div v-else-if="message.messageType === 2" class="message-images">
-						<v-img
-							v-for="(url, idx) in message.imgUris"
-							:key="idx"
-							:src="url"
-							width="180"
-							cover
-							class="message-image"
-						></v-img>
-					</div>
-
-					<!-- 视频消息 -->
-					<div v-else-if="message.messageType === 4" class="message-video">
-						<video :src="message.videoUri" controls class="video-player"></video>
-					</div>
+					<p class="message-text">{{ message.content }}</p>
 				</div>
 
-				<div class="message-meta mt-1">
+				<!-- 图片消息 -->
+				<div v-else-if="message.messageType === 2" class="message-images">
+					<v-img
+						v-for="(url, idx) in message.imgUris"
+						:key="idx"
+						:src="url"
+						width="180"
+						aspect-ratio="16/9"
+						cover
+						class="message-image"
+					></v-img>
+				</div>
+
+				<!-- 视频消息 -->
+				<div v-else-if="message.messageType === 4" class="message-video">
+					<video :src="message.videoUri" controls class="video-player"></video>
+				</div>
+
+				<div class="message-meta mt-1 d-flex align-center justify-start ga-1">
 					<span class="text-caption text-disabled">{{ formatTime(message.createdTime) }}</span>
+					<v-icon v-if="!message.sending" icon="mdi-check-all" size="14" color="primary"></v-icon>
 				</div>
 			</div>
 		</div>
@@ -66,8 +74,13 @@
 				</div>
 			</div>
 
-			<v-avatar :image="message.senderAvatar" size="32" color="grey-lighten-2">
-				<v-icon v-if="!message.senderAvatar" icon="mdi-account" size="20"></v-icon>
+			<v-avatar size="28" color="primary">
+				<v-img v-if="!message.senderAvatar" :src="message.senderAvatar" :alt="message.senderNickname" size="32">
+					<template #error>
+						<v-icon icon="mdi-account" size="20"></v-icon>
+					</template>
+				</v-img>
+				<v-icon v-else icon="mdi-account" size="20"></v-icon>
 			</v-avatar>
 		</div>
 	</div>

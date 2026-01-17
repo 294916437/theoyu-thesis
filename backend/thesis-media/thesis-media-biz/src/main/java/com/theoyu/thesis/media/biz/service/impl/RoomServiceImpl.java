@@ -561,10 +561,15 @@ public class RoomServiceImpl implements RoomService {
                     RedisKeyConstants.PARTICIPANT_LIST_EXPIRE_TIME,
                     TimeUnit.SECONDS);
 
-            // 5. 添加到全部参与者 Set
+            // 5. 添加到全部参与者 Hash
             String allParticipantsKey = String.format(
                     RedisKeyConstants.ROOM_ALL_PARTICIPANTS_KEY, roomId);
-            redisTemplate.opsForSet().add(allParticipantsKey, participantJson);
+            redisTemplate.opsForHash().put(
+                    allParticipantsKey,
+                    userId.toString(),
+                    participantJson
+            );
+
             redisTemplate.expire(allParticipantsKey,
                     RedisKeyConstants.ROOM_ALL_PARTICIPANTS_EXPIRE_TIME,
                     TimeUnit.SECONDS);
@@ -673,13 +678,13 @@ public class RoomServiceImpl implements RoomService {
             // 1. 尝试从 Set 缓存获取全部参与者
             String cacheKey = String.format(
                     RedisKeyConstants.ROOM_ALL_PARTICIPANTS_KEY, roomId);
-            Set<Object> members = redisTemplate.opsForSet().members(cacheKey);
+            List<Object> values = redisTemplate.opsForHash().values(cacheKey);
 
-            if (members != null && !members.isEmpty()) {
+            if (!values.isEmpty()) {
                 log.info("[RoomService] 缓存命中全部参与者 - roomId: {}, count: {}",
-                        roomId, members.size());
+                        roomId, values.size());
 
-                return members.stream()
+                return values.stream()
                         .map(obj -> JsonUtils.parseObject(obj.toString(),
                                 ParticipantListItemVO.class))
                         .filter(Objects::nonNull)
@@ -716,7 +721,7 @@ public class RoomServiceImpl implements RoomService {
                     .collect(Collectors.toList());
 
             // 5. 异步缓存到 Set（与在线参与者使用不同的 Key）
-            asyncCacheAllParticipantsToSet(roomId, resultList);
+            asyncCacheAllParticipantsToHash(roomId, resultList);
 
             return resultList;
 
@@ -729,7 +734,7 @@ public class RoomServiceImpl implements RoomService {
     /**
      * 异步缓存全部参与者到 Set（独立 Key）
      */
-    private void asyncCacheAllParticipantsToSet(Long roomId,
+    private void asyncCacheAllParticipantsToHash(Long roomId,
                                                 List<ParticipantListItemVO> participants) {
 
         threadPoolTaskExecutor.execute(() -> {
@@ -741,11 +746,15 @@ public class RoomServiceImpl implements RoomService {
                 redisTemplate.delete(cacheKey);
 
                 // 批量添加到 Set
+                Map<String, String> hashMap = new HashMap<>();
                 for (ParticipantListItemVO p : participants) {
                     String json = JsonUtils.toJsonString(p);
                     if (json != null && !json.isEmpty()) {
-                        redisTemplate.opsForSet().add(cacheKey, json);
+                        hashMap.put(p.getUserId().toString(), json);
                     }
+                }
+                if (!hashMap.isEmpty()) {
+                    redisTemplate.opsForHash().putAll(cacheKey, hashMap);
                 }
 
                 // 设置过期时间

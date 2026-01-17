@@ -262,7 +262,7 @@
 																:alt="message.userName"
 																max-width="240"
 																class="message-image rounded-lg"
-																@click="previewImage(message.content)"
+																@click="openPreview(message.content)"
 															>
 																<template #placeholder>
 																	<div
@@ -295,7 +295,10 @@
 															v-else-if="message.contentType === 3"
 															class="message-file-wrapper"
 														>
-															<div class="message-file">
+															<div
+																class="message-file"
+																@click="handleFileClick(message.file)"
+															>
 																<v-icon
 																	:icon="getFileIcon(message.file.type)"
 																	size="20"
@@ -306,12 +309,6 @@
 																		{{ formatFileSize(message.file.size) }}
 																	</div>
 																</div>
-																<v-btn
-																	icon="mdi-download"
-																	size="x-small"
-																	variant="text"
-																	@click="clickShowDownloadDialog(message.file)"
-																></v-btn>
 															</div>
 														</div>
 													</div>
@@ -803,62 +800,16 @@
 				</v-card>
 			</v-dialog>
 
-			<!-- 文件下载确认对话框 -->
-			<v-dialog v-model="showDownloadDialog" max-width="480" transition="dialog-bottom-transition">
-				<v-card>
-					<v-card-title class="d-flex align-center pa-4">
-						<v-icon icon="mdi-download" color="primary" class="mr-2"></v-icon>
-						<span class="text-h6 font-weight-medium">下载文件</span>
-					</v-card-title>
-
-					<v-divider></v-divider>
-
-					<v-card-text class="pa-6">
-						<div class="d-flex align-center mb-4">
-							<v-avatar size="48" color="primary-lighten-1" rounded>
-								<v-icon :icon="getFileIcon(downloadFileInfo.type)" size="32"></v-icon>
-							</v-avatar>
-							<div class="ml-4 flex-grow-1">
-								<div class="text-subtitle-1 font-weight-medium">{{ downloadFileInfo.name }}</div>
-								<div class="text-caption text-on-surface-variant">
-									{{ formatFileSize(downloadFileInfo.size) }}
-								</div>
-							</div>
-						</div>
-					</v-card-text>
-
-					<v-divider></v-divider>
-
-					<v-card-actions class="pa-4">
-						<v-btn variant="text" @click="showDownloadDialog = false"> 取消 </v-btn>
-						<v-spacer></v-spacer>
-						<v-btn variant="flat" color="primary" prepend-icon="mdi-download" @click="confirmDownloadFile">
-							确认下载
-						</v-btn>
-					</v-card-actions>
-				</v-card>
-			</v-dialog>
-
 			<!-- 图片预览对话框 -->
-			<v-dialog v-model="showImagePreview" max-width="90vw" max-height="90vh">
-				<v-card class="image-preview-card">
-					<v-toolbar density="compact" color="transparent" flat>
-						<v-toolbar-title class="text-subtitle-1">图片预览</v-toolbar-title>
-						<v-spacer></v-spacer>
-						<v-btn icon="mdi-download" variant="text" @click="downloadPreviewImage"></v-btn>
-						<v-btn icon="mdi-close" variant="text" @click="showImagePreview = false"></v-btn>
-					</v-toolbar>
-					<v-card-text class="pa-0">
-						<v-img :src="previewImageUrl" contain max-height="80vh">
-							<template #placeholder>
-								<div class="d-flex align-center justify-center fill-height">
-									<v-progress-circular indeterminate color="primary"></v-progress-circular>
-								</div>
-							</template>
-						</v-img>
-					</v-card-text>
-				</v-card>
-			</v-dialog>
+			<FilePreview
+				v-model="previewVisible"
+				:file-url="previewFileUrl"
+				:file-name="previewFileName"
+				:file-type="previewFileType"
+				:download-progress="downloadProgress"
+				@download="handleDownloadFromPreview"
+				@close="closePreview"
+			/>
 
 			<!-- 加载覆盖层 -->
 			<LoadingOverlay :visible="isLoading" :message="loadingMessage" :progress="loadingProgress" />
@@ -884,6 +835,8 @@ import {
 import VideoGrid from '../components/VideoGrid.vue'
 import ParticipantsList from '../components/ParticipantsList.vue'
 import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
+import FilePreview from '@/components/common/FilePreview.vue'
+import { useFilePreview } from '@/composables/useFilePreview'
 import { useParticipants } from '@/composables/useParticipants'
 import { useMediaDevices } from '@/composables/useMediaDevices'
 import RoomMessageService from '@/services/RoomMessageService'
@@ -933,7 +886,18 @@ useEventListener('devicechange', async () => {
 	await enumerateDevices()
 	$notify.info('检测到设备变化')
 })
-
+// ==================== 文件预览 ====================
+const {
+	visible: previewVisible,
+	fileUrl: previewFileUrl,
+	fileName: previewFileName,
+	fileType: previewFileType,
+	downloadProgress,
+	openPreview,
+	closePreview,
+	downloadFile,
+	getFileType,
+} = useFilePreview()
 // ==================== WebRTC媒体管理 ====================
 const {
 	roomId,
@@ -1016,10 +980,7 @@ const loadingMessage = ref('')
 const loadingProgress = ref(0)
 const controlBarCollapsed = ref(false)
 const showLeaveConfirm = ref(false)
-const showDownloadDialog = ref(false)
 const downloadFileInfo = ref({ name: '', size: 0, type: '', url: '' })
-const showImagePreview = ref(false)
-const previewImageUrl = ref('')
 
 // 视频设置
 const videoQuality = ref(2)
@@ -1279,157 +1240,45 @@ const initRoomMessageService = async () => {
 	}
 }
 
-/**
- * 类型映射函数
- */
-const getFileType = fileType => {
-	const typeMap = {
-		// 图片
-		jpg: 'image',
-		jpeg: 'image',
-		png: 'image',
-		gif: 'image',
-		webp: 'image',
-		svg: 'image',
-		// 视频
-		mp4: 'video',
-		avi: 'video',
-		mov: 'video',
-		mkv: 'video',
-		// 音频
-		mp3: 'audio',
-		wav: 'audio',
-		flac: 'audio',
-		// 文档
-		pdf: 'pdf',
-		doc: 'word',
-		docx: 'word',
-		xls: 'excel',
-		xlsx: 'excel',
-		ppt: 'powerpoint',
-		pptx: 'powerpoint',
-		txt: 'document',
-		// 压缩
-		zip: 'zip',
-		rar: 'rar',
-		'7z': 'archive',
-		// 代码
-		js: 'code',
-		ts: 'code',
-		vue: 'code',
-		py: 'code',
-		java: 'code',
-	}
-	return typeMap[fileType] || 'file'
-}
 // 输入节流
 const handleTyping = useThrottleFn(() => {
 	// TODO: 通知其他人正在输入
 	console.log('User is typing...')
 }, 1000)
 
-// ==================== 文件下载&图片预览 ====================
+// ==================== 文件下载&预览 ====================
+const handleFileClick = file => {
+	const fileType = getFileType(file.name)
+	const canPreview = ['image', 'video', 'audio', 'pdf'].includes(fileType)
 
-// 显示文件下载对话框
-const clickShowDownloadDialog = file => {
-	downloadFileInfo.value = file
-	showDownloadDialog.value = true
+	if (canPreview) {
+		// 可预览的文件，打开预览
+		openPreview(file.url, file.name)
+	} else {
+		// 不可预览的文件，直接下载
+		downloadFile({ url: file.url, name: file.name })
+	}
 }
+
 /**
- * 确认下载文件
+ * 统一的文件下载处理（从预览组件触发）
  */
-const confirmDownloadFile = async () => {
+const handleDownloadFromPreview = async ({ url, name }) => {
 	try {
-		const file = downloadFileInfo.value
-		showDownloadDialog.value = false
+		// 方案 1: 直接使用 Fetch API（推荐）
+		await downloadFile({ url, name })
 
-		// 使用 iframe 下载
-		const iframe = document.createElement('iframe')
-		iframe.style.display = 'none'
-		iframe.src = file.url
-		document.body.appendChild(iframe)
+		// 方案 2: 如果需要进度显示，使用 downloadFileWithProgress
+		// await downloadFileWithProgress(url, name)
 
-		// 3秒后移除 iframe
-		setTimeout(() => {
-			document.body.removeChild(iframe)
-		}, 3000)
-
-		$notify.success('文件下载已开始')
+		// 方案 3: 如果跨域问题无法解决，使用后端代理
+		// await downloadViaProxy({ url, name })
 	} catch (error) {
-		console.error('下载失败:', error)
+		console.error('Download failed:', error)
 		$notify.error('下载失败，请重试')
 	}
 }
-/**
- * 使用 Fetch API 下载文件 (支持跨域和进度监控)
- */
-const downloadFileWithProgress = async (url, filename) => {
-	try {
-		const response = await fetch(url)
 
-		if (!response.ok) {
-			throw new Error('下载失败')
-		}
-
-		// 获取文件总大小
-		const contentLength = response.headers.get('content-length')
-		const total = parseInt(contentLength, 10)
-		let loaded = 0
-
-		// 读取流
-		const reader = response.body.getReader()
-		const chunks = []
-
-		while (true) {
-			const { done, value } = await reader.read()
-
-			if (done) break
-
-			chunks.push(value)
-			loaded += value.length
-
-			// 更新进度
-			uploadProgress.value = Math.round((loaded / total) * 100)
-		}
-
-		// 合并数据
-		const blob = new Blob(chunks)
-		const blobUrl = URL.createObjectURL(blob)
-
-		// 触发下载
-		const link = document.createElement('a')
-		link.href = blobUrl
-		link.download = filename
-		document.body.appendChild(link)
-		link.click()
-		document.body.removeChild(link)
-
-		// 释放 URL
-		URL.revokeObjectURL(blobUrl)
-
-		uploadProgress.value = 0
-	} catch (error) {
-		console.error('下载失败:', error)
-		uploadProgress.value = 0
-		$notify.error('下载失败，请重试')
-	}
-}
-// 显示图片预览
-const previewImage = url => {
-	previewImageUrl.value = url
-	showImagePreview.value = true
-}
-
-// 下载预览图片
-const downloadPreviewImage = async () => {
-	try {
-		const filename = `image_${Date.now()}.jpg`
-		await downloadFileWithProgress(previewImageUrl.value, filename)
-	} catch (error) {
-		console.error('图片下载失败:', error)
-		$notify.error('图片下载失败')
-	}
-}
 // ==================== 会议控制 ====================
 const isRecording = ref(false)
 const handRaised = ref(false)
@@ -1644,10 +1493,6 @@ watch(connectionState, state => {
 
 const addNewLine = () => {
 	messageInput.value += '\n'
-}
-
-const downloadFile = file => {
-	window.open(file.url, '_blank')
 }
 
 const handleSaveChat = () => {

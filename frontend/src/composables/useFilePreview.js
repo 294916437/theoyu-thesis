@@ -53,6 +53,33 @@ export function useFilePreview() {
 		const ext = fileNameOrType.split('.').pop().toLowerCase()
 		return typeMap[ext] || 'unknown'
 	}
+	// 获取文件图标
+	const getFileIcon = fileType => {
+		const iconMap = {
+			// 图片
+			image: 'mdi-file-image-outline',
+			// 视频
+			video: 'mdi-file-video-outline',
+			// 音频
+			audio: 'mdi-file-music-outline',
+			// PDF
+			pdf: 'mdi-file-pdf-box',
+			// 文档
+			document: 'mdi-file-document-outline',
+			word: 'mdi-file-word-box',
+			excel: 'mdi-file-excel-box',
+			powerpoint: 'mdi-file-powerpoint-box',
+			// 压缩包
+			archive: 'mdi-folder-zip-outline',
+			zip: 'mdi-folder-zip-outline',
+			rar: 'mdi-folder-zip-outline',
+			// 代码
+			code: 'mdi-file-code-outline',
+			// 默认
+			file: 'mdi-file-outline',
+		}
+		return iconMap[fileType] || iconMap.file
+	}
 
 	/**
 	 * 打开预览
@@ -93,7 +120,6 @@ export function useFilePreview() {
 	 */
 	const downloadFile = async ({ url, name }) => {
 		try {
-			$notify.info('正在准备下载...')
 			downloadProgress.value = 1
 
 			// 使用 fetch 获取文件
@@ -123,8 +149,6 @@ export function useFilePreview() {
 				setTimeout(() => {
 					downloadProgress.value = 0
 				}, 500)
-
-				$notify.success('文件下载已开始')
 			} else {
 				// 大文件，显示进度
 				await downloadWithProgress(response, total, name)
@@ -196,6 +220,7 @@ export function useFilePreview() {
 
 		// 方法
 		getFileType,
+		getFileIcon,
 		openPreview,
 		closePreview,
 		downloadFile,

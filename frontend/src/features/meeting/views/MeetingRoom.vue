@@ -64,9 +64,7 @@
 							<div v-if="!online" class="connection-overlay">
 								<v-icon icon="mdi-wifi-off" size="64" color="primary"></v-icon>
 								<div class="text-h6 mt-4 text-on-primary">网络连接已断开</div>
-								<v-btn variant="flat" color="primary" class="mt-4" @click="handleReconnect">
-									重新连接
-								</v-btn>
+								<v-btn variant="flat" color="primary" class="mt-4" @click="handleReconnect"> 重新连接 </v-btn>
 							</div>
 						</v-fade-transition>
 					</v-col>
@@ -74,25 +72,14 @@
 					<!-- 侧边栏 -->
 					<v-col v-if="showSidebar" cols="3" class="sidebar-container">
 						<div class="sidebar">
-							<v-tabs
-								v-model="sidebarTab"
-								bg-color="surface"
-								color="primary"
-								density="compact"
-								class="sidebar-tabs"
-							>
+							<v-tabs v-model="sidebarTab" bg-color="surface" color="primary" density="compact" class="sidebar-tabs">
 								<v-tab value="participants">
 									<v-icon icon="mdi-account-multiple" size="small" class="mr-1"></v-icon>
 									<span class="text-caption">参与者</span>
 								</v-tab>
 
 								<v-tab value="chat">
-									<v-badge
-										:content="unreadMessages"
-										:model-value="unreadMessages > 0"
-										color="error"
-										inline
-									>
+									<v-badge :content="unreadMessages" :model-value="unreadMessages > 0" color="error" inline>
 										<v-icon icon="mdi-chat" size="small" class="mr-1"></v-icon>
 										<span class="text-caption">聊天</span>
 									</v-badge>
@@ -124,12 +111,7 @@
 											<span class="text-subtitle-1 font-weight-medium">会议聊天</span>
 											<v-menu>
 												<template #activator="{ props }">
-													<v-btn
-														icon="mdi-dots-vertical"
-														variant="text"
-														size="small"
-														v-bind="props"
-													></v-btn>
+													<v-btn icon="mdi-dots-vertical" variant="text" size="small" v-bind="props"></v-btn>
 												</template>
 												<v-list density="compact" bg-color="surface">
 													<v-list-item @click="handleSaveChat">
@@ -154,13 +136,7 @@
 										<div ref="messageContainer" class="message-container">
 											<!-- 加载更多触发器 (无限滚动) -->
 											<div v-if="hasMoreMessages" ref="loadMoreTrigger" class="load-more-trigger">
-												<v-progress-circular
-													v-if="loadingMore"
-													indeterminate
-													size="24"
-													width="2"
-													color="primary"
-												></v-progress-circular>
+												<v-progress-circular v-if="loadingMore" indeterminate size="24" width="2" color="primary"></v-progress-circular>
 											</div>
 
 											<!-- 消息分组 -->
@@ -182,15 +158,8 @@
 													}"
 												>
 													<!-- 系统消息 (messageType === 1) -->
-													<div
-														v-if="message.messageType === 1"
-														class="system-message-content"
-													>
-														<v-icon
-															icon="mdi-information"
-															size="small"
-															class="mr-1"
-														></v-icon>
+													<div v-if="message.messageType === 1" class="system-message-content">
+														<v-icon icon="mdi-information" size="small" class="mr-1"></v-icon>
 														<span class="text-caption">{{ message.content }}</span>
 													</div>
 
@@ -199,39 +168,23 @@
 														<!-- 他人消息头部：左对齐-->
 														<div v-if="!message.isOwn" class="d-flex align-center mb-2">
 															<v-avatar size="28" color="primary">
-																<v-img
-																	v-if="message.avatar"
-																	:src="message.avatar"
-																	:alt="message.userName"
-																>
+																<v-img v-if="message.avatar" :src="message.avatar" :alt="message.userName">
 																	<template #error>
 																		<v-icon icon="mdi-account" size="16"></v-icon>
 																	</template>
 																</v-img>
 																<v-icon v-else icon="mdi-account" size="16"></v-icon>
 															</v-avatar>
-															<span class="message-sender ml-2">{{
-																message.userName
-															}}</span>
-															<span class="message-time ml-2">{{
-																formatTime(message.timestamp)
-															}}</span>
+															<span class="message-sender ml-2">{{ message.userName }}</span>
+															<span class="message-time ml-2">{{ formatTime(message.timestamp) }}</span>
 														</div>
 
 														<!-- 自己消息头部：右对齐-->
 														<div v-else class="d-flex align-center mb-2 justify-end">
-															<span class="message-time mr-2">{{
-																formatTime(message.timestamp)
-															}}</span>
-															<span class="message-sender mr-2">{{
-																message.userName
-															}}</span>
+															<span class="message-time mr-2">{{ formatTime(message.timestamp) }}</span>
+															<span class="message-sender mr-2">{{ message.userName }}</span>
 															<v-avatar size="28" color="primary">
-																<v-img
-																	v-if="message.avatar"
-																	:src="message.avatar"
-																	:alt="message.userName"
-																>
+																<v-img v-if="message.avatar" :src="message.avatar" :alt="message.userName">
 																	<template #error>
 																		<v-icon icon="mdi-account" size="16"></v-icon>
 																	</template>
@@ -241,11 +194,7 @@
 														</div>
 
 														<!-- 消息气泡 -->
-														<div
-															v-if="message.contentType == 1"
-															class="message-bubble"
-															:class="{ 'message-own': message.isOwn }"
-														>
+														<div v-if="message.contentType == 1" class="message-bubble" :class="{ 'message-own': message.isOwn }">
 															<!-- 文本消息 (contentType === 1) -->
 															<div class="message-text">
 																{{ message.content }}
@@ -253,10 +202,7 @@
 														</div>
 
 														<!-- 图片消息 (contentType === 2)-->
-														<div
-															v-if="message.contentType == 2"
-															class="message-image-wrapper"
-														>
+														<div v-if="message.contentType == 2" class="message-image-wrapper">
 															<v-img
 																:src="message.content"
 																:alt="message.userName"
@@ -265,44 +211,22 @@
 																@click="openPreview(message.content)"
 															>
 																<template #placeholder>
-																	<div
-																		class="d-flex align-center justify-center fill-height"
-																	>
-																		<v-progress-circular
-																			indeterminate
-																			color="primary"
-																		></v-progress-circular>
+																	<div class="d-flex align-center justify-center fill-height">
+																		<v-progress-circular indeterminate color="primary"></v-progress-circular>
 																	</div>
 																</template>
 																<template #error>
-																	<div
-																		class="d-flex flex-column align-center justify-center fill-height"
-																	>
-																		<v-icon
-																			icon="mdi-image-broken"
-																			size="48"
-																			color="error"
-																		></v-icon>
-																		<span class="text-caption mt-2"
-																			>图片加载失败</span
-																		>
+																	<div class="d-flex flex-column align-center justify-center fill-height">
+																		<v-icon icon="mdi-image-broken" size="48" color="error"></v-icon>
+																		<span class="text-caption mt-2">图片加载失败</span>
 																	</div>
 																</template>
 															</v-img>
 														</div>
 														<!-- 文件消息 (contentType === 3) -->
-														<div
-															v-else-if="message.contentType === 3"
-															class="message-file-wrapper"
-														>
-															<div
-																class="message-file"
-																@click="handleFileClick(message.file)"
-															>
-																<v-icon
-																	:icon="getFileIcon(message.file.type)"
-																	size="20"
-																></v-icon>
+														<div v-else-if="message.contentType === 3" class="message-file-wrapper">
+															<div class="message-file" @click="handleFileClick(message.file)">
+																<v-icon :icon="getFileIcon(message.file.type)" size="20"></v-icon>
 																<div class="file-info">
 																	<div class="file-name">{{ message.file.name }}</div>
 																	<div class="file-size text-caption">
@@ -316,27 +240,14 @@
 											</div>
 
 											<!-- 连接状态提示 -->
-											<v-alert
-												v-if="!roomMessageConnected"
-												type="warning"
-												variant="tonal"
-												density="compact"
-												class="mx-4"
-											>
-												聊天服务未连接
-											</v-alert>
+											<v-alert v-if="!roomMessageConnected" type="warning" variant="tonal" density="compact" class="mx-4"> 聊天服务未连接 </v-alert>
 
 											<!-- 空状态 -->
 											<div
 												v-if="chatMessages.length === 0 && !loadingMore"
 												class="d-flex flex-column align-center justify-center fill-height text-on-surface-variant"
 											>
-												<v-icon
-													icon="mdi-chat-outline"
-													size="64"
-													color="grey"
-													class="mb-4"
-												></v-icon>
+												<v-icon icon="mdi-chat-outline" size="64" color="grey" class="mb-4"></v-icon>
 												<div class="text-body-2 text-grey">暂无消息</div>
 												<div class="text-caption text-grey-darken-1">发送消息开始聊天</div>
 											</div>
@@ -373,13 +284,7 @@
 
 												<input ref="fileInput" type="file" hidden @change="handleFileSelect" />
 
-												<v-btn
-													icon="mdi-paperclip"
-													variant="text"
-													size="small"
-													class="attach-btn"
-													@click="$refs.fileInput?.click()"
-												></v-btn>
+												<v-btn icon="mdi-paperclip" variant="text" size="small" class="attach-btn" @click="$refs.fileInput?.click()"></v-btn>
 
 												<v-btn
 													icon="mdi-send"
@@ -403,14 +308,7 @@
 			<!-- 底部控制栏 -->
 			<div class="control-bar-wrapper" :class="{ collapsed: controlBarCollapsed }">
 				<!-- 收起/展开按钮 -->
-				<v-btn
-					icon
-					variant="elevated"
-					color="primary"
-					size="small"
-					class="collapse-toggle"
-					@click="controlBarCollapsed = !controlBarCollapsed"
-				>
+				<v-btn icon variant="elevated" color="primary" size="small" class="collapse-toggle" @click="controlBarCollapsed = !controlBarCollapsed">
 					<v-icon>{{ controlBarCollapsed ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
 				</v-btn>
 
@@ -421,12 +319,7 @@
 							<v-row no-gutters align="center" justify="center">
 								<!-- 左侧：连接状态 -->
 								<v-col cols="auto" class="d-flex align-center">
-									<v-chip
-										:color="overallConnectionQuality.color"
-										variant="flat"
-										size="small"
-										class="ml-4"
-									>
+									<v-chip :color="overallConnectionQuality.color" variant="flat" size="small" class="ml-4">
 										<template #prepend>
 											<v-icon size="small">{{ overallConnectionQuality.icon }}</v-icon>
 										</template>
@@ -486,13 +379,7 @@
 												></v-btn>
 											</template>
 											<span>
-												{{
-													screenSharing
-														? '停止共享'
-														: hasScreenShare
-															? '已有人在共享'
-															: '共享屏幕'
-												}}
+												{{ screenSharing ? '停止共享' : hasScreenShare ? '已有人在共享' : '共享屏幕' }}
 											</span>
 										</v-tooltip>
 
@@ -541,11 +428,7 @@
 												<v-list-item @click="toggleHandRaise">
 													<template #prepend>
 														<v-icon
-															:icon="
-																handRaised
-																	? 'mdi-hand-back-right'
-																	: 'mdi-hand-back-right-outline'
-															"
+															:icon="handRaised ? 'mdi-hand-back-right' : 'mdi-hand-back-right-outline'"
 															:color="handRaised ? 'warning' : undefined"
 														></v-icon>
 													</template>
@@ -565,11 +448,7 @@
 
 												<v-list-item @click="toggleFullscreen">
 													<template #prepend>
-														<v-icon
-															:icon="
-																isFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'
-															"
-														></v-icon>
+														<v-icon :icon="isFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"></v-icon>
 													</template>
 													<v-list-item-title>
 														{{ isFullscreen ? '退出全屏' : '全屏' }}
@@ -615,23 +494,10 @@
 										<span>{{ showSidebar ? '隐藏侧边栏' : '显示侧边栏' }}</span>
 									</v-tooltip>
 
-									<v-badge
-										:content="unreadMessages"
-										:model-value="unreadMessages > 0"
-										color="error"
-										overlap
-										class="mr-4"
-									>
+									<v-badge :content="unreadMessages" :model-value="unreadMessages > 0" color="error" overlap class="mr-4">
 										<v-tooltip location="top">
 											<template #activator="{ props }">
-												<v-btn
-													v-bind="props"
-													icon="mdi-chat"
-													variant="elevated"
-													color="surface"
-													size="large"
-													@click="toggleSidebarChat"
-												></v-btn>
+												<v-btn v-bind="props" icon="mdi-chat" variant="elevated" color="surface" size="large" @click="toggleSidebarChat"></v-btn>
 											</template>
 											<span>聊天</span>
 										</v-tooltip>
@@ -722,20 +588,9 @@
 								</template>
 							</v-slider>
 
-							<v-switch
-								v-model="enableHD"
-								label="启用高清视频"
-								color="primary"
-								hide-details
-								class="mb-3"
-							></v-switch>
+							<v-switch v-model="enableHD" label="启用高清视频" color="primary" hide-details class="mb-3"></v-switch>
 
-							<v-switch
-								v-model="enableMirror"
-								label="镜像我的视频"
-								color="primary"
-								hide-details
-							></v-switch>
+							<v-switch v-model="enableMirror" label="镜像我的视频" color="primary" hide-details></v-switch>
 						</div>
 					</v-card-text>
 
@@ -781,21 +636,11 @@
 					<v-divider></v-divider>
 
 					<v-card-actions class="pa-4">
-						<v-btn variant="text" prepend-icon="mdi-arrow-left" @click="showLeaveConfirm = false">
-							留在会议
-						</v-btn>
+						<v-btn variant="text" prepend-icon="mdi-arrow-left" @click="showLeaveConfirm = false"> 留在会议 </v-btn>
 
 						<v-spacer></v-spacer>
 
-						<v-btn
-							variant="flat"
-							color="error"
-							prepend-icon="mdi-exit-to-app"
-							class="leave-btn"
-							@click="confirmLeaveMeeting"
-						>
-							确认离开
-						</v-btn>
+						<v-btn variant="flat" color="error" prepend-icon="mdi-exit-to-app" class="leave-btn" @click="confirmLeaveMeeting"> 确认离开 </v-btn>
 					</v-card-actions>
 				</v-card>
 			</v-dialog>
@@ -869,22 +714,12 @@ const currentUsername = computed(() => userStore.profile.nickname)
 const authToken = computed(() => userStore.token)
 
 // ==================== 媒体设备 ====================
-const {
-	cameras,
-	microphones,
-	speakers,
-	selectedCamera,
-	selectedMicrophone,
-	selectedSpeaker,
-	enumerateDevices,
-	switchDevice,
-} = useMediaDevices()
+const { cameras, microphones, speakers, selectedCamera, selectedMicrophone, selectedSpeaker, enumerateDevices, switchDevice } = useMediaDevices()
 
 // 监听设备变化
 useEventListener('devicechange', async () => {
 	console.log('Media devices changed')
 	await enumerateDevices()
-	$notify.info('检测到设备变化')
 })
 // ==================== 文件预览 ====================
 const {
@@ -897,6 +732,7 @@ const {
 	closePreview,
 	downloadFile,
 	getFileType,
+	getFileIcon,
 } = useFilePreview()
 // ==================== WebRTC媒体管理 ====================
 const {
@@ -925,12 +761,7 @@ const {
 	changeVideoDevice,
 } = useMedia()
 // ==================== 房间参与者 ====================
-const {
-	mergedParticipants,
-	onlineParticipants,
-	loading: participantsLoading,
-	loadParticipants,
-} = useParticipants(roomId, participants)
+const { mergedParticipants, onlineParticipants, loading: participantsLoading, loadParticipants } = useParticipants(roomId, participants)
 // ==================== 网络状态监控 ====================
 const online = useOnline()
 const networkState = useNetwork()
@@ -980,7 +811,6 @@ const loadingMessage = ref('')
 const loadingProgress = ref(0)
 const controlBarCollapsed = ref(false)
 const showLeaveConfirm = ref(false)
-const downloadFileInfo = ref({ name: '', size: 0, type: '', url: '' })
 
 // 视频设置
 const videoQuality = ref(2)
@@ -1206,11 +1036,7 @@ useIntersectionObserver(
 const initRoomMessageService = async () => {
 	try {
 		// 1. 连接 WebSocket
-		await RoomMessageService.connect(
-			import.meta.env.VITE_WS_ROOM_MESSAGE_SERVER,
-			currentUserId.value,
-			meetingInfo.value.roomId,
-		)
+		await RoomMessageService.connect(import.meta.env.VITE_WS_ROOM_MESSAGE_SERVER, currentUserId.value, meetingInfo.value.roomId)
 
 		roomMessageConnected.value = true
 		console.log('房间消息服务连接成功')
@@ -1256,7 +1082,7 @@ const handleFileClick = file => {
 		openPreview(file.url, file.name)
 	} else {
 		// 不可预览的文件，直接下载
-		downloadFile({ url: file.url, name: file.name })
+		downloadFile(file.url, file.name)
 	}
 }
 
@@ -1393,33 +1219,6 @@ const formatDate = date => {
 
 const formatTime = timestamp => useDateFormat(timestamp, 'HH:mm').value
 
-const getFileIcon = fileType => {
-	const iconMap = {
-		// 图片
-		image: 'mdi-file-image-outline',
-		// 视频
-		video: 'mdi-file-video-outline',
-		// 音频
-		audio: 'mdi-file-music-outline',
-		// PDF
-		pdf: 'mdi-file-pdf-box',
-		// 文档
-		document: 'mdi-file-document-outline',
-		word: 'mdi-file-word-box',
-		excel: 'mdi-file-excel-box',
-		powerpoint: 'mdi-file-powerpoint-box',
-		// 压缩包
-		archive: 'mdi-folder-zip-outline',
-		zip: 'mdi-folder-zip-outline',
-		rar: 'mdi-folder-zip-outline',
-		// 代码
-		code: 'mdi-file-code-outline',
-		// 默认
-		file: 'mdi-file-outline',
-	}
-	return iconMap[fileType] || iconMap.file
-}
-
 const formatFileSize = bytes => {
 	if (bytes === 0) return '0 B'
 	const k = 1024
@@ -1496,9 +1295,7 @@ const addNewLine = () => {
 }
 
 const handleSaveChat = () => {
-	const chatText = chatMessages.value
-		.map(m => `[${formatTime(m.timestamp)}] ${m.userName}: ${m.content || '[文件]'}`)
-		.join('\n')
+	const chatText = chatMessages.value.map(m => `[${formatTime(m.timestamp)}] ${m.userName}: ${m.content || '[文件]'}`).join('\n')
 
 	const blob = new Blob([chatText], { type: 'text/plain' })
 	const url = URL.createObjectURL(blob)

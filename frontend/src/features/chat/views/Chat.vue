@@ -10,39 +10,23 @@
 							<h2 class="text-h6 font-weight-bold text-primary">私信</h2>
 							<div class="d-flex ga-2">
 								<v-btn icon="mdi-magnify" variant="text" size="large" density="comfortable"></v-btn>
-								<v-btn
-									icon="mdi-plus"
-									variant="text"
-									size="large"
-									density="comfortable"
-									color="primary"
-								></v-btn>
+								<v-btn icon="mdi-plus" variant="text" size="large" density="comfortable" color="primary"></v-btn>
 							</div>
 						</div>
 					</div>
 
 					<!-- 会话列表区域 -->
 					<div class="flex-1 overflow-y-auto">
-						<ConversationListSkeleton v-if="initialLoadingConversations" :count="5" />
+						<ConversationListSkeleton v-if="initialLoadingConversations" :count="8" />
 
-						<ConversationList
-							v-else
-							:conversations="conversations"
-							:active-id="activeConversationId"
-							@select="handleSelectConversation"
-						/>
+						<ConversationList v-else :conversations="conversations" :active-id="activeConversationId" @select="handleSelectConversation" />
 					</div>
 				</v-sheet>
 			</v-col>
 
 			<!-- 右侧聊天面板 -->
 			<v-col cols="12" md="8" lg="9" class="align-center">
-				<ChatPanel
-					v-if="activeConversation"
-					:conversation="activeConversation"
-					@send-message="handleSendMessage"
-					@load-more="handleLoadMoreMessages"
-				/>
+				<ChatPanel v-if="activeConversation" :conversation="activeConversation" @send-message="handleSendMessage" @load-more="handleLoadMoreMessages" />
 
 				<!-- 空状态 -->
 				<v-sheet v-else color="background" class="fill-height d-flex align-center justify-center">
@@ -50,16 +34,7 @@
 						<v-icon icon="mdi-message-text-outline" size="80" color="grey-lighten-1"></v-icon>
 						<h3 class="text-h6 mt-4 text-medium-emphasis">选择一个对话开始聊天</h3>
 						<p class="text-body-2 text-disabled mt-2">或者创建新的对话</p>
-						<v-btn
-							color="primary"
-							variant="elevated"
-							class="mt-6"
-							prepend-icon="mdi-plus"
-							rounded="lg"
-							@click="handleCreateConversation"
-						>
-							新建对话
-						</v-btn>
+						<v-btn color="primary" variant="elevated" class="mt-6" prepend-icon="mdi-plus" rounded="lg" @click="handleCreateConversation"> 新建对话 </v-btn>
 					</div>
 				</v-sheet>
 			</v-col>
@@ -170,19 +145,7 @@ const handleNewMessage = messageData => {
 	console.log('========== 收到新消息 ==========')
 	console.log('消息数据:', messageData)
 
-	const {
-		conversationId,
-		id,
-		senderId,
-		senderNickname,
-		senderAvatar,
-		messageType,
-		content,
-		imgUris,
-		videoUri,
-		createdTime,
-		isSelf,
-	} = messageData
+	const { conversationId, id, senderId, senderNickname, senderAvatar, messageType, content, imgUris, videoUri, createdTime, isSelf } = messageData
 
 	// 构建消息对象
 	const newMessage = {
@@ -398,6 +361,8 @@ const handleSendMessage = async messageData => {
 			messageService.sendImageMessage(activeConversationId.value, imageUris)
 		} else if (type === 'video') {
 			messageService.sendVideoMessage(activeConversationId.value, videoUri)
+		} else if (type === 'file') {
+			messageService.sendFileMessage(activeConversationId.value, content)
 		} else {
 			console.warn('未知的消息类型:', type)
 			return
@@ -410,8 +375,8 @@ const handleSendMessage = async messageData => {
 			senderId: currentUserId,
 			senderNickname: userStore.profile.nickname,
 			senderAvatar: userStore.profile.avatar,
-			messageType: type === 'text' ? 1 : type === 'image' ? 2 : 4, // 1=文本, 2=图片, 3=视频
-			content: type === 'text' ? content : '',
+			messageType: type === 'text' ? 1 : type === 'image' ? 2 : type === 'video' ? 4 : 6, // 1=文本, 2=图片, 4=视频，6=文件
+			content: type === 'text' || type === 'file' ? content : '',
 			imgUris: type === 'image' ? imageUris : [],
 			videoUri: type === 'video' ? videoUri : '',
 			createdTime: new Date().toISOString(),
@@ -425,7 +390,13 @@ const handleSendMessage = async messageData => {
 		// 更新会话列表
 		const conversation = conversations.value.find(c => c.id === activeConversationId.value)
 		if (conversation) {
-			conversation.lastMessageContent = type === 'text' ? content : type === 'image' ? '[图片]' : '[视频]'
+			const lastMessageMap = {
+				text: content,
+				image: '[图片]',
+				video: '[视频]',
+				file: '[文件]',
+			}
+			conversation.lastMessageContent = lastMessageMap[type] || '[消息]'
 			conversation.lastMessageTime = new Date().toISOString()
 
 			const index = conversations.value.indexOf(conversation)
@@ -467,7 +438,7 @@ const handleCreateConversation = async targetUserId => {
 	try {
 		console.log('创建新会话, targetUserId:', targetUserId)
 
-		const result = await createConversation({ targetUserId })
+		const result = await createConversation(targetUserId)
 
 		if (result.success) {
 			console.log('会话创建成功')

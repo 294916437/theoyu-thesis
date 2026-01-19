@@ -5,6 +5,8 @@ import MessageBubble from './MessageBubble.vue'
 import { $notify } from '@/plugins/notification'
 import { formatTime } from '@/utils/formatTime'
 import { uploadFile } from '@/api/file'
+import { useFilePreview } from '@/composables/useFilePreview'
+import FilePreview from '@/components/common/FilePreview.vue'
 import { getUserOnlineStatus, setUserOnlineStatus, setUserOfflineStatus } from '@/api/user'
 
 // 延迟加载视频通话相关组件
@@ -16,14 +18,20 @@ const props = defineProps({
 		required: true,
 	},
 })
+
 // 对方用户在线状态
 const targetUserOnlineStatus = ref('未知状态')
 const emit = defineEmits(['send-message', 'load-more'])
 const messageText = ref('')
 const userStore = useUserStore()
+// 图片选择器
+const imageInputRef = ref(null)
+const uploadingImage = ref(false)
+
 // 文件选择器
 const fileInputRef = ref(null)
-const uploadingImage = ref(false)
+const uploadingFile = ref(false)
+
 // 视频选择器
 const videoInputRef = ref(null)
 const uploadingVideo = ref(false)
@@ -48,6 +56,29 @@ const VIDEO_CONFIG = {
 	maxDuration: 300, // 5分钟
 	acceptTypes: ['video/mp4', 'video/webm', 'video/ogg'],
 }
+// 文件配置
+const FILE_CONFIG = {
+	maxSize: 100 * 1024 * 1024, // 10MB
+	acceptTypes: [
+		// 文档
+		'application/pdf',
+		'application/msword',
+		'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+		'application/vnd.ms-excel',
+		'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+		'application/vnd.ms-powerpoint',
+		'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+		// 压缩包
+		'application/zip',
+		'application/x-rar-compressed',
+		'application/x-7z-compressed',
+		// 文本
+		'text/plain',
+		'text/csv',
+		// 其他
+		'application/json',
+	],
+}
 
 // 计算用户在线状态显示文本
 const userOnlineStatus = computed(() => {
@@ -60,7 +91,122 @@ const userOnlineStatusColor = computed(() => {
 })
 
 const currentUserId = userStore.userId
+// 文件预览
+const {
+	visible: filePreviewVisible,
+	fileUrl: previewFileUrl,
+	fileName: previewFileName,
+	fileType: previewFileType,
+	downloadProgress: fileDownloadProgress,
+	openPreview,
+	closePreview,
+	downloadFile,
+} = useFilePreview()
 
+// 处理文件预览
+const handleFilePreview = ({ url, fileName }) => {
+	openPreview(url, fileName)
+}
+// 打开通用文件选择器
+const handleAddFile = () => {
+	if (uploadingFile.value) {
+		$notify.warning('文件正在上传中，请稍候')
+		return
+	}
+	fileInputRef.value?.click()
+}
+
+// 处理文件下载
+const handleFileDownload = ({ url, fileName }) => {
+	console.log('下载文件:', { url, fileName })
+	downloadFile({ url, name: fileName })
+}
+// 处理通用文件选择
+const handleGeneralFileChange = async event => {
+	const file = event.target.files?.[0]
+
+	if (!file) {
+		return
+	}
+
+	// 验证文件大小
+	if (file.size > FILE_CONFIG.maxSize) {
+		$notify.error('文件大小不能超过 100MB')
+		event.target.value = ''
+		return
+	}
+
+	// 开始上传
+	await handleFileUpload(file)
+
+	// 清空文件选择器
+	event.target.value = ''
+}
+
+// 上传通用文件
+const handleFileUpload = async file => {
+	uploadingFile.value = true
+
+	try {
+		// 创建 FormData
+		const formData = new FormData()
+		formData.append('file', file)
+
+		console.log('开始上传文件:', file.name)
+
+		// 调用上传接口
+		const response = await uploadFile(formData)
+
+		if (response.success) {
+			const fileUrl = response.data
+
+			console.log('文件上传成功:', fileUrl)
+
+			// 格式化文件信息
+			const fileSize = formatFileSize(file.size)
+			const fileType = file.type
+			const fileName = file.name
+
+			// 构造 content: "name|type|size|url"
+			const content = `${fileName}|${fileType}|${fileSize}|${fileUrl}`
+
+			// 发送文件消息
+			await handleSendFileMessage(content)
+		} else {
+			throw new Error(response.message || '上传失败')
+		}
+	} catch (error) {
+		console.error('文件上传失败:', error)
+		$notify.error('文件上传失败: ' + error.message)
+	} finally {
+		uploadingFile.value = false
+	}
+}
+// 格式化文件大小
+const formatFileSize = bytes => {
+	if (bytes === 0) return '0 B'
+	const k = 1024
+	const sizes = ['B', 'KB', 'MB', 'GB']
+	const i = Math.floor(Math.log(bytes) / Math.log(k))
+	return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
+}
+
+// 发送文件消息
+const handleSendFileMessage = async content => {
+	if (!content) {
+		console.warn('文件内容为空')
+		return
+	}
+
+	emit('send-message', {
+		type: 'file',
+		content: content,
+	})
+
+	nextTick(() => {
+		scrollToBottom()
+	})
+}
 // 初始化视频通话功能（延迟加载）
 const initVideoCall = async () => {
 	if (videoCallReady.value) return
@@ -218,7 +364,7 @@ const handleAddMedia = () => {
 		$notify.warning('图片正在上传中，请稍候')
 		return
 	}
-	fileInputRef.value?.click()
+	imageInputRef.value?.click()
 }
 // 处理文件选择
 const handleFileChange = async event => {
@@ -231,7 +377,7 @@ const handleFileChange = async event => {
 	// 验证文件类型
 	if (!file.type.startsWith('image/')) {
 		$notify.error('请选择图片文件')
-		event.target.value = '' // 清空选择
+		event.target.value = ''
 		return
 	}
 
@@ -246,7 +392,7 @@ const handleFileChange = async event => {
 	// 开始上传
 	await handleImageUpload(file)
 
-	// 清空文件选择器，允许重复选择同一文件
+	// 清空文件选择器
 	event.target.value = ''
 }
 // 上传图片
@@ -607,24 +753,14 @@ watch(
 						</h3>
 						<!-- 在线状态文本 -->
 						<div class="d-flex align-center ga-1">
-							<v-icon
-								:icon="targetUserOnlineStatus ? 'mdi-circle' : 'mdi-circle-outline'"
-								:color="userOnlineStatusColor"
-								size="12"
-							></v-icon>
+							<v-icon :icon="targetUserOnlineStatus ? 'mdi-circle' : 'mdi-circle-outline'" :color="userOnlineStatusColor" size="12"></v-icon>
 							<p class="text-caption text-medium-emphasis">{{ userOnlineStatus }}</p>
 						</div>
 					</div>
 				</div>
 
 				<div class="d-flex ga-2">
-					<v-btn
-						icon="mdi-video-outline"
-						variant="text"
-						size="default"
-						color="primary"
-						@click="handleVideoCall"
-					>
+					<v-btn icon="mdi-video-outline" variant="text" size="default" color="primary" @click="handleVideoCall">
 						<v-icon size="22"></v-icon>
 					</v-btn>
 					<v-btn icon="mdi-information-outline" variant="text" size="default" color="primary">
@@ -646,16 +782,7 @@ watch(
 			<div v-else class="message-list-content px-4 py-3">
 				<!-- 加载更多按钮 -->
 				<div v-if="conversation.hasMore" class="text-center py-3">
-					<v-btn
-						variant="text"
-						size="small"
-						color="primary"
-						prepend-icon="mdi-chevron-up"
-						:loading="isLoadingMore"
-						@click="handleScroll"
-					>
-						加载更多消息
-					</v-btn>
+					<v-btn variant="text" size="small" color="primary" prepend-icon="mdi-chevron-up" :loading="isLoadingMore" @click="handleScroll"> 加载更多消息 </v-btn>
 				</div>
 				<div v-for="(item, index) in messagesWithDividers" :key="item.id || `divider-${index}`">
 					<!-- 日期分隔线 -->
@@ -667,48 +794,78 @@ watch(
 					</div>
 
 					<!-- 消息气泡 -->
-					<MessageBubble v-else :message="item" :user="conversation.user" />
+					<MessageBubble v-else :message="item" :user="conversation.user" @preview-file="handleFilePreview" @download-file="handleFileDownload" />
 				</div>
 			</div>
 		</div>
 
 		<!-- 消息输入框 - 始终固定在底部 -->
 		<v-sheet color="surface" class="message-input-container" elevation="2">
-			<!-- 隐藏的文件选择器 -->
-			<input ref="fileInputRef" type="file" accept="image/*" style="display: none" @change="handleFileChange" />
+			<!-- 隐藏的图片选择器 -->
+			<input ref="imageInputRef" type="file" accept="image/*" style="display: none" @change="handleFileChange" />
+
 			<!-- 隐藏的视频选择器 -->
-			<input
-				ref="videoInputRef"
-				type="file"
-				accept="video/mp4,video/webm,video/ogg"
-				style="display: none"
-				@change="handleVideoFileChange"
-			/>
+			<input ref="videoInputRef" type="file" accept="video/mp4,video/webm,video/ogg" style="display: none" @change="handleVideoFileChange" />
+
+			<!-- 隐藏的通用文件选择器 -->
+			<input ref="fileInputRef" type="file" :accept="FILE_CONFIG.acceptTypes.join(',')" style="display: none" @change="handleGeneralFileChange" />
 			<div class="input-wrapper">
 				<!-- 左侧功能按钮 -->
+				<!-- 左侧功能按钮 -->
 				<div class="input-actions">
-					<v-btn
-						icon="mdi-video-image"
-						variant="text"
-						size="default"
-						color="primary"
-						:loading="uploadingVideo"
-						:disabled="uploadingVideo"
-						@click="handleAddVideo"
-					>
-						<v-icon size="22"></v-icon>
-					</v-btn>
+					<!-- 视频按钮 -->
+					<v-tooltip text="发送视频" location="top">
+						<template #activator="{ props }">
+							<v-btn
+								v-bind="props"
+								icon="mdi-video-image"
+								variant="text"
+								size="default"
+								color="primary"
+								:loading="uploadingVideo"
+								:disabled="uploadingVideo"
+								@click="handleAddVideo"
+							>
+								<v-icon size="22"></v-icon>
+							</v-btn>
+						</template>
+					</v-tooltip>
 
-					<v-btn
-						icon="mdi-image"
-						variant="text"
-						size="default"
-						color="primary"
-						:disabled="uploadingImage"
-						@click="handleAddMedia"
-					>
-						<v-icon size="22"></v-icon>
-					</v-btn>
+					<!-- 图片按钮 -->
+					<v-tooltip text="发送图片" location="top">
+						<template #activator="{ props }">
+							<v-btn
+								v-bind="props"
+								icon="mdi-image"
+								variant="text"
+								size="default"
+								color="primary"
+								:loading="uploadingImage"
+								:disabled="uploadingImage"
+								@click="handleAddMedia"
+							>
+								<v-icon size="22"></v-icon>
+							</v-btn>
+						</template>
+					</v-tooltip>
+
+					<!-- 文件按钮 (新增) -->
+					<v-tooltip text="发送文件" location="top">
+						<template #activator="{ props }">
+							<v-btn
+								v-bind="props"
+								icon="mdi-file-document"
+								variant="text"
+								size="default"
+								color="primary"
+								:loading="uploadingFile"
+								:disabled="uploadingFile"
+								@click="handleAddFile"
+							>
+								<v-icon size="22"></v-icon>
+							</v-btn>
+						</template>
+					</v-tooltip>
 				</div>
 
 				<!-- 输入框 -->
@@ -730,15 +887,7 @@ watch(
 				</div>
 
 				<!-- 发送按钮 -->
-				<v-btn
-					icon
-					size="large"
-					color="primary"
-					elevation="0"
-					class="send-btn"
-					:disabled="!messageText.trim()"
-					@click="handleSendTextMessage"
-				>
+				<v-btn icon size="large" color="primary" elevation="0" class="send-btn" :disabled="!messageText.trim()" @click="handleSendTextMessage">
 					<v-icon size="24">mdi-send</v-icon>
 				</v-btn>
 			</div>
@@ -762,11 +911,16 @@ watch(
 		/>
 
 		<!-- 来电通知 -->
-		<IncomingCallNotification
-			v-if="incomingCall"
-			:caller-name="incomingCall.callerName"
-			@accept="acceptCall"
-			@reject="rejectCall"
+		<IncomingCallNotification v-if="incomingCall" :caller-name="incomingCall.callerName" @accept="acceptCall" @reject="rejectCall" />
+		<!-- 文件预览对话框 -->
+		<FilePreview
+			v-model="filePreviewVisible"
+			:file-url="previewFileUrl"
+			:file-name="previewFileName"
+			:file-type="previewFileType"
+			:download-progress="fileDownloadProgress"
+			@download="downloadFile"
+			@close="closePreview"
 		/>
 	</v-sheet>
 </template>

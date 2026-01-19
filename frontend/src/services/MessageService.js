@@ -232,6 +232,18 @@ class MessageService {
 	}
 
 	/**
+	 * 发送文件消息
+	 * @param {number} conversationId - 会话ID
+	 * @param {string} videoUri - 视频URL
+	 */
+	sendFileMessage(conversationId, content) {
+		this.send(`/app/chat/${conversationId}/send`, {
+			messageType: 6, // 文件消息
+			content,
+		})
+	}
+
+	/**
 	 * 断开连接
 	 */
 	disconnect() {

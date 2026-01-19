@@ -36,8 +36,8 @@ export const fetchConversationDetail = async id => {
  * @returns {Promise<Object>}
  * @example
  */
-export const createConversation = async (params = {}) => {
-	const result = await axios.post(`${API_PREFIX}/conversation/create`, params)
+export const createConversation = async targetUserId => {
+	const result = await axios.post(`${API_PREFIX}/conversation/create`, targetUserId)
 	return result
 }
 

@@ -42,9 +42,9 @@ public class MessageServiceImpl implements MessageService {
     
     private static final int MESSAGE_TYPE_TEXT = 1; // 文本消息
     private static final int MESSAGE_TYPE_IMAGE = 2; // 图片消息
-    private static final int MESSAGE_TYPE_VOICE = 3; // 语音消息
+    private static final int MESSAGE_TYPE_AUIDO = 3; // 语音消息
     private static final int MESSAGE_TYPE_VIDEO = 4; // 视频消息
-    private static final int MESSAGE_TYPE_FILE = 5; // 文件消息
+    private static final int MESSAGE_TYPE_FILE = 6; // 文件消息
     
     // 消息发送频率限制：每个用户每秒最多发送3条消息
     private static final int MAX_MESSAGES_PER_SECOND = 3;
@@ -173,8 +173,17 @@ public class MessageServiceImpl implements MessageService {
                     throw new BusinessException(ResponseCodeEnum.MESSAGE_IMG_URIS_REQUIRED);
                 }
                 break;
-            case MESSAGE_TYPE_VIDEO:
+            case MESSAGE_TYPE_AUIDO:
+                if (CollUtil.isEmpty(reqVO.getImgUris())) {
+                    throw new BusinessException(ResponseCodeEnum.MESSAGE_AUDIO_CONTENT_REQUIRED);
+                }
+                break;            case MESSAGE_TYPE_VIDEO:
                 if (!StringUtils.hasText(reqVO.getVideoUri())) {
+                    throw new BusinessException(ResponseCodeEnum.MESSAGE_VIDEO_URI_REQUIRED);
+                }
+                break;
+            case MESSAGE_TYPE_FILE:
+                if (!StringUtils.hasText(reqVO.getContent())) {
                     throw new BusinessException(ResponseCodeEnum.MESSAGE_VIDEO_URI_REQUIRED);
                 }
                 break;
@@ -231,7 +240,7 @@ public class MessageServiceImpl implements MessageService {
     /**
      * 异步发送 MQ 消息（仅用于离线推送）
      */
-    private void asyncSendToMQ(Long conversationId, MessagePO message, String textContent) {
+    private void asyncSendToMQ(Long conversationId, MessagePO message, String content) {
         CompletableFuture.runAsync(() -> {
             try {
                 List<ConversationParticipantPO> participants =
@@ -252,7 +261,7 @@ public class MessageServiceImpl implements MessageService {
                         .senderId(message.getSenderId())
                         .receiverIds(receiverIds)
                         .messageType(message.getMessageType())
-                        .content(textContent)
+                        .content(content)
                         .imgUris(parseImgUris(message.getImgUris()))
                         .videoUri(message.getVideoUri())
                         .sendTime(message.getCreatedTime())

@@ -28,6 +28,8 @@ public enum ResponseCodeEnum implements BaseExceptionInterface {
     MESSAGE_CONTENT_SAVE_FAILED("MESSAGE-30005", "保存消息内容失败"),
     MESSAGE_IMG_URIS_REQUIRED("MESSAGE-30006", "图片消息必须提供图片URL"),
     MESSAGE_VIDEO_URI_REQUIRED("MESSAGE-30007", "视频消息必须提供视频URL"),
+    MESSAGE_AUDIO_CONTENT_REQUIRED("MESSAGE-30008", "语音消息必须提供Content"),
+    MESSAGE_FILE_CONTENT_REQUIRED("MESSAGE-30009", "文件消息必须提供Content"),
     ;
 
 

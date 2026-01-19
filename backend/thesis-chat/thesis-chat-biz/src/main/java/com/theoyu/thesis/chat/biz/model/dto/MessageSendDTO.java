@@ -49,7 +49,7 @@ public class MessageSendDTO {
     private Integer messageType;
     
     /**
-     * 文本内容
+     * 消息内容
      */
     private String content;
     

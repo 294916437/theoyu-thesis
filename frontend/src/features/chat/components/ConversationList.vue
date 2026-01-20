@@ -9,21 +9,20 @@
 			@click="$emit('select', conversation.id)"
 		>
 			<template #prepend>
-				<v-badge
-					:content="conversation.unreadCount"
-					:model-value="conversation.unreadCount > 0"
-					color="error"
-					offset-x="-8"
-					offset-y="-2"
-				>
-					<v-avatar :image="conversation.targetUser?.avatar" size="48" color="grey-lighten-2">
-						<v-icon v-if="!conversation.targetUser?.avatar" icon="mdi-account" size="32"></v-icon>
+				<v-badge :content="conversation.unreadCount" :model-value="conversation.unreadCount > 0" color="error" offset-x="-8" offset-y="-2">
+					<v-avatar size="42" color="primary">
+						<v-img v-if="conversation.user.avatar" :src="conversation.user.avatar" :alt="conversation.user.nickname">
+							<template #error>
+								<v-icon icon="mdi-account" size="16"></v-icon>
+							</template>
+						</v-img>
+						<v-icon v-else icon="mdi-account" size="16"></v-icon>
 					</v-avatar>
 				</v-badge>
 			</template>
 
 			<v-list-item-title class="text-subtitle-2 font-weight-medium mb-1">
-				{{ conversation.targetUser?.nickName || '未知用户' }}
+				{{ conversation.user.nickname || '未知用户' }}
 			</v-list-item-title>
 
 			<v-list-item-subtitle class="text-caption text-truncate">

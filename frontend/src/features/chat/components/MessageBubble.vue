@@ -3,7 +3,7 @@
 		<!-- 对方消息 -->
 		<div v-if="!message.isSelf" class="d-flex align-start justify-start ga-2 mb-3">
 			<v-avatar size="28" color="primary">
-				<v-img v-if="!message.senderAvatar" :src="message.senderAvatar" :alt="message.senderNickname" size="32">
+				<v-img v-if="message.senderAvatar" :src="message.senderAvatar" :alt="message.senderNickname" size="32">
 					<template #error>
 						<v-icon icon="mdi-account" size="20"></v-icon>
 					</template>
@@ -13,13 +13,13 @@
 
 			<div class="message-content text-left">
 				<!-- 文本消息 -->
-				<div v-if="message.messageType === 1" class="message-bubble message-bubble--incoming">
+				<div v-if="message.messageType === 1 && message.content" class="message-bubble message-bubble--incoming">
 					<!-- 文本消息 -->
 					<p class="message-text">{{ message.content }}</p>
 				</div>
 
 				<!-- 图片消息 -->
-				<div v-else-if="message.messageType === 2" class="message-images">
+				<div v-else-if="message.messageType === 2 && message.imgUris" class="message-images">
 					<v-img
 						v-for="(url, idx) in message.imgUris"
 						:key="idx"
@@ -34,7 +34,7 @@
 				</div>
 
 				<!-- 视频消息 -->
-				<div v-else-if="message.messageType === 4" class="message-video">
+				<div v-else-if="message.messageType === 4 && message.videoUri" class="message-video">
 					<div class="video-thumbnail clickable" @click="emit('preview-file', { url: message.videoUri, fileName: 'default.mp4' })">
 						<v-icon icon="mdi-play-circle" size="48" color="white"></v-icon>
 						<video :src="message.videoUri" class="video-preview" @click.stop></video>
@@ -47,7 +47,7 @@
 						<div class="d-flex align-center pa-3 ga-3">
 							<!-- 文件图标 -->
 							<v-avatar size="40" color="surface-variant">
-								<v-icon :icon="getEnhancedFileIcon(fileInfo.fileType)" size="24" color="primary"></v-icon>
+								<v-icon :icon="getFileIcon(fileInfo.fileType)" size="24" color="primary"></v-icon>
 							</v-avatar>
 
 							<!-- 文件信息 -->
@@ -76,12 +76,12 @@
 		<!-- 自己的消息 -->
 		<div v-else class="d-flex align-start justify-end ga-2 mb-3">
 			<div class="message-content text-right">
-				<div v-if="message.messageType === 1" class="message-bubble message-bubble--outgoing">
-					<!-- 文本消息 -->
+				<!-- 文本消息 -->
+				<div v-if="message.messageType === 1 && message.content" class="message-bubble message-bubble--outgoing">
 					<p class="message-text">{{ message.content }}</p>
 				</div>
 				<!-- 图片消息 -->
-				<div v-if="message.messageType === 2 && message.imgUris?.length" class="message-images">
+				<div v-else-if="message.messageType === 2 && message.imgUris" class="message-images">
 					<v-img
 						v-for="(imgUrl, index) in message.imgUris"
 						:key="index"

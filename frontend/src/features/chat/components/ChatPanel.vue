@@ -743,8 +743,13 @@ watch(
 		<v-sheet color="surface" class="chat-header px-4 py-3" elevation="1">
 			<div class="d-flex align-center justify-space-between">
 				<div class="d-flex align-center ga-3">
-					<v-avatar :image="conversation.user.avatar" size="44" color="grey-lighten-2">
-						<v-icon v-if="!conversation.user.avatar" icon="mdi-account" size="24"></v-icon>
+					<v-avatar size="42" color="primary">
+						<v-img v-if="conversation.user.avatar" :src="conversation.user.avatar" :alt="conversation.user.userName">
+							<template #error>
+								<v-icon icon="mdi-account" size="16"></v-icon>
+							</template>
+						</v-img>
+						<v-icon v-else icon="mdi-account" size="16"></v-icon>
 					</v-avatar>
 
 					<div>

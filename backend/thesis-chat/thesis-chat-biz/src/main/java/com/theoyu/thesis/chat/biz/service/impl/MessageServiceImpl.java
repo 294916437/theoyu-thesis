@@ -42,10 +42,11 @@ public class MessageServiceImpl implements MessageService {
     
     private static final int MESSAGE_TYPE_TEXT = 1; // 文本消息
     private static final int MESSAGE_TYPE_IMAGE = 2; // 图片消息
-    private static final int MESSAGE_TYPE_AUIDO = 3; // 语音消息
+    private static final int MESSAGE_TYPE_AUDIO = 3; // 语音消息
     private static final int MESSAGE_TYPE_VIDEO = 4; // 视频消息
     private static final int MESSAGE_TYPE_FILE = 6; // 文件消息
-    
+
+
     // 消息发送频率限制：每个用户每秒最多发送3条消息
     private static final int MAX_MESSAGES_PER_SECOND = 3;
     @Resource
@@ -94,7 +95,7 @@ public class MessageServiceImpl implements MessageService {
         checkRateLimit(senderId);
         
         // 3. 验证会话和权限
-        // validateConversationAccess(conversationId, senderId);
+        validateConversationAccess(conversationId, senderId);
         
         // 4. 生成消息ID（Snowflake保证时序性，无需序列号）
         String messageIdStr = idGeneratorRpcService.getMessageSnowflakeId();
@@ -173,7 +174,7 @@ public class MessageServiceImpl implements MessageService {
                     throw new BusinessException(ResponseCodeEnum.MESSAGE_IMG_URIS_REQUIRED);
                 }
                 break;
-            case MESSAGE_TYPE_AUIDO:
+            case MESSAGE_TYPE_AUDIO:
                 if (CollUtil.isEmpty(reqVO.getImgUris())) {
                     throw new BusinessException(ResponseCodeEnum.MESSAGE_AUDIO_CONTENT_REQUIRED);
                 }
@@ -299,7 +300,7 @@ public class MessageServiceImpl implements MessageService {
         log.info("获取消息列表, conversationId: {}, userId: {}, cursor: {}, limit: {}",
                 conversationId, currentUserId, reqVO.getCursor(), reqVO.getLimit());
 
-        // validateConversationAccess(conversationId, currentUserId);
+         validateConversationAccess(conversationId, currentUserId);
 
         // 从数据库查询
         List<MessagePO> messagePOs = messagePOMapper.selectByConversationIdWithCursor(
@@ -377,7 +378,6 @@ public class MessageServiceImpl implements MessageService {
     private CompletableFuture<Map<String, String>> asyncBatchGetMessageContent(List<MessagePO> messagePOs) {
         return CompletableFuture.supplyAsync(() -> {
             List<String> contentUuids = messagePOs.stream()
-                    .filter(po -> po.getMessageType().equals(MESSAGE_TYPE_TEXT))
                     .map(MessagePO::getContentUuid)
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());

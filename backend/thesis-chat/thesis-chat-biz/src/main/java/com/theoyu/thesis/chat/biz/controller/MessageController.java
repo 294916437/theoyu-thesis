@@ -3,6 +3,7 @@ package com.theoyu.thesis.chat.biz.controller;
 import com.theoyu.framework.common.response.Response;
 import com.theoyu.framework.logger.aspect.ApiOperationLog;
 import com.theoyu.thesis.chat.biz.model.vo.GetMessagesReqVO;
+import com.theoyu.thesis.chat.biz.model.vo.GetMessagesResVO;
 import com.theoyu.thesis.chat.biz.model.vo.SendMessageReqVO;
 import com.theoyu.thesis.chat.biz.service.MessageService;
 import jakarta.annotation.Resource;
@@ -32,7 +33,7 @@ public class MessageController {
      */
     @PostMapping("/{id}/list")
     @ApiOperationLog(description = "获取消息列表")
-    public Response<?> getMessages(
+    public Response<GetMessagesResVO> getMessages(
             @PathVariable("id") Long id,
             @Validated @RequestBody GetMessagesReqVO reqVO) {
         return messageService.getMessages(id, reqVO);

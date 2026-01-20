@@ -17,7 +17,6 @@ import com.theoyu.thesis.media.biz.model.mapper.RoomPOMapper;
 import com.theoyu.thesis.media.biz.model.mapper.RoomParticipantPOMapper;
 import com.theoyu.thesis.media.biz.model.vo.RoomConfigVO;
 import com.theoyu.thesis.media.biz.model.vo.RoomMessageResVO;
-import com.theoyu.thesis.media.biz.rpc.UserRpcService;
 import com.theoyu.thesis.media.biz.rpc.IdGeneratorRpcService;
 import com.theoyu.thesis.media.biz.service.RoomMessageService;
 import com.theoyu.thesis.media.biz.service.RoomService;
@@ -92,7 +91,7 @@ public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
             String userId = request.getUserId();
             String token = request.getToken();
 
-            // TODO:1. 验证 Token
+            // TODO:1. 验证
 
 
             // 2. 检查房间是否存在

@@ -13,7 +13,7 @@ import java.util.Arrays;
 
 @Component
 @Slf4j
-@RocketMQMessageListener(consumerGroup = "thesis_group_" + MQConstants.TOPIC_DELAY_DELETE_USER_REDIS_CACHE, // Group
+@RocketMQMessageListener(consumerGroup = "user-cache-group", // Group
         topic = MQConstants.TOPIC_DELAY_DELETE_USER_REDIS_CACHE // 消费的主题 Topic
 )
 public class DelayDeleteUserRedisCacheConsumer implements RocketMQListener<String> {

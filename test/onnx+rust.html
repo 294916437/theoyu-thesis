@@ -10,7 +10,7 @@
 				box-sizing: border-box;
 			}
 			body {
-				background: #1a1a1a;
+				background: #0a0a0a;
 				color: #e8eaed;
 				font-family: "Segoe UI", system-ui, sans-serif;
 				padding: 20px;
@@ -18,66 +18,75 @@
 			h1 {
 				text-align: center;
 				margin-bottom: 30px;
-				font-size: 28px;
+				font-size: 32px;
 				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-				background-clip: text;
 				-webkit-background-clip: text;
 				-webkit-text-fill-color: transparent;
+				text-shadow: 0 0 30px rgba(102, 126, 234, 0.3);
 			}
 			.container {
 				display: grid;
 				grid-template-columns: 1fr 1fr;
-				gap: 20px;
-				max-width: 1600px;
+				gap: 30px;
+				max-width: 1800px;
 				margin: 0 auto;
 			}
 			.stream-section {
-				background: linear-gradient(135deg, #2d2d30 0%, #252526 100%);
-				border-radius: 16px;
-				padding: 20px;
-				box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-				border: 1px solid rgba(255, 255, 255, 0.05);
+				background: linear-gradient(135deg, #1e1e1e 0%, #2d2d30 100%);
+				border-radius: 20px;
+				padding: 25px;
+				box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+				border: 1px solid rgba(255, 255, 255, 0.08);
 			}
 			.stream-title {
-				font-size: 18px;
-				font-weight: 600;
-				margin-bottom: 15px;
+				font-size: 20px;
+				font-weight: 700;
+				margin-bottom: 20px;
 				text-align: center;
 				background: linear-gradient(90deg, #00d4ff, #00ff88);
 				-webkit-background-clip: text;
 				-webkit-text-fill-color: transparent;
+				text-transform: uppercase;
+				letter-spacing: 1px;
 			}
 			canvas {
 				width: 100%;
 				height: auto;
-				border-radius: 12px;
+				border-radius: 16px;
 				display: block;
 				background: #000;
-				box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+				box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
 			}
 			.stats {
-				margin-top: 15px;
-				font-size: 13px;
+				margin-top: 20px;
+				font-size: 14px;
 			}
 			.stat-row {
 				display: flex;
 				justify-content: space-between;
-				padding: 8px 12px;
-				border-radius: 6px;
-				margin-bottom: 6px;
-				background: rgba(255, 255, 255, 0.03);
-				border: 1px solid rgba(255, 255, 255, 0.05);
+				padding: 10px 15px;
+				border-radius: 8px;
+				margin-bottom: 8px;
+				background: rgba(255, 255, 255, 0.04);
+				border: 1px solid rgba(255, 255, 255, 0.06);
+				transition: all 0.2s;
+			}
+			.stat-row:hover {
+				background: rgba(255, 255, 255, 0.08);
+				transform: translateX(3px);
 			}
 			.stat-label {
 				color: #9aa0a6;
-				font-weight: 500;
+				font-weight: 600;
 			}
 			.stat-value {
 				font-weight: 700;
 				font-family: "Consolas", monospace;
+				font-size: 15px;
 			}
 			.stat-value.fps-excellent {
 				color: #00ff88;
+				text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
 			}
 			.stat-value.fps-good {
 				color: #81c995;
@@ -103,20 +112,30 @@
 			#video {
 				display: none;
 			}
+			.badge {
+				display: inline-block;
+				padding: 4px 10px;
+				border-radius: 12px;
+				font-size: 11px;
+				font-weight: 700;
+				background: rgba(0, 212, 255, 0.2);
+				color: #00d4ff;
+				border: 1px solid rgba(0, 212, 255, 0.3);
+			}
 		</style>
 	</head>
 	<body>
-		<h1>🚀 WebGL Accelerated - Production Grade</h1>
+		<h1>🚀 Production Grade Video Pipeline</h1>
 		<video id="video" playsinline autoplay muted></video>
 
 		<div class="container">
-			<!-- 原始流 (WebGL 60fps) -->
+			<!-- 原始流 -->
 			<div class="stream-section">
-				<div class="stream-title">WebGL Original</div>
+				<div class="stream-title">⚡ WebGL Original Stream</div>
 				<canvas id="canvas-original"></canvas>
 				<div class="stats">
 					<div class="stat-row">
-						<span class="stat-label">FPS</span>
+						<span class="stat-label">Real-time FPS</span>
 						<span class="stat-value" id="fps-original">--</span>
 					</div>
 					<div class="stat-row">
@@ -124,23 +143,23 @@
 						<span class="stat-value" id="time-original">--</span>
 					</div>
 					<div class="stat-row">
-						<span class="stat-label">Render Mode</span>
-						<span class="stat-value" style="color: #00d4ff">WebGL Texture</span>
+						<span class="stat-label">Pipeline</span>
+						<span class="badge">WebGL2 Texture</span>
 					</div>
 				</div>
 			</div>
 
-			<!-- 处理流 (WebGL + WASM 30fps) -->
+			<!-- 处理流 -->
 			<div class="stream-section">
-				<div class="stream-title">Processed Stream</div>
+				<div class="stream-title">🎯 AI Processed Stream</div>
 				<canvas id="canvas-processed"></canvas>
 				<div class="stats">
 					<div class="stat-row">
-						<span class="stat-label">FPS</span>
+						<span class="stat-label">Real-time FPS</span>
 						<span class="stat-value" id="fps-processed">--</span>
 					</div>
 					<div class="stat-row">
-						<span class="stat-label">Model Inference</span>
+						<span class="stat-label">Inference (Worker)</span>
 						<span class="stat-value" id="time-inference">--</span>
 					</div>
 					<div class="stat-row">
@@ -148,8 +167,8 @@
 						<span class="stat-value" id="time-wasm">--</span>
 					</div>
 					<div class="stat-row">
-						<span class="stat-label">WebGL Render</span>
-						<span class="stat-value" id="time-webgl">--</span>
+						<span class="stat-label">Canvas Render</span>
+						<span class="stat-value" id="time-canvas">--</span>
 					</div>
 					<div class="stat-row">
 						<span class="stat-label">Total Pipeline</span>
@@ -166,25 +185,33 @@
 		<script type="module">
 			import init, { MeetProcessor, init_panic_hook } from "./pkg/meet_background_effect.js"
 
-			const MODEL_PATH = "./model_float32_opt.onnx"
 			const WIDTH = 640
 			const HEIGHT = 480
 			const MASK_WIDTH = 256
 			const MASK_HEIGHT = 144
 
-			class FPSTracker {
-				constructor(size = 60) {
-					this.times = []
-					this.size = size
+			// 高精度 FPS 追踪器
+			class PreciseFPSTracker {
+				constructor(windowSize = 60) {
+					this.frameTimes = []
+					this.windowSize = windowSize
+					this.lastFrameTime = performance.now()
 				}
-				add(time) {
-					this.times.push(time)
-					if (this.times.length > this.size) this.times.shift()
+
+				recordFrame() {
+					const now = performance.now()
+					const delta = now - this.lastFrameTime
+					this.lastFrameTime = now
+
+					this.frameTimes.push(delta)
+					if (this.frameTimes.length > this.windowSize) {
+						this.frameTimes.shift()
+					}
 				}
+
 				getFPS() {
-					if (this.times.length < 2) return 0
-					const deltas = this.times.slice(1).map((t, i) => t - this.times[i])
-					const avgDelta = deltas.reduce((a, b) => a + b) / deltas.length
+					if (this.frameTimes.length < 2) return 0
+					const avgDelta = this.frameTimes.reduce((a, b) => a + b) / this.frameTimes.length
 					return 1000 / avgDelta
 				}
 			}
@@ -196,33 +223,33 @@
 
 				if (id.startsWith("fps-")) {
 					const fps = parseFloat(value)
-					elem.className = "stat-value " + (fps >= 55 ? "fps-excellent" : fps >= 28 ? "fps-good" : fps >= 20 ? "fps-warning" : "fps-error")
+					elem.className = "stat-value " + (fps >= 50 ? "fps-excellent" : fps >= 25 ? "fps-good" : fps >= 15 ? "fps-warning" : "fps-error")
 				} else if (id.startsWith("time-") && unit === " ms") {
 					const ms = parseFloat(value)
-					elem.className = "stat-value " + (ms < 10 ? "time-excellent" : ms < 20 ? "time-good" : ms < 35 ? "time-warning" : "time-error")
+					elem.className = "stat-value " + (ms < 8 ? "time-excellent" : ms < 16 ? "time-good" : ms < 33 ? "time-warning" : "time-error")
 				}
 			}
 
-			// WebGL 工具函数
+			// WebGL 辅助函数
 			function createShader(gl, type, source) {
 				const shader = gl.createShader(type)
 				gl.shaderSource(shader, source)
 				gl.compileShader(shader)
 				if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-					console.error("Shader compile error:", gl.getShaderInfoLog(shader))
+					console.error("Shader error:", gl.getShaderInfoLog(shader))
 					gl.deleteShader(shader)
 					return null
 				}
 				return shader
 			}
 
-			function createProgram(gl, vertexShader, fragmentShader) {
+			function createProgram(gl, vertShader, fragShader) {
 				const program = gl.createProgram()
-				gl.attachShader(program, vertexShader)
-				gl.attachShader(program, fragmentShader)
+				gl.attachShader(program, vertShader)
+				gl.attachShader(program, fragShader)
 				gl.linkProgram(program)
 				if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-					console.error("Program link error:", gl.getProgramInfoLog(program))
+					console.error("Program error:", gl.getProgramInfoLog(program))
 					return null
 				}
 				return program
@@ -235,7 +262,7 @@
 				const processor = MeetProcessor.new(WIDTH, HEIGHT)
 
 				// 初始化 ONNX
-				const session = await ort.InferenceSession.create(MODEL_PATH, {
+				const session = await ort.InferenceSession.create("./model_float32_opt.onnx", {
 					executionProviders: ["wasm"],
 					graphOptimizationLevel: "all",
 				})
@@ -243,28 +270,23 @@
 				// 启动摄像头
 				const video = document.getElementById("video")
 				const stream = await navigator.mediaDevices.getUserMedia({
-					video: {
-						width: WIDTH,
-						height: HEIGHT,
-						frameRate: { ideal: 60, max: 60 },
-					},
+					video: { width: WIDTH, height: HEIGHT, frameRate: 60 },
 				})
 				video.srcObject = stream
 				await new Promise((r) => (video.onloadedmetadata = r))
 				video.play()
 
-				// ===== 原始流 WebGL 设置 =====
+				// ===== 原始流（WebGL 60fps）=====
 				const canvasOriginal = document.getElementById("canvas-original")
 				canvasOriginal.width = WIDTH
 				canvasOriginal.height = HEIGHT
-				const glOriginal = canvasOriginal.getContext("webgl2", {
+				const gl = canvasOriginal.getContext("webgl2", {
 					alpha: false,
 					desynchronized: true,
 					antialias: false,
 					powerPreference: "high-performance",
 				})
 
-				// 顶点着色器
 				const vsSource = `#version 300 es
                 in vec2 a_position;
                 in vec2 a_texCoord;
@@ -275,8 +297,7 @@
                 }
             `
 
-				// 片元着色器（直接渲染）
-				const fsSourceOriginal = `#version 300 es
+				const fsSource = `#version 300 es
                 precision highp float;
                 in vec2 v_texCoord;
                 out vec4 fragColor;
@@ -286,147 +307,165 @@
                 }
             `
 
-				const vertShader = createShader(glOriginal, glOriginal.VERTEX_SHADER, vsSource)
-				const fragShader = createShader(glOriginal, glOriginal.FRAGMENT_SHADER, fsSourceOriginal)
-				const program = createProgram(glOriginal, vertShader, fragShader)
+				const vertShader = createShader(gl, gl.VERTEX_SHADER, vsSource)
+				const fragShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource)
+				const program = createProgram(gl, vertShader, fragShader)
 
-				// 设置几何体
 				const positions = new Float32Array([-1, -1, 0, 1, 1, -1, 1, 1, -1, 1, 0, 0, 1, 1, 1, 0])
-				const posBuffer = glOriginal.createBuffer()
-				glOriginal.bindBuffer(glOriginal.ARRAY_BUFFER, posBuffer)
-				glOriginal.bufferData(glOriginal.ARRAY_BUFFER, positions, glOriginal.STATIC_DRAW)
+				const buffer = gl.createBuffer()
+				gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+				gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW)
 
-				const posLoc = glOriginal.getAttribLocation(program, "a_position")
-				const texLoc = glOriginal.getAttribLocation(program, "a_texCoord")
+				const posLoc = gl.getAttribLocation(program, "a_position")
+				const texLoc = gl.getAttribLocation(program, "a_texCoord")
+				gl.enableVertexAttribArray(posLoc)
+				gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 16, 0)
+				gl.enableVertexAttribArray(texLoc)
+				gl.vertexAttribPointer(texLoc, 2, gl.FLOAT, false, 16, 8)
 
-				glOriginal.enableVertexAttribArray(posLoc)
-				glOriginal.vertexAttribPointer(posLoc, 2, glOriginal.FLOAT, false, 16, 0)
-				glOriginal.enableVertexAttribArray(texLoc)
-				glOriginal.vertexAttribPointer(texLoc, 2, glOriginal.FLOAT, false, 16, 8)
+				const texture = gl.createTexture()
+				gl.bindTexture(gl.TEXTURE_2D, texture)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
 
-				// 创建纹理
-				const texture = glOriginal.createTexture()
-				glOriginal.bindTexture(glOriginal.TEXTURE_2D, texture)
-				glOriginal.texParameteri(glOriginal.TEXTURE_2D, glOriginal.TEXTURE_WRAP_S, glOriginal.CLAMP_TO_EDGE)
-				glOriginal.texParameteri(glOriginal.TEXTURE_2D, glOriginal.TEXTURE_WRAP_T, glOriginal.CLAMP_TO_EDGE)
-				glOriginal.texParameteri(glOriginal.TEXTURE_2D, glOriginal.TEXTURE_MIN_FILTER, glOriginal.LINEAR)
-				glOriginal.texParameteri(glOriginal.TEXTURE_2D, glOriginal.TEXTURE_MAG_FILTER, glOriginal.LINEAR)
+				gl.useProgram(program)
 
-				glOriginal.useProgram(program)
-				glOriginal.uniform1i(glOriginal.getUniformLocation(program, "u_texture"), 0)
+				const fpsOriginal = new PreciseFPSTracker(60)
+				let frameCountOrig = 0
 
-				const fpsOriginal = new FPSTracker(60)
-				let frameCountOriginal = 0
-
-				// 原始流渲染循环（60fps）
 				function renderOriginal() {
-					const t0 = performance.now()
+					const tStart = performance.now()
 
-					glOriginal.bindTexture(glOriginal.TEXTURE_2D, texture)
-					glOriginal.texImage2D(glOriginal.TEXTURE_2D, 0, glOriginal.RGBA, glOriginal.RGBA, glOriginal.UNSIGNED_BYTE, video)
-					glOriginal.drawArrays(glOriginal.TRIANGLE_STRIP, 0, 4)
+					gl.bindTexture(gl.TEXTURE_2D, texture)
+					gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video)
+					gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
 
-					fpsOriginal.add(t0)
-					frameCountOriginal++
+					fpsOriginal.recordFrame()
+					frameCountOrig++
 
-					if (frameCountOriginal % 30 === 0) {
+					if (frameCountOrig % 30 === 0) {
 						updateStat("fps-original", fpsOriginal.getFPS().toFixed(1), " fps")
-						updateStat("time-original", (performance.now() - t0).toFixed(2), " ms")
+						updateStat("time-original", (performance.now() - tStart).toFixed(2), " ms")
 					}
 
 					requestAnimationFrame(renderOriginal)
 				}
 
-				// ===== 处理流设置 =====
+				// ===== 处理流（异步推理）=====
 				const canvasProcessed = document.getElementById("canvas-processed")
 				canvasProcessed.width = WIDTH
 				canvasProcessed.height = HEIGHT
-				const ctx2D = canvasProcessed.getContext("2d", {
+				const ctx = canvasProcessed.getContext("2d", {
 					alpha: false,
 					willReadFrequently: true,
 				})
 
 				const offscreen = new OffscreenCanvas(MASK_WIDTH, MASK_HEIGHT)
-				const offCtx = offscreen.getContext("2d", { willReadFrequently: true })
-
+				const offCtx = offscreen.getContext("2d")
 				const float32Data = new Float32Array(MASK_WIDTH * MASK_HEIGHT * 3)
-				const fpsProcessed = new FPSTracker(30)
-				let frameCountProcessed = 0
-				let lastProcessTime = 0
-				const PROCESS_INTERVAL = 1000 / 30 // 33.33ms
 
-				async function renderProcessed() {
-					const now = performance.now()
+				const fpsProcessed = new PreciseFPSTracker(30)
+				let frameCountProc = 0
+				let currentMask = null
+				let isInferring = false
 
-					if (now - lastProcessTime >= PROCESS_INTERVAL) {
-						lastProcessTime = now
-						const t0 = performance.now()
+				// 异步推理循环（独立于渲染）
+				async function inferenceLoop() {
+					if (isInferring) return
+					isInferring = true
 
-						// 1. 推理准备
-						offCtx.drawImage(video, 0, 0, MASK_WIDTH, MASK_HEIGHT)
-						const imgData = offCtx.getImageData(0, 0, MASK_WIDTH, MASK_HEIGHT)
-						const pixels = imgData.data
+					const tInferStart = performance.now()
 
-						for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
-							float32Data[j] = pixels[i] / 255
-							float32Data[j + 1] = pixels[i + 1] / 255
-							float32Data[j + 2] = pixels[i + 2] / 255
+					// 1. 准备输入
+					offCtx.drawImage(video, 0, 0, MASK_WIDTH, MASK_HEIGHT)
+					const imgData = offCtx.getImageData(0, 0, MASK_WIDTH, MASK_HEIGHT)
+					const pixels = imgData.data
+
+					for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
+						float32Data[j] = pixels[i] / 255
+						float32Data[j + 1] = pixels[i + 1] / 255
+						float32Data[j + 2] = pixels[i + 2] / 255
+					}
+
+					const inputTensor = new ort.Tensor("float32", float32Data, [1, MASK_HEIGHT, MASK_WIDTH, 3])
+
+					// 2. 推理
+					const results = await session.run({ "input_1:0": inputTensor })
+					const outputTensor = results[Object.keys(results)[0]]
+					const maskData = outputTensor.data
+
+					// 3. 处理 mask
+					const mask = new Float32Array(MASK_WIDTH * MASK_HEIGHT)
+					if (maskData.length === MASK_WIDTH * MASK_HEIGHT * 2) {
+						for (let i = 0; i < MASK_WIDTH * MASK_HEIGHT; i++) {
+							const bg = maskData[i * 2]
+							const fg = maskData[i * 2 + 1]
+							const expSum = Math.exp(bg) + Math.exp(fg)
+							mask[i] = Math.exp(fg) / expSum
 						}
+					} else {
+						mask.set(maskData)
+					}
 
-						const inputTensor = new ort.Tensor("float32", float32Data, [1, MASK_HEIGHT, MASK_WIDTH, 3])
+					currentMask = mask
+					const inferTime = performance.now() - tInferStart
 
-						// 2. 推理
-						const results = await session.run({ "input_1:0": inputTensor })
-						const outputTensor = results[Object.keys(results)[0]]
-						const t1 = performance.now()
+					if (frameCountProc % 5 === 0) {
+						updateStat("time-inference", inferTime.toFixed(1), " ms")
+					}
 
-						// 3. WASM 处理
-						ctx2D.drawImage(video, 0, 0, WIDTH, HEIGHT)
-						const imgDataLarge = ctx2D.getImageData(0, 0, WIDTH, HEIGHT)
+					isInferring = false
+					setTimeout(inferenceLoop, 33) // 30fps
+				}
 
-						const rustInputView = new Uint8Array(wasm.memory.buffer, processor.input_ptr(), WIDTH * HEIGHT * 4)
-						rustInputView.set(imgDataLarge.data)
+				// 渲染循环（使用最新 mask）
+				function renderProcessed() {
+					if (!currentMask) {
+						requestAnimationFrame(renderProcessed)
+						return
+					}
 
-						const maskData = outputTensor.data
-						const rustMaskView = new Float32Array(wasm.memory.buffer, processor.mask_ptr(), MASK_WIDTH * MASK_HEIGHT)
+					const tRenderStart = performance.now()
 
-						if (maskData.length === MASK_WIDTH * MASK_HEIGHT * 2) {
-							for (let i = 0; i < MASK_WIDTH * MASK_HEIGHT; i++) {
-								const bg = maskData[i * 2]
-								const fg = maskData[i * 2 + 1]
-								const exp_sum = Math.exp(bg) + Math.exp(fg)
-								rustMaskView[i] = Math.exp(fg) / exp_sum
-							}
-						} else {
-							rustMaskView.set(maskData)
-						}
+					// 1. 获取视频帧
+					ctx.drawImage(video, 0, 0, WIDTH, HEIGHT)
+					const imgDataLarge = ctx.getImageData(0, 0, WIDTH, HEIGHT)
+					const tCanvas = performance.now()
 
-						processor.apply_filter_and_blend()
-						const t2 = performance.now()
+					// 2. WASM 处理
+					const rustInputView = new Uint8Array(wasm.memory.buffer, processor.input_ptr(), WIDTH * HEIGHT * 4)
+					rustInputView.set(imgDataLarge.data)
 
-						// 4. 渲染
-						const rustOutputView = new Uint8ClampedArray(wasm.memory.buffer, processor.output_ptr(), WIDTH * HEIGHT * 4)
-						const finalImage = new ImageData(rustOutputView, WIDTH, HEIGHT)
-						ctx2D.putImageData(finalImage, 0, 0)
-						const t3 = performance.now()
+					const rustMaskView = new Float32Array(wasm.memory.buffer, processor.mask_ptr(), MASK_WIDTH * MASK_HEIGHT)
+					rustMaskView.set(currentMask)
 
-						fpsProcessed.add(t0)
-						frameCountProcessed++
+					processor.apply_filter_and_blend()
+					const tWasm = performance.now()
 
-						if (frameCountProcessed % 10 === 0) {
-							updateStat("fps-processed", fpsProcessed.getFPS().toFixed(1), " fps")
-							updateStat("time-inference", (t1 - t0).toFixed(1), " ms")
-							updateStat("time-wasm", (t2 - t1).toFixed(1), " ms")
-							updateStat("time-webgl", (t3 - t2).toFixed(1), " ms")
-							updateStat("time-total", (t3 - t0).toFixed(1), " ms")
-							updateStat("memory", (wasm.memory.buffer.byteLength / 1024 / 1024).toFixed(1), " MB")
-						}
+					// 3. 渲染结果
+					const rustOutputView = new Uint8ClampedArray(wasm.memory.buffer, processor.output_ptr(), WIDTH * HEIGHT * 4)
+					const finalImage = new ImageData(rustOutputView, WIDTH, HEIGHT)
+					ctx.putImageData(finalImage, 0, 0)
+					const tRenderEnd = performance.now()
+
+					fpsProcessed.recordFrame()
+					frameCountProc++
+
+					if (frameCountProc % 10 === 0) {
+						updateStat("fps-processed", fpsProcessed.getFPS().toFixed(1), " fps")
+						updateStat("time-wasm", (tWasm - tCanvas).toFixed(1), " ms")
+						updateStat("time-canvas", (tCanvas - tRenderStart).toFixed(1), " ms")
+						updateStat("time-total", (tRenderEnd - tRenderStart).toFixed(1), " ms")
+						updateStat("memory", (wasm.memory.buffer.byteLength / 1024 / 1024).toFixed(1), " MB")
 					}
 
 					requestAnimationFrame(renderProcessed)
 				}
 
 				renderOriginal()
+				inferenceLoop()
 				renderProcessed()
 			}
 

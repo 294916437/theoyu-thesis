@@ -18,8 +18,10 @@ pub struct MeetProcessor {
     gray_cache: Vec<f32>,
     spatial_kernel: Vec<f32>,
     kernel_radius: usize,
-    // 优化：重用滤波缓冲区
     filtered_buffer: Vec<f32>,
+    // 新增：缓存上一帧 mask（时间平滑）
+    prev_mask: Vec<f32>,
+    alpha_temporal: f32,
 }
 
 #[wasm_bindgen]
@@ -27,10 +29,10 @@ impl MeetProcessor {
     pub fn new(width: usize, height: usize) -> MeetProcessor {
         let mask_width = 256;
         let mask_height = 144;
-        let kernel_radius = 2; // 降低半径 3->2 提升性能
+        let kernel_radius = 1; // 进一步降低 2->1，提升 2x 性能
 
-        // 预计算空间高斯核
-        let sigma_space = 2.0; // 调整 sigma
+        // 预计算空间高斯核（更小的 sigma）
+        let sigma_space = 1.5;
         let side_len = kernel_radius * 2 + 1;
         let kernel_size = side_len * side_len;
         let mut spatial_kernel = vec![0.0; kernel_size];
@@ -46,7 +48,6 @@ impl MeetProcessor {
                 idx += 1;
             }
         }
-        // 归一化空间核
         for val in &mut spatial_kernel {
             *val /= sum;
         }
@@ -60,10 +61,12 @@ impl MeetProcessor {
             upsampled_mask: vec![0.0; width * height],
             gray_cache: vec![0.0; width * height],
             filtered_buffer: vec![0.0; width * height],
+            prev_mask: vec![0.0; width * height],
             spatial_kernel,
             kernel_radius,
             mask_width,
             mask_height,
+            alpha_temporal: 0.7, // 时间平滑系数
         }
     }
 
@@ -82,21 +85,32 @@ impl MeetProcessor {
     pub fn apply_filter_and_blend(&mut self) {
         self.compute_gray_cache();
         self.bilinear_upsample();
-        self.joint_bilateral_filter_opt(); // 优化版本
+        self.temporal_smooth(); // 时间平滑
+        self.joint_bilateral_filter_opt();
         self.blend_with_background();
     }
 
-    // 预计算灰度图（SIMD 友好）
-    fn compute_gray_cache(&mut self) {
-        let w = self.width;
-        let h = self.height;
-        let len = w * h;
+    // 时间平滑（减少闪烁）
+    fn temporal_smooth(&mut self) {
+        let len = self.width * self.height;
+        for i in 0..len {
+            let curr = unsafe { *self.upsampled_mask.get_unchecked(i) };
+            let prev = unsafe { *self.prev_mask.get_unchecked(i) };
+            let smoothed = self.alpha_temporal * curr + (1.0 - self.alpha_temporal) * prev;
+            unsafe {
+                *self.upsampled_mask.get_unchecked_mut(i) = smoothed;
+                *self.prev_mask.get_unchecked_mut(i) = smoothed;
+            }
+        }
+    }
 
-        // 批量处理 4 像素（避免边界检查）
-        let chunks = len / 4;
+    fn compute_gray_cache(&mut self) {
+        let len = self.width * self.height;
+        let chunks = len / 8; // 提升批处理到 8 像素
+
         for chunk_idx in 0..chunks {
-            let base_idx = chunk_idx * 4;
-            for offset in 0..4 {
+            let base_idx = chunk_idx * 8;
+            for offset in 0..8 {
                 let idx = base_idx + offset;
                 let pix_idx = idx * 4;
                 unsafe {
@@ -108,8 +122,7 @@ impl MeetProcessor {
             }
         }
 
-        // 处理剩余像素
-        for idx in (chunks * 4)..len {
+        for idx in (chunks * 8)..len {
             let pix_idx = idx * 4;
             let r = self.input_buffer[pix_idx] as f32;
             let g = self.input_buffer[pix_idx + 1] as f32;
@@ -118,7 +131,6 @@ impl MeetProcessor {
         }
     }
 
-    // 高质量双线性插值（无变化）
     fn bilinear_upsample(&mut self) {
         let w = self.width;
         let h = self.height;
@@ -155,13 +167,11 @@ impl MeetProcessor {
         }
     }
 
-    // 优化版联合双边滤波
     fn joint_bilateral_filter_opt(&mut self) {
         let w = self.width;
         let h = self.height;
         let r = self.kernel_radius as isize;
-
-        let inv_sigma_color = 1.0 / 25.0; // 增大容忍度
+        let inv_sigma_color = 1.0 / 30.0; // 增强容忍度
 
         for y in 0..h {
             if y < r as usize || y >= h - r as usize {
@@ -211,11 +221,10 @@ impl MeetProcessor {
         std::mem::swap(&mut self.upsampled_mask, &mut self.filtered_buffer);
     }
 
-    // 优化 Alpha Blending
     fn blend_with_background(&mut self) {
         let w = self.width;
         let h = self.height;
-        let bg_factor = 0.35;
+        let bg_factor = 0.25; // 加强背景模糊（0.35 -> 0.25）
 
         let len = w * h;
         for idx in 0..len {
@@ -238,22 +247,19 @@ impl MeetProcessor {
     }
 }
 
-// 优化版快速 exp
 #[inline(always)]
 fn fast_exp_opt(x: f32) -> f32 {
     if x >= 0.0 {
         x.exp()
     } else if x > -1.0 {
-        // 泰勒展开 3 阶
         1.0 + x * (1.0 + x * (0.5 + x * 0.16667))
     } else {
-        // 快速近似
-        let scaled = 1.0 + x * 0.015625; // x/64
+        let scaled = 1.0 + x * 0.015625;
         if scaled > 0.0 {
             let t = scaled * scaled;
             let t2 = t * t;
             let t4 = t2 * t2;
-            t4 * t4 // scaled^64
+            t4 * t4
         } else {
             0.0
         }

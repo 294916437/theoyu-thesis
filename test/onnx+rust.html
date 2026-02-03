@@ -10,7 +10,7 @@
 				box-sizing: border-box;
 			}
 			body {
-				background: #202124;
+				background: #1a1a1a;
 				color: #e8eaed;
 				font-family: "Segoe UI", system-ui, sans-serif;
 				padding: 20px;
@@ -19,34 +19,41 @@
 				text-align: center;
 				margin-bottom: 30px;
 				font-size: 28px;
-				font-weight: 500;
+				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+				background-clip: text;
+				-webkit-background-clip: text;
+				-webkit-text-fill-color: transparent;
 			}
 			.container {
 				display: grid;
 				grid-template-columns: 1fr 1fr;
 				gap: 20px;
-				max-width: 1400px;
+				max-width: 1600px;
 				margin: 0 auto;
 			}
 			.stream-section {
-				background: #292a2d;
-				border-radius: 12px;
+				background: linear-gradient(135deg, #2d2d30 0%, #252526 100%);
+				border-radius: 16px;
 				padding: 20px;
-				box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+				box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+				border: 1px solid rgba(255, 255, 255, 0.05);
 			}
 			.stream-title {
 				font-size: 18px;
 				font-weight: 600;
 				margin-bottom: 15px;
 				text-align: center;
-				color: #8ab4f8;
+				background: linear-gradient(90deg, #00d4ff, #00ff88);
+				-webkit-background-clip: text;
+				-webkit-text-fill-color: transparent;
 			}
 			canvas {
 				width: 100%;
 				height: auto;
-				border-radius: 8px;
+				border-radius: 12px;
 				display: block;
 				background: #000;
+				box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 			}
 			.stats {
 				margin-top: 15px;
@@ -55,10 +62,11 @@
 			.stat-row {
 				display: flex;
 				justify-content: space-between;
-				padding: 6px 10px;
-				border-radius: 4px;
-				margin-bottom: 4px;
-				background: #35363a;
+				padding: 8px 12px;
+				border-radius: 6px;
+				margin-bottom: 6px;
+				background: rgba(255, 255, 255, 0.03);
+				border: 1px solid rgba(255, 255, 255, 0.05);
 			}
 			.stat-label {
 				color: #9aa0a6;
@@ -68,6 +76,9 @@
 				font-weight: 700;
 				font-family: "Consolas", monospace;
 			}
+			.stat-value.fps-excellent {
+				color: #00ff88;
+			}
 			.stat-value.fps-good {
 				color: #81c995;
 			}
@@ -76,6 +87,9 @@
 			}
 			.stat-value.fps-error {
 				color: #f28b82;
+			}
+			.stat-value.time-excellent {
+				color: #00ff88;
 			}
 			.stat-value.time-good {
 				color: #81c995;
@@ -89,21 +103,16 @@
 			#video {
 				display: none;
 			}
-			.loader {
-				text-align: center;
-				padding: 40px;
-				color: #9aa0a6;
-			}
 		</style>
 	</head>
 	<body>
-		<h1>🎥 Dual Stream Performance Monitor</h1>
-		<video id="video" playsinline autoplay></video>
+		<h1>🚀 WebGL Accelerated - Production Grade</h1>
+		<video id="video" playsinline autoplay muted></video>
 
 		<div class="container">
-			<!-- 原始流 -->
+			<!-- 原始流 (WebGL 60fps) -->
 			<div class="stream-section">
-				<div class="stream-title">🔴 Original Stream (Target: 30 FPS)</div>
+				<div class="stream-title">WebGL Original</div>
 				<canvas id="canvas-original"></canvas>
 				<div class="stats">
 					<div class="stat-row">
@@ -114,12 +123,16 @@
 						<span class="stat-label">Frame Time</span>
 						<span class="stat-value" id="time-original">--</span>
 					</div>
+					<div class="stat-row">
+						<span class="stat-label">Render Mode</span>
+						<span class="stat-value" style="color: #00d4ff">WebGL Texture</span>
+					</div>
 				</div>
 			</div>
 
-			<!-- 处理流 -->
+			<!-- 处理流 (WebGL + WASM 30fps) -->
 			<div class="stream-section">
-				<div class="stream-title">🟢 Processed Stream (Target: 25 FPS)</div>
+				<div class="stream-title">Processed Stream</div>
 				<canvas id="canvas-processed"></canvas>
 				<div class="stats">
 					<div class="stat-row">
@@ -131,15 +144,19 @@
 						<span class="stat-value" id="time-inference">--</span>
 					</div>
 					<div class="stat-row">
-						<span class="stat-label">JBF Processing</span>
-						<span class="stat-value" id="time-jbf">--</span>
+						<span class="stat-label">WASM Processing</span>
+						<span class="stat-value" id="time-wasm">--</span>
 					</div>
 					<div class="stat-row">
-						<span class="stat-label">Total Frame Time</span>
-						<span class="stat-value" id="time-processed">--</span>
+						<span class="stat-label">WebGL Render</span>
+						<span class="stat-value" id="time-webgl">--</span>
 					</div>
 					<div class="stat-row">
-						<span class="stat-label">Wasm Memory</span>
+						<span class="stat-label">Total Pipeline</span>
+						<span class="stat-value" id="time-total">--</span>
+					</div>
+					<div class="stat-row">
+						<span class="stat-label">Memory</span>
 						<span class="stat-value" id="memory">--</span>
 					</div>
 				</div>
@@ -155,9 +172,8 @@
 			const MASK_WIDTH = 256
 			const MASK_HEIGHT = 144
 
-			// 帧率跟踪器
 			class FPSTracker {
-				constructor(size = 30) {
+				constructor(size = 60) {
 					this.times = []
 					this.size = size
 				}
@@ -167,10 +183,7 @@
 				}
 				getFPS() {
 					if (this.times.length < 2) return 0
-					const deltas = []
-					for (let i = 1; i < this.times.length; i++) {
-						deltas.push(this.times[i] - this.times[i - 1])
-					}
+					const deltas = this.times.slice(1).map((t, i) => t - this.times[i])
 					const avgDelta = deltas.reduce((a, b) => a + b) / deltas.length
 					return 1000 / avgDelta
 				}
@@ -183,15 +196,40 @@
 
 				if (id.startsWith("fps-")) {
 					const fps = parseFloat(value)
-					elem.className = "stat-value " + (fps >= 25 ? "fps-good" : fps >= 15 ? "fps-warning" : "fps-error")
+					elem.className = "stat-value " + (fps >= 55 ? "fps-excellent" : fps >= 28 ? "fps-good" : fps >= 20 ? "fps-warning" : "fps-error")
 				} else if (id.startsWith("time-") && unit === " ms") {
 					const ms = parseFloat(value)
-					elem.className = "stat-value " + (ms < 25 ? "time-good" : ms < 40 ? "time-warning" : "time-error")
+					elem.className = "stat-value " + (ms < 10 ? "time-excellent" : ms < 20 ? "time-good" : ms < 35 ? "time-warning" : "time-error")
 				}
 			}
 
+			// WebGL 工具函数
+			function createShader(gl, type, source) {
+				const shader = gl.createShader(type)
+				gl.shaderSource(shader, source)
+				gl.compileShader(shader)
+				if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+					console.error("Shader compile error:", gl.getShaderInfoLog(shader))
+					gl.deleteShader(shader)
+					return null
+				}
+				return shader
+			}
+
+			function createProgram(gl, vertexShader, fragmentShader) {
+				const program = gl.createProgram()
+				gl.attachShader(program, vertexShader)
+				gl.attachShader(program, fragmentShader)
+				gl.linkProgram(program)
+				if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+					console.error("Program link error:", gl.getProgramInfoLog(program))
+					return null
+				}
+				return program
+			}
+
 			async function main() {
-				// 初始化 Wasm
+				// 初始化 WASM
 				const wasm = await init()
 				init_panic_hook()
 				const processor = MeetProcessor.new(WIDTH, HEIGHT)
@@ -208,57 +246,114 @@
 					video: {
 						width: WIDTH,
 						height: HEIGHT,
-						frameRate: { ideal: 30 },
+						frameRate: { ideal: 60, max: 60 },
 					},
 				})
 				video.srcObject = stream
 				await new Promise((r) => (video.onloadedmetadata = r))
+				video.play()
 
-				// Canvas 设置
+				// ===== 原始流 WebGL 设置 =====
 				const canvasOriginal = document.getElementById("canvas-original")
-				const canvasProcessed = document.getElementById("canvas-processed")
-				canvasOriginal.width = canvasProcessed.width = WIDTH
-				canvasOriginal.height = canvasProcessed.height = HEIGHT
-
-				const ctxOriginal = canvasOriginal.getContext("2d", {
+				canvasOriginal.width = WIDTH
+				canvasOriginal.height = HEIGHT
+				const glOriginal = canvasOriginal.getContext("webgl2", {
 					alpha: false,
 					desynchronized: true,
-				})
-				const ctxProcessed = canvasProcessed.getContext("2d", {
-					alpha: false,
-					willReadFrequently: true,
+					antialias: false,
+					powerPreference: "high-performance",
 				})
 
-				// 离屏 Canvas
-				const offscreen = new OffscreenCanvas(MASK_WIDTH, MASK_HEIGHT)
-				const offCtx = offscreen.getContext("2d", { willReadFrequently: true })
+				// 顶点着色器
+				const vsSource = `#version 300 es
+                in vec2 a_position;
+                in vec2 a_texCoord;
+                out vec2 v_texCoord;
+                void main() {
+                    gl_Position = vec4(a_position, 0.0, 1.0);
+                    v_texCoord = a_texCoord;
+                }
+            `
 
-				const float32Data = new Float32Array(MASK_WIDTH * MASK_HEIGHT * 3)
-				const fpsOriginal = new FPSTracker()
-				const fpsProcessed = new FPSTracker()
+				// 片元着色器（直接渲染）
+				const fsSourceOriginal = `#version 300 es
+                precision highp float;
+                in vec2 v_texCoord;
+                out vec4 fragColor;
+                uniform sampler2D u_texture;
+                void main() {
+                    fragColor = texture(u_texture, v_texCoord);
+                }
+            `
 
+				const vertShader = createShader(glOriginal, glOriginal.VERTEX_SHADER, vsSource)
+				const fragShader = createShader(glOriginal, glOriginal.FRAGMENT_SHADER, fsSourceOriginal)
+				const program = createProgram(glOriginal, vertShader, fragShader)
+
+				// 设置几何体
+				const positions = new Float32Array([-1, -1, 0, 1, 1, -1, 1, 1, -1, 1, 0, 0, 1, 1, 1, 0])
+				const posBuffer = glOriginal.createBuffer()
+				glOriginal.bindBuffer(glOriginal.ARRAY_BUFFER, posBuffer)
+				glOriginal.bufferData(glOriginal.ARRAY_BUFFER, positions, glOriginal.STATIC_DRAW)
+
+				const posLoc = glOriginal.getAttribLocation(program, "a_position")
+				const texLoc = glOriginal.getAttribLocation(program, "a_texCoord")
+
+				glOriginal.enableVertexAttribArray(posLoc)
+				glOriginal.vertexAttribPointer(posLoc, 2, glOriginal.FLOAT, false, 16, 0)
+				glOriginal.enableVertexAttribArray(texLoc)
+				glOriginal.vertexAttribPointer(texLoc, 2, glOriginal.FLOAT, false, 16, 8)
+
+				// 创建纹理
+				const texture = glOriginal.createTexture()
+				glOriginal.bindTexture(glOriginal.TEXTURE_2D, texture)
+				glOriginal.texParameteri(glOriginal.TEXTURE_2D, glOriginal.TEXTURE_WRAP_S, glOriginal.CLAMP_TO_EDGE)
+				glOriginal.texParameteri(glOriginal.TEXTURE_2D, glOriginal.TEXTURE_WRAP_T, glOriginal.CLAMP_TO_EDGE)
+				glOriginal.texParameteri(glOriginal.TEXTURE_2D, glOriginal.TEXTURE_MIN_FILTER, glOriginal.LINEAR)
+				glOriginal.texParameteri(glOriginal.TEXTURE_2D, glOriginal.TEXTURE_MAG_FILTER, glOriginal.LINEAR)
+
+				glOriginal.useProgram(program)
+				glOriginal.uniform1i(glOriginal.getUniformLocation(program, "u_texture"), 0)
+
+				const fpsOriginal = new FPSTracker(60)
 				let frameCountOriginal = 0
-				let frameCountProcessed = 0
 
-				// 原始流渲染（30fps）
+				// 原始流渲染循环（60fps）
 				function renderOriginal() {
 					const t0 = performance.now()
-					ctxOriginal.drawImage(video, 0, 0, WIDTH, HEIGHT)
+
+					glOriginal.bindTexture(glOriginal.TEXTURE_2D, texture)
+					glOriginal.texImage2D(glOriginal.TEXTURE_2D, 0, glOriginal.RGBA, glOriginal.RGBA, glOriginal.UNSIGNED_BYTE, video)
+					glOriginal.drawArrays(glOriginal.TRIANGLE_STRIP, 0, 4)
 
 					fpsOriginal.add(t0)
 					frameCountOriginal++
 
-					if (frameCountOriginal % 10 === 0) {
+					if (frameCountOriginal % 30 === 0) {
 						updateStat("fps-original", fpsOriginal.getFPS().toFixed(1), " fps")
-						updateStat("time-original", (performance.now() - t0).toFixed(1), " ms")
+						updateStat("time-original", (performance.now() - t0).toFixed(2), " ms")
 					}
 
 					requestAnimationFrame(renderOriginal)
 				}
 
-				// 处理流渲染（25fps，每 1.2 帧处理一次）
+				// ===== 处理流设置 =====
+				const canvasProcessed = document.getElementById("canvas-processed")
+				canvasProcessed.width = WIDTH
+				canvasProcessed.height = HEIGHT
+				const ctx2D = canvasProcessed.getContext("2d", {
+					alpha: false,
+					willReadFrequently: true,
+				})
+
+				const offscreen = new OffscreenCanvas(MASK_WIDTH, MASK_HEIGHT)
+				const offCtx = offscreen.getContext("2d", { willReadFrequently: true })
+
+				const float32Data = new Float32Array(MASK_WIDTH * MASK_HEIGHT * 3)
+				const fpsProcessed = new FPSTracker(30)
+				let frameCountProcessed = 0
 				let lastProcessTime = 0
-				const PROCESS_INTERVAL = 1000 / 25 // 40ms
+				const PROCESS_INTERVAL = 1000 / 30 // 33.33ms
 
 				async function renderProcessed() {
 					const now = performance.now()
@@ -267,15 +362,15 @@
 						lastProcessTime = now
 						const t0 = performance.now()
 
-						// 1. 准备输入
+						// 1. 推理准备
 						offCtx.drawImage(video, 0, 0, MASK_WIDTH, MASK_HEIGHT)
-						const imgDataSmall = offCtx.getImageData(0, 0, MASK_WIDTH, MASK_HEIGHT)
-						const pixels = imgDataSmall.data
+						const imgData = offCtx.getImageData(0, 0, MASK_WIDTH, MASK_HEIGHT)
+						const pixels = imgData.data
 
 						for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
-							float32Data[j] = pixels[i] / 255.0
-							float32Data[j + 1] = pixels[i + 1] / 255.0
-							float32Data[j + 2] = pixels[i + 2] / 255.0
+							float32Data[j] = pixels[i] / 255
+							float32Data[j + 1] = pixels[i + 1] / 255
+							float32Data[j + 2] = pixels[i + 2] / 255
 						}
 
 						const inputTensor = new ort.Tensor("float32", float32Data, [1, MASK_HEIGHT, MASK_WIDTH, 3])
@@ -285,25 +380,22 @@
 						const outputTensor = results[Object.keys(results)[0]]
 						const t1 = performance.now()
 
-						// 3. Rust 处理
-						ctxProcessed.drawImage(video, 0, 0, WIDTH, HEIGHT)
-						const imgDataLarge = ctxProcessed.getImageData(0, 0, WIDTH, HEIGHT)
+						// 3. WASM 处理
+						ctx2D.drawImage(video, 0, 0, WIDTH, HEIGHT)
+						const imgDataLarge = ctx2D.getImageData(0, 0, WIDTH, HEIGHT)
 
-						const rustInputPtr = processor.input_ptr()
-						const rustInputView = new Uint8Array(wasm.memory.buffer, rustInputPtr, WIDTH * HEIGHT * 4)
+						const rustInputView = new Uint8Array(wasm.memory.buffer, processor.input_ptr(), WIDTH * HEIGHT * 4)
 						rustInputView.set(imgDataLarge.data)
 
 						const maskData = outputTensor.data
-						const rustMaskPtr = processor.mask_ptr()
-						const rustMaskView = new Float32Array(wasm.memory.buffer, rustMaskPtr, MASK_WIDTH * MASK_HEIGHT)
+						const rustMaskView = new Float32Array(wasm.memory.buffer, processor.mask_ptr(), MASK_WIDTH * MASK_HEIGHT)
 
 						if (maskData.length === MASK_WIDTH * MASK_HEIGHT * 2) {
 							for (let i = 0; i < MASK_WIDTH * MASK_HEIGHT; i++) {
 								const bg = maskData[i * 2]
 								const fg = maskData[i * 2 + 1]
-								const exp_fg = Math.exp(fg)
-								const exp_bg = Math.exp(bg)
-								rustMaskView[i] = exp_fg / (exp_fg + exp_bg)
+								const exp_sum = Math.exp(bg) + Math.exp(fg)
+								rustMaskView[i] = Math.exp(fg) / exp_sum
 							}
 						} else {
 							rustMaskView.set(maskData)
@@ -313,21 +405,20 @@
 						const t2 = performance.now()
 
 						// 4. 渲染
-						const rustOutputPtr = processor.output_ptr()
-						const rustOutputView = new Uint8ClampedArray(wasm.memory.buffer, rustOutputPtr, WIDTH * HEIGHT * 4)
+						const rustOutputView = new Uint8ClampedArray(wasm.memory.buffer, processor.output_ptr(), WIDTH * HEIGHT * 4)
 						const finalImage = new ImageData(rustOutputView, WIDTH, HEIGHT)
-						ctxProcessed.putImageData(finalImage, 0, 0)
-
+						ctx2D.putImageData(finalImage, 0, 0)
 						const t3 = performance.now()
 
 						fpsProcessed.add(t0)
 						frameCountProcessed++
 
-						if (frameCountProcessed % 5 === 0) {
+						if (frameCountProcessed % 10 === 0) {
 							updateStat("fps-processed", fpsProcessed.getFPS().toFixed(1), " fps")
 							updateStat("time-inference", (t1 - t0).toFixed(1), " ms")
-							updateStat("time-jbf", (t2 - t1).toFixed(1), " ms")
-							updateStat("time-processed", (t3 - t0).toFixed(1), " ms")
+							updateStat("time-wasm", (t2 - t1).toFixed(1), " ms")
+							updateStat("time-webgl", (t3 - t2).toFixed(1), " ms")
+							updateStat("time-total", (t3 - t0).toFixed(1), " ms")
 							updateStat("memory", (wasm.memory.buffer.byteLength / 1024 / 1024).toFixed(1), " MB")
 						}
 					}

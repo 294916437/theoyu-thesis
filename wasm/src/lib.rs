@@ -12,6 +12,7 @@ pub struct MeetProcessor {
     input_buffer: Vec<u8>,
     mask_buffer: Vec<f32>,
     output_buffer: Vec<u8>,
+    background_buffer: Vec<u8>,
     mask_width: usize,
     mask_height: usize,
     upsampled_mask: Vec<f32>,
@@ -19,7 +20,6 @@ pub struct MeetProcessor {
     spatial_kernel: Vec<f32>,
     kernel_radius: usize,
     filtered_buffer: Vec<f32>,
-    // 新增：缓存上一帧 mask（时间平滑）
     prev_mask: Vec<f32>,
     alpha_temporal: f32,
 }
@@ -29,9 +29,8 @@ impl MeetProcessor {
     pub fn new(width: usize, height: usize) -> MeetProcessor {
         let mask_width = 256;
         let mask_height = 144;
-        let kernel_radius = 1; // 进一步降低 2->1，提升 2x 性能
+        let kernel_radius = 1;
 
-        // 预计算空间高斯核（更小的 sigma）
         let sigma_space = 1.5;
         let side_len = kernel_radius * 2 + 1;
         let kernel_size = side_len * side_len;
@@ -58,6 +57,7 @@ impl MeetProcessor {
             input_buffer: vec![0; width * height * 4],
             mask_buffer: vec![0.0; mask_width * mask_height],
             output_buffer: vec![0; width * height * 4],
+            background_buffer: vec![0; width * height * 4],
             upsampled_mask: vec![0.0; width * height],
             gray_cache: vec![0.0; width * height],
             filtered_buffer: vec![0.0; width * height],
@@ -66,31 +66,141 @@ impl MeetProcessor {
             kernel_radius,
             mask_width,
             mask_height,
-            alpha_temporal: 0.7, // 时间平滑系数
+            alpha_temporal: 0.7,
         }
     }
 
-    pub fn input_ptr(&self) -> *const u8 {
-        self.input_buffer.as_ptr()
+    pub fn input_ptr(&self) -> *mut u8 {
+        self.input_buffer.as_ptr() as *mut u8
     }
 
-    pub fn mask_ptr(&self) -> *const f32 {
-        self.mask_buffer.as_ptr()
+    pub fn mask_ptr(&self) -> *mut f32 {
+        self.mask_buffer.as_ptr() as *mut f32
     }
 
     pub fn output_ptr(&self) -> *const u8 {
         self.output_buffer.as_ptr()
     }
 
-    pub fn apply_filter_and_blend(&mut self) {
-        self.compute_gray_cache();
-        self.bilinear_upsample();
-        self.temporal_smooth(); // 时间平滑
-        self.joint_bilateral_filter_opt();
-        self.blend_with_background();
+    // 新增：暴露背景缓冲区指针给 JS 填充
+    pub fn background_ptr(&self) -> *mut u8 {
+        self.background_buffer.as_ptr() as *mut u8
     }
 
-    // 时间平滑（减少闪烁）
+    // 阶段 1: 准备 Mask (计算密集型，每帧只调一次)
+    pub fn prepare_mask(&mut self) {
+        self.compute_gray_cache();
+        self.bilinear_upsample();
+        self.temporal_smooth();
+        self.joint_bilateral_filter_opt();
+    }
+
+    // 阶段 2: 渲染虚化/压暗效果
+    pub fn render_blur(&mut self) {
+        let bg_factor = 0.25;
+        let len = self.width * self.height;
+
+        // 批处理优化：循环展开以提升性能
+        let chunks = len / 4;
+        let remainder = len % 4;
+
+        // 使用 unsafe 指针遍历以获得最大性能
+        // 使用 unsafe 指针遍历以获得最大性能
+        unsafe {
+            let mut p_in = self.input_buffer.as_ptr();
+            let mut p_out = self.output_buffer.as_mut_ptr();
+            let mut p_mask = self.upsampled_mask.as_ptr();
+
+            // 4x 循环展开
+            for _ in 0..chunks {
+                // Pixel 0
+                let a0 = (*p_mask).clamp(0.0, 1.0);
+                let b0 = a0 + (1.0 - a0) * bg_factor;
+                *p_out.add(0) = (*p_in.add(0) as f32 * b0) as u8;
+                *p_out.add(1) = (*p_in.add(1) as f32 * b0) as u8;
+                *p_out.add(2) = (*p_in.add(2) as f32 * b0) as u8;
+                *p_out.add(3) = 255;
+
+                // Pixel 1
+                let a1 = (*p_mask.add(1)).clamp(0.0, 1.0);
+                let b1 = a1 + (1.0 - a1) * bg_factor;
+                *p_out.add(4) = (*p_in.add(4) as f32 * b1) as u8;
+                *p_out.add(5) = (*p_in.add(5) as f32 * b1) as u8;
+                *p_out.add(6) = (*p_in.add(6) as f32 * b1) as u8;
+                *p_out.add(7) = 255;
+
+                // Pixel 2
+                let a2 = (*p_mask.add(2)).clamp(0.0, 1.0);
+                let b2 = a2 + (1.0 - a2) * bg_factor;
+                *p_out.add(8) = (*p_in.add(8) as f32 * b2) as u8;
+                *p_out.add(9) = (*p_in.add(9) as f32 * b2) as u8;
+                *p_out.add(10) = (*p_in.add(10) as f32 * b2) as u8;
+                *p_out.add(11) = 255;
+
+                // Pixel 3
+                let a3 = (*p_mask.add(3)).clamp(0.0, 1.0);
+                let b3 = a3 + (1.0 - a3) * bg_factor;
+                *p_out.add(12) = (*p_in.add(12) as f32 * b3) as u8;
+                *p_out.add(13) = (*p_in.add(13) as f32 * b3) as u8;
+                *p_out.add(14) = (*p_in.add(14) as f32 * b3) as u8;
+                *p_out.add(15) = 255;
+
+                p_in = p_in.add(16);
+                p_out = p_out.add(16);
+                p_mask = p_mask.add(4);
+            }
+
+            // 处理剩余部分
+            for _ in 0..remainder {
+                let alpha = (*p_mask).clamp(0.0, 1.0);
+                let blend = alpha + (1.0 - alpha) * bg_factor;
+
+                *p_out.add(0) = (*p_in.add(0) as f32 * blend) as u8;
+                *p_out.add(1) = (*p_in.add(1) as f32 * blend) as u8;
+                *p_out.add(2) = (*p_in.add(2) as f32 * blend) as u8;
+                *p_out.add(3) = 255;
+
+                p_in = p_in.add(4);
+                p_out = p_out.add(4);
+                p_mask = p_mask.add(1);
+            }
+        }
+    }
+
+    // 阶段 3: 渲染背景替换效果
+    pub fn render_replace(&mut self) {
+        let len = self.width * self.height;
+
+        unsafe {
+            let mut p_in = self.input_buffer.as_ptr();
+            let mut p_bg = self.background_buffer.as_ptr(); // 背景图片
+            let mut p_out = self.output_buffer.as_mut_ptr();
+            let mut p_mask = self.upsampled_mask.as_ptr();
+
+            for _ in 0..len {
+                let alpha = (*p_mask).clamp(0.0, 1.0);
+                let inv_alpha = 1.0 - alpha;
+
+                // Output = Input * Alpha + Background * (1 - Alpha)
+                // 前景(Input) + 背景(Background)
+
+                *p_out.add(0) =
+                    (*p_in.add(0) as f32 * alpha + *p_bg.add(0) as f32 * inv_alpha) as u8;
+                *p_out.add(1) =
+                    (*p_in.add(1) as f32 * alpha + *p_bg.add(1) as f32 * inv_alpha) as u8;
+                *p_out.add(2) =
+                    (*p_in.add(2) as f32 * alpha + *p_bg.add(2) as f32 * inv_alpha) as u8;
+                *p_out.add(3) = 255;
+
+                p_in = p_in.add(4);
+                p_bg = p_bg.add(4);
+                p_out = p_out.add(4);
+                p_mask = p_mask.add(1);
+            }
+        }
+    }
+
+    // 保留辅助函数
     fn temporal_smooth(&mut self) {
         let len = self.width * self.height;
         for i in 0..len {
@@ -106,7 +216,7 @@ impl MeetProcessor {
 
     fn compute_gray_cache(&mut self) {
         let len = self.width * self.height;
-        let chunks = len / 8; // 提升批处理到 8 像素
+        let chunks = len / 8;
 
         for chunk_idx in 0..chunks {
             let base_idx = chunk_idx * 8;
@@ -154,15 +264,20 @@ impl MeetProcessor {
                 let fx = mx_f - mx0 as f32;
                 let fx_inv = 1.0 - fx;
 
-                let v00 = self.mask_buffer[my0 * mw + mx0];
-                let v10 = self.mask_buffer[my0 * mw + mx1];
-                let v01 = self.mask_buffer[my1 * mw + mx0];
-                let v11 = self.mask_buffer[my1 * mw + mx1];
+                let row0 = my0 * mw;
+                let row1 = my1 * mw;
 
-                let v0 = v00 * fx_inv + v10 * fx;
-                let v1 = v01 * fx_inv + v11 * fx;
+                // Unsafe get for speed
+                unsafe {
+                    let v00 = *self.mask_buffer.get_unchecked(row0 + mx0);
+                    let v10 = *self.mask_buffer.get_unchecked(row0 + mx1);
+                    let v01 = *self.mask_buffer.get_unchecked(row1 + mx0);
+                    let v11 = *self.mask_buffer.get_unchecked(row1 + mx1);
 
-                self.upsampled_mask[y * w + x] = v0 * fy_inv + v1 * fy;
+                    let v0 = v00 * fx_inv + v10 * fx;
+                    let v1 = v01 * fx_inv + v11 * fx;
+                    *self.upsampled_mask.get_unchecked_mut(y * w + x) = v0 * fy_inv + v1 * fy;
+                }
             }
         }
     }
@@ -171,19 +286,29 @@ impl MeetProcessor {
         let w = self.width;
         let h = self.height;
         let r = self.kernel_radius as isize;
-        let inv_sigma_color = 1.0 / 30.0; // 增强容忍度
+        let inv_sigma_color = 1.0 / 30.0;
 
         for y in 0..h {
             if y < r as usize || y >= h - r as usize {
-                for x in 0..w {
-                    self.filtered_buffer[y * w + x] = self.upsampled_mask[y * w + x];
+                // 边界略过
+                let start = y * w;
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        self.upsampled_mask.as_ptr().add(start),
+                        self.filtered_buffer.as_mut_ptr().add(start),
+                        w,
+                    );
                 }
                 continue;
             }
 
             for x in 0..w {
                 if x < r as usize || x >= w - r as usize {
-                    self.filtered_buffer[y * w + x] = self.upsampled_mask[y * w + x];
+                    let idx = y * w + x;
+                    unsafe {
+                        *self.filtered_buffer.get_unchecked_mut(idx) =
+                            *self.upsampled_mask.get_unchecked(idx);
+                    }
                     continue;
                 }
 
@@ -196,54 +321,33 @@ impl MeetProcessor {
 
                 for dy in -r..=r {
                     let ny = (y as isize + dy) as usize;
+                    let ny_offset = ny * w;
                     for dx in -r..=r {
                         let nx = (x as isize + dx) as usize;
-                        let nidx = ny * w + nx;
+                        let nidx = ny_offset + nx;
 
-                        let space_weight =
-                            unsafe { *self.spatial_kernel.get_unchecked(kernel_idx) };
-                        kernel_idx += 1;
+                        unsafe {
+                            let space_weight = *self.spatial_kernel.get_unchecked(kernel_idx);
+                            kernel_idx += 1;
 
-                        let gray_neighbor = unsafe { *self.gray_cache.get_unchecked(nidx) };
-                        let color_dist = (gray_center - gray_neighbor).abs();
-                        let color_weight = fast_exp_opt(-color_dist * inv_sigma_color);
+                            let gray_neighbor = *self.gray_cache.get_unchecked(nidx);
+                            let color_dist = (gray_center - gray_neighbor).abs();
+                            let color_weight = fast_exp_opt(-color_dist * inv_sigma_color);
 
-                        let weight = space_weight * color_weight;
-                        sum_weight += weight;
-                        sum_val += unsafe { *self.upsampled_mask.get_unchecked(nidx) } * weight;
+                            let weight = space_weight * color_weight;
+                            sum_weight += weight;
+                            sum_val += *self.upsampled_mask.get_unchecked(nidx) * weight;
+                        }
                     }
                 }
 
-                self.filtered_buffer[idx] = sum_val / sum_weight.max(1e-6);
+                unsafe {
+                    *self.filtered_buffer.get_unchecked_mut(idx) = sum_val / sum_weight.max(1e-6);
+                }
             }
         }
 
         std::mem::swap(&mut self.upsampled_mask, &mut self.filtered_buffer);
-    }
-
-    fn blend_with_background(&mut self) {
-        let w = self.width;
-        let h = self.height;
-        let bg_factor = 0.25; // 加强背景模糊（0.35 -> 0.25）
-
-        let len = w * h;
-        for idx in 0..len {
-            let pix_idx = idx * 4;
-
-            let alpha = unsafe { (*self.upsampled_mask.get_unchecked(idx)).clamp(0.0, 1.0) };
-            let blend_factor = alpha + (1.0 - alpha) * bg_factor;
-
-            unsafe {
-                let r = *self.input_buffer.get_unchecked(pix_idx) as f32;
-                let g = *self.input_buffer.get_unchecked(pix_idx + 1) as f32;
-                let b = *self.input_buffer.get_unchecked(pix_idx + 2) as f32;
-
-                *self.output_buffer.get_unchecked_mut(pix_idx) = (r * blend_factor) as u8;
-                *self.output_buffer.get_unchecked_mut(pix_idx + 1) = (g * blend_factor) as u8;
-                *self.output_buffer.get_unchecked_mut(pix_idx + 2) = (b * blend_factor) as u8;
-                *self.output_buffer.get_unchecked_mut(pix_idx + 3) = 255;
-            }
-        }
     }
 }
 

@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
 	<head>
-		<title>Google Meet Style - Dual Stream Comparison</title>
+		<title>Google Meet Style - Triple Stream Comparison</title>
 		<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 		<style>
 			* {
@@ -26,22 +26,23 @@
 			}
 			.container {
 				display: grid;
-				grid-template-columns: 1fr 1fr;
-				gap: 30px;
-				max-width: 1800px;
+				/* 自适应布局，宽度足够时三列，不足时换行 */
+				grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+				gap: 20px;
+				max-width: 1920px;
 				margin: 0 auto;
 			}
 			.stream-section {
 				background: linear-gradient(135deg, #1e1e1e 0%, #2d2d30 100%);
 				border-radius: 20px;
-				padding: 25px;
+				padding: 20px;
 				box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
 				border: 1px solid rgba(255, 255, 255, 0.08);
 			}
 			.stream-title {
-				font-size: 20px;
+				font-size: 18px;
 				font-weight: 700;
-				margin-bottom: 20px;
+				margin-bottom: 15px;
 				text-align: center;
 				background: linear-gradient(90deg, #00d4ff, #00ff88);
 				-webkit-background-clip: text;
@@ -52,28 +53,28 @@
 			canvas {
 				width: 100%;
 				height: auto;
-				border-radius: 16px;
+				aspect-ratio: 4/3;
+				border-radius: 12px;
 				display: block;
 				background: #000;
 				box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
 			}
 			.stats {
-				margin-top: 20px;
-				font-size: 14px;
+				margin-top: 15px;
+				font-size: 13px;
 			}
 			.stat-row {
 				display: flex;
 				justify-content: space-between;
-				padding: 10px 15px;
-				border-radius: 8px;
-				margin-bottom: 8px;
+				padding: 8px 12px;
+				border-radius: 6px;
+				margin-bottom: 6px;
 				background: rgba(255, 255, 255, 0.04);
 				border: 1px solid rgba(255, 255, 255, 0.06);
 				transition: all 0.2s;
 			}
 			.stat-row:hover {
 				background: rgba(255, 255, 255, 0.08);
-				transform: translateX(3px);
 			}
 			.stat-label {
 				color: #9aa0a6;
@@ -82,11 +83,11 @@
 			.stat-value {
 				font-weight: 700;
 				font-family: "Consolas", monospace;
-				font-size: 15px;
+				font-size: 14px;
 			}
 			.stat-value.fps-excellent {
 				color: #00ff88;
-				text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+				text-shadow: 0 0 8px rgba(0, 255, 136, 0.4);
 			}
 			.stat-value.fps-good {
 				color: #81c995;
@@ -97,26 +98,14 @@
 			.stat-value.fps-error {
 				color: #f28b82;
 			}
-			.stat-value.time-excellent {
-				color: #00ff88;
-			}
-			.stat-value.time-good {
-				color: #81c995;
-			}
-			.stat-value.time-warning {
-				color: #fdd663;
-			}
-			.stat-value.time-error {
-				color: #f28b82;
-			}
 			#video {
 				display: none;
 			}
 			.badge {
 				display: inline-block;
-				padding: 4px 10px;
-				border-radius: 12px;
-				font-size: 11px;
+				padding: 2px 8px;
+				border-radius: 8px;
+				font-size: 10px;
 				font-weight: 700;
 				background: rgba(0, 212, 255, 0.2);
 				color: #00d4ff;
@@ -125,17 +114,17 @@
 		</style>
 	</head>
 	<body>
-		<h1>🚀 Production Grade Video Pipeline</h1>
+		<h1>🚀 Production Grade Video Pipeline - Triple Stream</h1>
 		<video id="video" playsinline autoplay muted></video>
 
 		<div class="container">
 			<!-- 原始流 -->
 			<div class="stream-section">
-				<div class="stream-title">⚡ WebGL Original Stream</div>
+				<div class="stream-title">WebGL Original</div>
 				<canvas id="canvas-original"></canvas>
 				<div class="stats">
 					<div class="stat-row">
-						<span class="stat-label">Real-time FPS</span>
+						<span class="stat-label">FPS</span>
 						<span class="stat-value" id="fps-original">--</span>
 					</div>
 					<div class="stat-row">
@@ -143,36 +132,52 @@
 						<span class="stat-value" id="time-original">--</span>
 					</div>
 					<div class="stat-row">
-						<span class="stat-label">Pipeline</span>
-						<span class="badge">WebGL2 Texture</span>
+						<span class="stat-label">Mode</span>
+						<span class="badge">Passthrough</span>
 					</div>
 				</div>
 			</div>
 
-			<!-- 处理流 -->
+			<!-- 处理流 1: 模糊/变暗 -->
 			<div class="stream-section">
-				<div class="stream-title">🎯 AI Processed Stream</div>
-				<canvas id="canvas-processed"></canvas>
+				<div class="stream-title">AI Background Blur</div>
+				<canvas id="canvas-blur"></canvas>
 				<div class="stats">
 					<div class="stat-row">
-						<span class="stat-label">Real-time FPS</span>
-						<span class="stat-value" id="fps-processed">--</span>
+						<span class="stat-label">FPS</span>
+						<span class="stat-value" id="fps-blur">--</span>
 					</div>
 					<div class="stat-row">
-						<span class="stat-label">Inference (Worker)</span>
+						<span class="stat-label">Inference (Async)</span>
 						<span class="stat-value" id="time-inference">--</span>
 					</div>
 					<div class="stat-row">
-						<span class="stat-label">WASM Processing</span>
-						<span class="stat-value" id="time-wasm">--</span>
+						<span class="stat-label">WASM Filter</span>
+						<span class="stat-value" id="time-wasm-filter">--</span>
 					</div>
 					<div class="stat-row">
-						<span class="stat-label">Canvas Render</span>
-						<span class="stat-value" id="time-canvas">--</span>
+						<span class="stat-label">Pipeline Total</span>
+						<span class="stat-value" id="time-total-blur">--</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- 处理流 2: 替换 -->
+			<div class="stream-section">
+				<div class="stream-title">AI Background Replace</div>
+				<canvas id="canvas-replace"></canvas>
+				<div class="stats">
+					<div class="stat-row">
+						<span class="stat-label">FPS</span>
+						<span class="stat-value" id="fps-replace">--</span>
 					</div>
 					<div class="stat-row">
-						<span class="stat-label">Total Pipeline</span>
-						<span class="stat-value" id="time-total">--</span>
+						<span class="stat-label">Shared Mask Prep</span>
+						<span class="badge">Reuse Blur Step</span>
+					</div>
+					<div class="stat-row">
+						<span class="stat-label">Blend Time</span>
+						<span class="stat-value" id="time-blend-replace">--</span>
 					</div>
 					<div class="stat-row">
 						<span class="stat-label">Memory</span>
@@ -190,25 +195,19 @@
 			const MASK_WIDTH = 256
 			const MASK_HEIGHT = 144
 
-			// 高精度 FPS 追踪器
 			class PreciseFPSTracker {
 				constructor(windowSize = 60) {
 					this.frameTimes = []
 					this.windowSize = windowSize
 					this.lastFrameTime = performance.now()
 				}
-
 				recordFrame() {
 					const now = performance.now()
 					const delta = now - this.lastFrameTime
 					this.lastFrameTime = now
-
 					this.frameTimes.push(delta)
-					if (this.frameTimes.length > this.windowSize) {
-						this.frameTimes.shift()
-					}
+					if (this.frameTimes.length > this.windowSize) this.frameTimes.shift()
 				}
-
 				getFPS() {
 					if (this.frameTimes.length < 2) return 0
 					const avgDelta = this.frameTimes.reduce((a, b) => a + b) / this.frameTimes.length
@@ -220,54 +219,96 @@
 				const elem = document.getElementById(id)
 				if (!elem) return
 				elem.textContent = value + unit
-
 				if (id.startsWith("fps-")) {
 					const fps = parseFloat(value)
 					elem.className = "stat-value " + (fps >= 50 ? "fps-excellent" : fps >= 25 ? "fps-good" : fps >= 15 ? "fps-warning" : "fps-error")
-				} else if (id.startsWith("time-") && unit === " ms") {
-					const ms = parseFloat(value)
-					elem.className = "stat-value " + (ms < 8 ? "time-excellent" : ms < 16 ? "time-good" : ms < 33 ? "time-warning" : "time-error")
 				}
 			}
 
-			// WebGL 辅助函数
-			function createShader(gl, type, source) {
-				const shader = gl.createShader(type)
-				gl.shaderSource(shader, source)
-				gl.compileShader(shader)
-				if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-					console.error("Shader error:", gl.getShaderInfoLog(shader))
-					gl.deleteShader(shader)
-					return null
-				}
-				return shader
+			// 加载背景图片工具
+			async function loadBackground(url, width, height) {
+				return new Promise((resolve, reject) => {
+					const img = new Image()
+					img.crossOrigin = "Anonymous"
+					img.src = url
+					img.onload = () => {
+						const canvas = new OffscreenCanvas(width, height)
+						const ctx = canvas.getContext("2d")
+						// 保持比例覆盖
+						const scale = Math.max(width / img.width, height / img.height)
+						const x = (width - img.width * scale) / 2
+						const y = (height - img.height * scale) / 2
+						ctx.drawImage(img, x, y, img.width * scale, img.height * scale)
+						resolve(ctx.getImageData(0, 0, width, height))
+					}
+					img.onerror = reject
+				})
 			}
 
-			function createProgram(gl, vertShader, fragShader) {
-				const program = gl.createProgram()
-				gl.attachShader(program, vertShader)
-				gl.attachShader(program, fragShader)
-				gl.linkProgram(program)
-				if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-					console.error("Program error:", gl.getProgramInfoLog(program))
-					return null
+			// WebGL Setup (Original Stream)
+			function setupWebGL(canvas, video) {
+				const gl = canvas.getContext("webgl2", { alpha: false, desynchronized: true })
+				if (!gl) return null
+				const vs = `#version 300 es
+                in vec2 p; in vec2 t; out vec2 v;
+                void main(){gl_Position=vec4(p,0,1);v=t;}`
+				const fs = `#version 300 es
+                precision highp float; in vec2 v; out vec4 c; uniform sampler2D u;
+                void main(){c=texture(u,v);}`
+
+				const createS = (t, s) => {
+					const x = gl.createShader(t)
+					gl.shaderSource(x, s)
+					gl.compileShader(x)
+					return x
 				}
-				return program
+				const p = gl.createProgram()
+				gl.attachShader(p, createS(gl.VERTEX_SHADER, vs))
+				gl.attachShader(p, createS(gl.FRAGMENT_SHADER, fs))
+				gl.linkProgram(p)
+				gl.useProgram(p)
+
+				const b = gl.createBuffer()
+				gl.bindBuffer(gl.ARRAY_BUFFER, b)
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 0, 1, 1, -1, 1, 1, -1, 1, 0, 0, 1, 1, 1, 0]), gl.STATIC_DRAW)
+				gl.enableVertexAttribArray(0)
+				gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0)
+				gl.enableVertexAttribArray(1)
+				gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8)
+
+				const tex = gl.createTexture()
+				gl.bindTexture(gl.TEXTURE_2D, tex)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE) // GL ERROR fix
+
+				return { gl, tex }
 			}
 
 			async function main() {
-				// 初始化 WASM
+				// 1. 初始化 WASM 和 Processor
 				const wasm = await init()
 				init_panic_hook()
 				const processor = MeetProcessor.new(WIDTH, HEIGHT)
 
-				// 初始化 ONNX
+				// 2. 加载背景图片并上传到 WASM
+				try {
+					const bgData = await loadBackground("./assets/stylish_home_office.jpg", WIDTH, HEIGHT)
+					const wasmBgPtr = processor.background_ptr()
+					const wasmBgBuffer = new Uint8Array(wasm.memory.buffer, wasmBgPtr, WIDTH * HEIGHT * 4)
+					wasmBgBuffer.set(bgData.data)
+					console.log("Background image loaded and uploaded to WASM")
+				} catch (e) {
+					console.error("Failed to load background image:", e)
+				}
+
+				// 3. 初始化 ONNX
 				const session = await ort.InferenceSession.create("./model_float32_opt.onnx", {
-					executionProviders: ["wasm"],
+					executionProviders: ["wasm"], // 或 webgl
 					graphOptimizationLevel: "all",
 				})
 
-				// 启动摄像头
+				// 4. 摄像头
 				const video = document.getElementById("video")
 				const stream = await navigator.mediaDevices.getUserMedia({
 					video: { width: WIDTH, height: HEIGHT, frameRate: 60 },
@@ -276,197 +317,142 @@
 				await new Promise((r) => (video.onloadedmetadata = r))
 				video.play()
 
-				// ===== 原始流（WebGL 60fps）=====
+				// ===== 设置三个 Canvas =====
 				const canvasOriginal = document.getElementById("canvas-original")
 				canvasOriginal.width = WIDTH
 				canvasOriginal.height = HEIGHT
-				const gl = canvasOriginal.getContext("webgl2", {
-					alpha: false,
-					desynchronized: true,
-					antialias: false,
-					powerPreference: "high-performance",
-				})
+				const { gl, tex } = setupWebGL(canvasOriginal, video)
 
-				const vsSource = `#version 300 es
-                in vec2 a_position;
-                in vec2 a_texCoord;
-                out vec2 v_texCoord;
-                void main() {
-                    gl_Position = vec4(a_position, 0.0, 1.0);
-                    v_texCoord = a_texCoord;
-                }
-            `
+				const canvasBlur = document.getElementById("canvas-blur")
+				canvasBlur.width = WIDTH
+				canvasBlur.height = HEIGHT
+				const ctxBlur = canvasBlur.getContext("2d", { willReadFrequently: true, alpha: false })
 
-				const fsSource = `#version 300 es
-                precision highp float;
-                in vec2 v_texCoord;
-                out vec4 fragColor;
-                uniform sampler2D u_texture;
-                void main() {
-                    fragColor = texture(u_texture, v_texCoord);
-                }
-            `
+				const canvasReplace = document.getElementById("canvas-replace")
+				canvasReplace.width = WIDTH
+				canvasReplace.height = HEIGHT
+				const ctxReplace = canvasReplace.getContext("2d", { willReadFrequently: true, alpha: false })
 
-				const vertShader = createShader(gl, gl.VERTEX_SHADER, vsSource)
-				const fragShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource)
-				const program = createProgram(gl, vertShader, fragShader)
-
-				const positions = new Float32Array([-1, -1, 0, 1, 1, -1, 1, 1, -1, 1, 0, 0, 1, 1, 1, 0])
-				const buffer = gl.createBuffer()
-				gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
-				gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW)
-
-				const posLoc = gl.getAttribLocation(program, "a_position")
-				const texLoc = gl.getAttribLocation(program, "a_texCoord")
-				gl.enableVertexAttribArray(posLoc)
-				gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 16, 0)
-				gl.enableVertexAttribArray(texLoc)
-				gl.vertexAttribPointer(texLoc, 2, gl.FLOAT, false, 16, 8)
-
-				const texture = gl.createTexture()
-				gl.bindTexture(gl.TEXTURE_2D, texture)
-				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-
-				gl.useProgram(program)
-
-				const fpsOriginal = new PreciseFPSTracker(60)
-				let frameCountOrig = 0
-
-				function renderOriginal() {
-					const tStart = performance.now()
-
-					gl.bindTexture(gl.TEXTURE_2D, texture)
-					gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video)
-					gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
-
-					fpsOriginal.recordFrame()
-					frameCountOrig++
-
-					if (frameCountOrig % 30 === 0) {
-						updateStat("fps-original", fpsOriginal.getFPS().toFixed(1), " fps")
-						updateStat("time-original", (performance.now() - tStart).toFixed(2), " ms")
-					}
-
-					requestAnimationFrame(renderOriginal)
-				}
-
-				// ===== 处理流（异步推理）=====
-				const canvasProcessed = document.getElementById("canvas-processed")
-				canvasProcessed.width = WIDTH
-				canvasProcessed.height = HEIGHT
-				const ctx = canvasProcessed.getContext("2d", {
-					alpha: false,
-					willReadFrequently: true,
-				})
-
+				// 辅助变量
 				const offscreen = new OffscreenCanvas(MASK_WIDTH, MASK_HEIGHT)
 				const offCtx = offscreen.getContext("2d")
 				const float32Data = new Float32Array(MASK_WIDTH * MASK_HEIGHT * 3)
 
-				const fpsProcessed = new PreciseFPSTracker(30)
-				let frameCountProc = 0
+				const fpsOriginal = new PreciseFPSTracker(60)
+				const fpsProcessed = new PreciseFPSTracker(30) // Blur 和 Replace 共享 FPS 计数
+
+				let frameCount = 0
 				let currentMask = null
 				let isInferring = false
 
-				// 异步推理循环（独立于渲染）
-				async function inferenceLoop() {
+				// === 渲染循环 1: 原始流 (WebGL) ===
+				function loopOriginal() {
+					const t = performance.now()
+					gl.bindTexture(gl.TEXTURE_2D, tex)
+					gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video)
+					gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+
+					fpsOriginal.recordFrame()
+					if (frameCount % 30 === 0) {
+						updateStat("fps-original", fpsOriginal.getFPS().toFixed(1))
+						updateStat("time-original", (performance.now() - t).toFixed(2), " ms")
+					}
+					requestAnimationFrame(loopOriginal)
+				}
+
+				// === 推理循环 (独立频率) ===
+				async function loopInference() {
 					if (isInferring) return
 					isInferring = true
+					const tStart = performance.now()
 
-					const tInferStart = performance.now()
-
-					// 1. 准备输入
 					offCtx.drawImage(video, 0, 0, MASK_WIDTH, MASK_HEIGHT)
-					const imgData = offCtx.getImageData(0, 0, MASK_WIDTH, MASK_HEIGHT)
-					const pixels = imgData.data
+					const imgData = offCtx.getImageData(0, 0, MASK_WIDTH, MASK_HEIGHT).data
 
-					for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
-						float32Data[j] = pixels[i] / 255
-						float32Data[j + 1] = pixels[i + 1] / 255
-						float32Data[j + 2] = pixels[i + 2] / 255
+					// 归一化
+					for (let i = 0, j = 0; i < imgData.length; i += 4, j += 3) {
+						float32Data[j] = imgData[i] / 255
+						float32Data[j + 1] = imgData[i + 1] / 255
+						float32Data[j + 2] = imgData[i + 2] / 255
 					}
 
 					const inputTensor = new ort.Tensor("float32", float32Data, [1, MASK_HEIGHT, MASK_WIDTH, 3])
-
-					// 2. 推理
 					const results = await session.run({ "input_1:0": inputTensor })
-					const outputTensor = results[Object.keys(results)[0]]
-					const maskData = outputTensor.data
+					const maskData = results[Object.keys(results)[0]].data
 
-					// 3. 处理 mask
+					// Softmax
 					const mask = new Float32Array(MASK_WIDTH * MASK_HEIGHT)
-					if (maskData.length === MASK_WIDTH * MASK_HEIGHT * 2) {
-						for (let i = 0; i < MASK_WIDTH * MASK_HEIGHT; i++) {
-							const bg = maskData[i * 2]
-							const fg = maskData[i * 2 + 1]
-							const expSum = Math.exp(bg) + Math.exp(fg)
-							mask[i] = Math.exp(fg) / expSum
-						}
-					} else {
-						mask.set(maskData)
+					for (let i = 0; i < MASK_WIDTH * MASK_HEIGHT; i++) {
+						const bg = maskData[i * 2]
+						const fg = maskData[i * 2 + 1]
+						const expSum = Math.exp(bg) + Math.exp(fg)
+						mask[i] = Math.exp(fg) / expSum
 					}
 
 					currentMask = mask
-					const inferTime = performance.now() - tInferStart
-
-					if (frameCountProc % 5 === 0) {
-						updateStat("time-inference", inferTime.toFixed(1), " ms")
-					}
+					updateStat("time-inference", (performance.now() - tStart).toFixed(1), " ms")
 
 					isInferring = false
-					setTimeout(inferenceLoop, 33) // 30fps
+					setTimeout(loopInference, 30)
 				}
 
-				// 渲染循环（使用最新 mask）
-				function renderProcessed() {
+				// === 渲染循环 2 & 3: 处理流 (Canvas 2D + WASM) ===
+				function loopProcessed() {
 					if (!currentMask) {
-						requestAnimationFrame(renderProcessed)
+						requestAnimationFrame(loopProcessed)
 						return
 					}
 
-					const tRenderStart = performance.now()
+					const tStart = performance.now()
 
 					// 1. 获取视频帧
-					ctx.drawImage(video, 0, 0, WIDTH, HEIGHT)
-					const imgDataLarge = ctx.getImageData(0, 0, WIDTH, HEIGHT)
-					const tCanvas = performance.now()
+					ctxBlur.drawImage(video, 0, 0, WIDTH, HEIGHT)
+					const imgDataLarge = ctxBlur.getImageData(0, 0, WIDTH, HEIGHT)
 
-					// 2. WASM 处理
-					const rustInputView = new Uint8Array(wasm.memory.buffer, processor.input_ptr(), WIDTH * HEIGHT * 4)
-					rustInputView.set(imgDataLarge.data)
+					// 2. 准备 WASM 数据
+					const inputView = new Uint8Array(wasm.memory.buffer, processor.input_ptr(), WIDTH * HEIGHT * 4)
+					inputView.set(imgDataLarge.data)
 
-					const rustMaskView = new Float32Array(wasm.memory.buffer, processor.mask_ptr(), MASK_WIDTH * MASK_HEIGHT)
-					rustMaskView.set(currentMask)
+					const maskView = new Float32Array(wasm.memory.buffer, processor.mask_ptr(), MASK_WIDTH * MASK_HEIGHT)
+					maskView.set(currentMask)
 
-					processor.apply_filter_and_blend()
-					const tWasm = performance.now()
+					// 3. 计算 Mask (耗时操作，只做一次)
+					const tFilterStart = performance.now()
+					processor.prepare_mask()
+					const tFilterEnd = performance.now()
 
-					// 3. 渲染结果
-					const rustOutputView = new Uint8ClampedArray(wasm.memory.buffer, processor.output_ptr(), WIDTH * HEIGHT * 4)
-					const finalImage = new ImageData(rustOutputView, WIDTH, HEIGHT)
-					ctx.putImageData(finalImage, 0, 0)
-					const tRenderEnd = performance.now()
+					// 4. 渲染流 A: 背景虚化 (Blur/Dim)
+					processor.render_blur()
+					const outputBlur = new Uint8ClampedArray(wasm.memory.buffer, processor.output_ptr(), WIDTH * HEIGHT * 4)
+					// 这里需要创建新的 ImageData 副本，因为 processor.output_ptr 是共享的
+					ctxBlur.putImageData(new ImageData(outputBlur.slice(), WIDTH, HEIGHT), 0, 0)
+
+					// 5. 渲染流 B: 背景替换 (Replace)
+					const tBlendStart = performance.now()
+					processor.render_replace()
+					const outputReplace = new Uint8ClampedArray(wasm.memory.buffer, processor.output_ptr(), WIDTH * HEIGHT * 4)
+					ctxReplace.putImageData(new ImageData(outputReplace, WIDTH, HEIGHT), 0, 0)
+					const tEnd = performance.now()
 
 					fpsProcessed.recordFrame()
-					frameCountProc++
+					frameCount++
 
-					if (frameCountProc % 10 === 0) {
-						updateStat("fps-processed", fpsProcessed.getFPS().toFixed(1), " fps")
-						updateStat("time-wasm", (tWasm - tCanvas).toFixed(1), " ms")
-						updateStat("time-canvas", (tCanvas - tRenderStart).toFixed(1), " ms")
-						updateStat("time-total", (tRenderEnd - tRenderStart).toFixed(1), " ms")
+					if (frameCount % 10 === 0) {
+						updateStat("fps-blur", fpsProcessed.getFPS().toFixed(1))
+						updateStat("fps-replace", fpsProcessed.getFPS().toFixed(1))
+
+						updateStat("time-wasm-filter", (tFilterEnd - tFilterStart).toFixed(1), " ms")
+						updateStat("time-blend-replace", (tEnd - tBlendStart).toFixed(2), " ms")
+						updateStat("time-total-blur", (tEnd - tStart).toFixed(1), " ms")
 						updateStat("memory", (wasm.memory.buffer.byteLength / 1024 / 1024).toFixed(1), " MB")
 					}
 
-					requestAnimationFrame(renderProcessed)
+					requestAnimationFrame(loopProcessed)
 				}
 
-				renderOriginal()
-				inferenceLoop()
-				renderProcessed()
+				loopOriginal()
+				loopInference()
+				loopProcessed()
 			}
 
 			main().catch(console.error)

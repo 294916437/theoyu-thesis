@@ -1,276 +1,345 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 	<head>
-		<title>Google Meet Style - Rust Wasm</title>
-		<!-- 引入 ONNX Runtime Web -->
+		<title>Google Meet Style - Dual Stream Comparison</title>
 		<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 		<style>
+			* {
+				margin: 0;
+				padding: 0;
+				box-sizing: border-box;
+			}
 			body {
 				background: #202124;
-				color: white;
-				display: flex;
-				flex-direction: column;
-				align-items: center;
+				color: #e8eaed;
+				font-family: "Segoe UI", system-ui, sans-serif;
+				padding: 20px;
+			}
+			h1 {
+				text-align: center;
+				margin-bottom: 30px;
+				font-size: 28px;
+				font-weight: 500;
+			}
+			.container {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 20px;
+				max-width: 1400px;
+				margin: 0 auto;
+			}
+			.stream-section {
+				background: #292a2d;
+				border-radius: 12px;
+				padding: 20px;
+				box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+			}
+			.stream-title {
+				font-size: 18px;
+				font-weight: 600;
+				margin-bottom: 15px;
+				text-align: center;
+				color: #8ab4f8;
 			}
 			canvas {
-				border: 1px solid #5f6368;
+				width: 100%;
+				height: auto;
 				border-radius: 8px;
-				margin: 10px;
+				display: block;
+				background: #000;
 			}
-			#stats {
-				background: #292a2d;
-				padding: 15px 25px;
-				border-radius: 8px;
-				margin: 10px;
-				font-family: "Courier New", monospace;
-				font-size: 14px;
-				box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-				min-width: 500px;
+			.stats {
+				margin-top: 15px;
+				font-size: 13px;
 			}
 			.stat-row {
 				display: flex;
 				justify-content: space-between;
-				margin: 5px 0;
-				padding: 3px 0;
-				border-bottom: 1px solid #3c4043;
+				padding: 6px 10px;
+				border-radius: 4px;
+				margin-bottom: 4px;
+				background: #35363a;
 			}
 			.stat-label {
 				color: #9aa0a6;
-				font-weight: 600;
+				font-weight: 500;
 			}
 			.stat-value {
-				color: #8ab4f8;
-				font-weight: bold;
+				font-weight: 700;
+				font-family: "Consolas", monospace;
 			}
-			.stat-value.good {
+			.stat-value.fps-good {
 				color: #81c995;
 			}
-			.stat-value.warning {
+			.stat-value.fps-warning {
 				color: #fdd663;
 			}
-			.stat-value.error {
+			.stat-value.fps-error {
 				color: #f28b82;
+			}
+			.stat-value.time-good {
+				color: #81c995;
+			}
+			.stat-value.time-warning {
+				color: #fdd663;
+			}
+			.stat-value.time-error {
+				color: #f28b82;
+			}
+			#video {
+				display: none;
+			}
+			.loader {
+				text-align: center;
+				padding: 40px;
+				color: #9aa0a6;
 			}
 		</style>
 	</head>
 	<body>
-		<h1>Rust JBF + ONNX Runtime</h1>
-		<video id="video" style="display: none" playsinline autoplay></video>
-		<canvas id="output"></canvas>
-		<div id="stats">
-			<div class="stat-row">
-				<span class="stat-label">帧率 (FPS)</span>
-				<span class="stat-value" id="fps">--</span>
+		<h1>🎥 Dual Stream Performance Monitor</h1>
+		<video id="video" playsinline autoplay></video>
+
+		<div class="container">
+			<!-- 原始流 -->
+			<div class="stream-section">
+				<div class="stream-title">🔴 Original Stream (Target: 30 FPS)</div>
+				<canvas id="canvas-original"></canvas>
+				<div class="stats">
+					<div class="stat-row">
+						<span class="stat-label">FPS</span>
+						<span class="stat-value" id="fps-original">--</span>
+					</div>
+					<div class="stat-row">
+						<span class="stat-label">Frame Time</span>
+						<span class="stat-value" id="time-original">--</span>
+					</div>
+				</div>
 			</div>
-			<div class="stat-row">
-				<span class="stat-label">模型推理</span>
-				<span class="stat-value" id="inference-time">--</span>
-			</div>
-			<div class="stat-row">
-				<span class="stat-label">JBF 处理</span>
-				<span class="stat-value" id="jbf-time">--</span>
-			</div>
-			<div class="stat-row">
-				<span class="stat-label">渲染耗时</span>
-				<span class="stat-value" id="render-time">--</span>
-			</div>
-			<div class="stat-row">
-				<span class="stat-label">总延迟</span>
-				<span class="stat-value" id="total-time">--</span>
-			</div>
-			<div class="stat-row">
-				<span class="stat-label">Wasm 内存</span>
-				<span class="stat-value" id="memory">--</span>
+
+			<!-- 处理流 -->
+			<div class="stream-section">
+				<div class="stream-title">🟢 Processed Stream (Target: 25 FPS)</div>
+				<canvas id="canvas-processed"></canvas>
+				<div class="stats">
+					<div class="stat-row">
+						<span class="stat-label">FPS</span>
+						<span class="stat-value" id="fps-processed">--</span>
+					</div>
+					<div class="stat-row">
+						<span class="stat-label">Model Inference</span>
+						<span class="stat-value" id="time-inference">--</span>
+					</div>
+					<div class="stat-row">
+						<span class="stat-label">JBF Processing</span>
+						<span class="stat-value" id="time-jbf">--</span>
+					</div>
+					<div class="stat-row">
+						<span class="stat-label">Total Frame Time</span>
+						<span class="stat-value" id="time-processed">--</span>
+					</div>
+					<div class="stat-row">
+						<span class="stat-label">Wasm Memory</span>
+						<span class="stat-value" id="memory">--</span>
+					</div>
+				</div>
 			</div>
 		</div>
 
 		<script type="module">
 			import init, { MeetProcessor, init_panic_hook } from "./pkg/meet_background_effect.js"
 
-			const MODEL_PATH = "./model_float32_opt.onnx" // 你的模型文件
+			const MODEL_PATH = "./model_float32_opt.onnx"
 			const WIDTH = 640
 			const HEIGHT = 480
 			const MASK_WIDTH = 256
 			const MASK_HEIGHT = 144
 
-			// 性能统计
+			// 帧率跟踪器
+			class FPSTracker {
+				constructor(size = 30) {
+					this.times = []
+					this.size = size
+				}
+				add(time) {
+					this.times.push(time)
+					if (this.times.length > this.size) this.times.shift()
+				}
+				getFPS() {
+					if (this.times.length < 2) return 0
+					const deltas = []
+					for (let i = 1; i < this.times.length; i++) {
+						deltas.push(this.times[i] - this.times[i - 1])
+					}
+					const avgDelta = deltas.reduce((a, b) => a + b) / deltas.length
+					return 1000 / avgDelta
+				}
+			}
+
+			function updateStat(id, value, unit = "") {
+				const elem = document.getElementById(id)
+				if (!elem) return
+				elem.textContent = value + unit
+
+				if (id.startsWith("fps-")) {
+					const fps = parseFloat(value)
+					elem.className = "stat-value " + (fps >= 25 ? "fps-good" : fps >= 15 ? "fps-warning" : "fps-error")
+				} else if (id.startsWith("time-") && unit === " ms") {
+					const ms = parseFloat(value)
+					elem.className = "stat-value " + (ms < 25 ? "time-good" : ms < 40 ? "time-warning" : "time-error")
+				}
+			}
 
 			async function main() {
-				// 1. 初始化 Rust Wasm
+				// 初始化 Wasm
 				const wasm = await init()
 				init_panic_hook()
 				const processor = MeetProcessor.new(WIDTH, HEIGHT)
 
-				// 2. 初始化 ONNX Runtime (JS)
-				// 使用 WebAssembly 后端 (比 WebGL 在某些小模型上更稳，或者尝试 'webgl')
+				// 初始化 ONNX
 				const session = await ort.InferenceSession.create(MODEL_PATH, {
 					executionProviders: ["wasm"],
 					graphOptimizationLevel: "all",
 				})
 
-				// 3. 启动摄像头
+				// 启动摄像头
 				const video = document.getElementById("video")
 				const stream = await navigator.mediaDevices.getUserMedia({
-					video: { width: WIDTH, height: HEIGHT },
+					video: {
+						width: WIDTH,
+						height: HEIGHT,
+						frameRate: { ideal: 30 },
+					},
 				})
 				video.srcObject = stream
 				await new Promise((r) => (video.onloadedmetadata = r))
 
-				const canvas = document.getElementById("output")
-				canvas.width = WIDTH
-				canvas.height = HEIGHT
-				const ctx = canvas.getContext("2d", { willReadFrequently: true, alpha: false })
+				// Canvas 设置
+				const canvasOriginal = document.getElementById("canvas-original")
+				const canvasProcessed = document.getElementById("canvas-processed")
+				canvasOriginal.width = canvasProcessed.width = WIDTH
+				canvasOriginal.height = canvasProcessed.height = HEIGHT
 
-				// 临时 Canvas 用于缩放图像给模型 (640x480 -> 256x144)
+				const ctxOriginal = canvasOriginal.getContext("2d", {
+					alpha: false,
+					desynchronized: true,
+				})
+				const ctxProcessed = canvasProcessed.getContext("2d", {
+					alpha: false,
+					willReadFrequently: true,
+				})
+
+				// 离屏 Canvas
 				const offscreen = new OffscreenCanvas(MASK_WIDTH, MASK_HEIGHT)
 				const offCtx = offscreen.getContext("2d", { willReadFrequently: true })
 
-				// 预分配 Tensor 内存，避免 GC
 				const float32Data = new Float32Array(MASK_WIDTH * MASK_HEIGHT * 3)
+				const fpsOriginal = new FPSTracker()
+				const fpsProcessed = new FPSTracker()
 
-				let frameCount = 0
-				let lastFpsUpdate = performance.now()
-				let fpsHistory = []
-				const HISTORY_SIZE = 30
+				let frameCountOriginal = 0
+				let frameCountProcessed = 0
 
-				// 【新增】更新性能指标的辅助函数
-				function updateStat(id, value, unit = "ms") {
-					const elem = document.getElementById(id)
-					if (!elem) return
-
-					elem.textContent = value + unit
-
-					// 根据值设置颜色
-					if (id === "fps") {
-						elem.className =
-							"stat-value " + (value >= 25 ? "good" : value >= 15 ? "warning" : "error")
-					} else if (unit === "ms") {
-						const ms = parseFloat(value)
-						elem.className = "stat-value " + (ms < 20 ? "good" : ms < 40 ? "warning" : "error")
-					}
-				}
-
-				async function render() {
-					const frameStart = performance.now()
+				// 原始流渲染（30fps）
+				function renderOriginal() {
 					const t0 = performance.now()
+					ctxOriginal.drawImage(video, 0, 0, WIDTH, HEIGHT)
 
-					// A. 准备模型输入
-					// 1. 绘制小图用于推理
-					offCtx.drawImage(video, 0, 0, MASK_WIDTH, MASK_HEIGHT)
-					const imgDataSmall = offCtx.getImageData(0, 0, MASK_WIDTH, MASK_HEIGHT)
+					fpsOriginal.add(t0)
+					frameCountOriginal++
 
-					// 2. 像素归一化 (HWC -> NHWC float32)
-					const pixels = imgDataSmall.data
-					for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
-						float32Data[j] = pixels[i] / 255.0
-						float32Data[j + 1] = pixels[i + 1] / 255.0
-						float32Data[j + 2] = pixels[i + 2] / 255.0
+					if (frameCountOriginal % 10 === 0) {
+						updateStat("fps-original", fpsOriginal.getFPS().toFixed(1), " fps")
+						updateStat("time-original", (performance.now() - t0).toFixed(1), " ms")
 					}
 
-					const inputTensor = new ort.Tensor("float32", float32Data, [
-						1,
-						MASK_HEIGHT,
-						MASK_WIDTH,
-						3,
-					])
-
-					// B. 运行推理 (JS/Wasm)
-					const results = await session.run({ "input_1:0": inputTensor }) // 注意检查 Netron 里的输入名
-					const outputTensor = results[Object.keys(results)[0]] // 自动获取第一个输出
-
-					const t1 = performance.now()
-					const inferenceTime = t1 - t0
-
-					// C. Rust 处理流程
-					// 1. 传入原始大图 (RGBA)
-					ctx.drawImage(video, 0, 0, WIDTH, HEIGHT)
-					const imgDataLarge = ctx.getImageData(0, 0, WIDTH, HEIGHT)
-
-					const rustInputPtr = processor.input_ptr()
-					const rustInputView = new Uint8Array(
-						wasm.memory.buffer,
-						rustInputPtr,
-						WIDTH * HEIGHT * 4
-					)
-					rustInputView.set(imgDataLarge.data)
-
-					// 2. 传入模型输出的 Mask (Float32)
-					// 输出通道 [1, 144, 256, 2]
-					const maskData = outputTensor.data // Float32Array
-					const rustMaskPtr = processor.mask_ptr()
-					const rustMaskView = new Float32Array(
-						wasm.memory.buffer,
-						rustMaskPtr,
-						MASK_WIDTH * MASK_HEIGHT
-					)
-
-					// 提取前景通道 (假设双通道，索引 1 是前景)
-					// 如果模型是单通道，直接 set 即可
-					if (maskData.length === MASK_WIDTH * MASK_HEIGHT * 2) {
-						for (let i = 0; i < MASK_WIDTH * MASK_HEIGHT; i++) {
-							// Softmax: exp(fg) / (exp(bg) + exp(fg)) -> Sigmoid(fg - bg)
-							// rustMaskView[i] = maskData[i * 2 + 1]
-							const bg_logit = maskData[i * 2]
-							const fg_logit = maskData[i * 2 + 1]
-							// Softmax: P(fg) = exp(fg) / (exp(bg) + exp(fg))
-							const exp_fg = Math.exp(fg_logit)
-							const exp_bg = Math.exp(bg_logit)
-							rustMaskView[i] = exp_fg / (exp_fg + exp_bg)
-						}
-					} else {
-						rustMaskView.set(maskData)
-					}
-
-					// 3. Rust 执行 JBF 和合成
-					processor.apply_filter_and_blend()
-
-					const t2 = performance.now()
-					const jbfTime = t2 - t1
-
-					// 4. 取回结果并渲染
-					const rustOutputPtr = processor.output_ptr()
-					const rustOutputView = new Uint8ClampedArray(
-						wasm.memory.buffer,
-						rustOutputPtr,
-						WIDTH * HEIGHT * 4
-					)
-					const finalImage = new ImageData(rustOutputView, WIDTH, HEIGHT)
-
-					ctx.putImageData(finalImage, 0, 0)
-
-					const t3 = performance.now()
-					const renderTime = t3 - t2
-					const totalTime = t3 - frameStart
-
-					frameCount++
-
-					// 【修复】正确计算 FPS 历史
-					const currentFps = 1000 / totalTime
-					fpsHistory.push(currentFps)
-					if (fpsHistory.length > HISTORY_SIZE) {
-						fpsHistory.shift()
-					}
-					// 每 10 帧更新一次显示
-					if (frameCount % 10 === 0) {
-						const now = performance.now()
-						const avgFps = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length
-
-						updateStat("fps", avgFps.toFixed(1), " fps")
-						updateStat("inference-time", inferenceTime.toFixed(1))
-						updateStat("jbf-time", jbfTime.toFixed(1))
-						updateStat("render-time", renderTime.toFixed(1))
-						updateStat("total-time", totalTime.toFixed(1))
-						const memMB = (wasm.memory.buffer.byteLength / 1024 / 1024).toFixed(1)
-						updateStat("memory", memMB, " MB")
-					}
-
-					requestAnimationFrame(render)
+					requestAnimationFrame(renderOriginal)
 				}
 
-				render()
+				// 处理流渲染（25fps，每 1.2 帧处理一次）
+				let lastProcessTime = 0
+				const PROCESS_INTERVAL = 1000 / 25 // 40ms
+
+				async function renderProcessed() {
+					const now = performance.now()
+
+					if (now - lastProcessTime >= PROCESS_INTERVAL) {
+						lastProcessTime = now
+						const t0 = performance.now()
+
+						// 1. 准备输入
+						offCtx.drawImage(video, 0, 0, MASK_WIDTH, MASK_HEIGHT)
+						const imgDataSmall = offCtx.getImageData(0, 0, MASK_WIDTH, MASK_HEIGHT)
+						const pixels = imgDataSmall.data
+
+						for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
+							float32Data[j] = pixels[i] / 255.0
+							float32Data[j + 1] = pixels[i + 1] / 255.0
+							float32Data[j + 2] = pixels[i + 2] / 255.0
+						}
+
+						const inputTensor = new ort.Tensor("float32", float32Data, [1, MASK_HEIGHT, MASK_WIDTH, 3])
+
+						// 2. 推理
+						const results = await session.run({ "input_1:0": inputTensor })
+						const outputTensor = results[Object.keys(results)[0]]
+						const t1 = performance.now()
+
+						// 3. Rust 处理
+						ctxProcessed.drawImage(video, 0, 0, WIDTH, HEIGHT)
+						const imgDataLarge = ctxProcessed.getImageData(0, 0, WIDTH, HEIGHT)
+
+						const rustInputPtr = processor.input_ptr()
+						const rustInputView = new Uint8Array(wasm.memory.buffer, rustInputPtr, WIDTH * HEIGHT * 4)
+						rustInputView.set(imgDataLarge.data)
+
+						const maskData = outputTensor.data
+						const rustMaskPtr = processor.mask_ptr()
+						const rustMaskView = new Float32Array(wasm.memory.buffer, rustMaskPtr, MASK_WIDTH * MASK_HEIGHT)
+
+						if (maskData.length === MASK_WIDTH * MASK_HEIGHT * 2) {
+							for (let i = 0; i < MASK_WIDTH * MASK_HEIGHT; i++) {
+								const bg = maskData[i * 2]
+								const fg = maskData[i * 2 + 1]
+								const exp_fg = Math.exp(fg)
+								const exp_bg = Math.exp(bg)
+								rustMaskView[i] = exp_fg / (exp_fg + exp_bg)
+							}
+						} else {
+							rustMaskView.set(maskData)
+						}
+
+						processor.apply_filter_and_blend()
+						const t2 = performance.now()
+
+						// 4. 渲染
+						const rustOutputPtr = processor.output_ptr()
+						const rustOutputView = new Uint8ClampedArray(wasm.memory.buffer, rustOutputPtr, WIDTH * HEIGHT * 4)
+						const finalImage = new ImageData(rustOutputView, WIDTH, HEIGHT)
+						ctxProcessed.putImageData(finalImage, 0, 0)
+
+						const t3 = performance.now()
+
+						fpsProcessed.add(t0)
+						frameCountProcessed++
+
+						if (frameCountProcessed % 5 === 0) {
+							updateStat("fps-processed", fpsProcessed.getFPS().toFixed(1), " fps")
+							updateStat("time-inference", (t1 - t0).toFixed(1), " ms")
+							updateStat("time-jbf", (t2 - t1).toFixed(1), " ms")
+							updateStat("time-processed", (t3 - t0).toFixed(1), " ms")
+							updateStat("memory", (wasm.memory.buffer.byteLength / 1024 / 1024).toFixed(1), " MB")
+						}
+					}
+
+					requestAnimationFrame(renderProcessed)
+				}
+
+				renderOriginal()
+				renderProcessed()
 			}
 
-			main()
+			main().catch(console.error)
 		</script>
 	</body>
 </html>

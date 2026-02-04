@@ -1,4 +1,3 @@
-<!-- filepath: frontend/src/features/meeting/components/BackgroundEffectPanel.vue -->
 <template>
 	<div class="background-panel">
 		<!-- 头部 -->

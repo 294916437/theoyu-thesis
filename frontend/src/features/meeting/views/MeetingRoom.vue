@@ -84,6 +84,10 @@
 										<span class="text-caption">聊天</span>
 									</v-badge>
 								</v-tab>
+								<v-tab value="background">
+									<v-icon icon="mdi-image-filter-hdr" size="small" class="mr-1"></v-icon>
+									<span class="text-caption">背景</span>
+								</v-tab>
 							</v-tabs>
 
 							<v-tabs-window v-model="sidebarTab" class="sidebar-content">
@@ -298,6 +302,10 @@
 											</div>
 										</div>
 									</div>
+								</v-tabs-window-item>
+								<!-- 背景效果面板 -->
+								<v-tabs-window-item value="background" class="fill-height">
+									<BackgroundEffectPanel :video-track="localVideoTrack" @track-updated="handleBackgroundTrackUpdated" />
 								</v-tabs-window-item>
 							</v-tabs-window>
 						</div>
@@ -679,6 +687,7 @@ import {
 } from '@vueuse/core'
 import VideoGrid from '../components/VideoGrid.vue'
 import ParticipantsList from '../components/ParticipantsList.vue'
+import BackgroundEffectPanel from '../components/BackgroundEffectPanel.vue'
 import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
 import FilePreview from '@/components/common/FilePreview.vue'
 import { useFilePreview } from '@/composables/useFilePreview'
@@ -759,7 +768,13 @@ const {
 	stopScreenShare,
 	changeAudioDevice,
 	changeVideoDevice,
+	handleBackgroundTrackUpdated,
 } = useMedia()
+// 本地视频轨道（从 localStream 提取）
+const localVideoTrack = computed(() => {
+	return localStream.value?.getVideoTracks()[0] || null
+})
+
 // ==================== 房间参与者 ====================
 const { mergedParticipants, onlineParticipants, loading: participantsLoading, loadParticipants } = useParticipants(roomId, participants)
 // ==================== 网络状态监控 ====================

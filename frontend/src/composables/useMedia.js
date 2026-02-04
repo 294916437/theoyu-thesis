@@ -130,9 +130,7 @@ export function useMedia() {
 				const publishWithTimeout = async (track, kind, timeout = 15000) => {
 					return Promise.race([
 						mediasoupClient.produce(track, { kind }),
-						new Promise((_, reject) =>
-							setTimeout(() => reject(new Error(`Publish ${kind} timeout`)), timeout),
-						),
+						new Promise((_, reject) => setTimeout(() => reject(new Error(`Publish ${kind} timeout`)), timeout)),
 					])
 				}
 
@@ -462,9 +460,7 @@ export function useMedia() {
 		socketClient.on('consumerClosed', data => {
 			console.log('Consumer closed', data)
 
-			const participant = participants.value.find(p =>
-				Object.values(p.consumers).some(c => c.id === data.consumerId),
-			)
+			const participant = participants.value.find(p => Object.values(p.consumers).some(c => c.id === data.consumerId))
 			if (participant) {
 				const consumer = participant.consumers[data.consumerId]
 				if (consumer) {
@@ -1104,6 +1100,44 @@ export function useMedia() {
 			$notify.error('更换视频设备失败')
 		}
 	}
+	// 处理背景效果更新的视频轨道
+	async function handleBackgroundTrackUpdated(newTrack) {
+		if (!newTrack) return
+
+		try {
+			// 1. 停止原 video producer
+			const videoProducer = mediasoupClient.producers.get('video')
+			if (videoProducer) {
+				await socketClient.emit('closeProducer', {
+					roomId: roomId.value,
+					producerId: videoProducer.id,
+				})
+				videoProducer.close()
+				mediasoupClient.producers.delete('video')
+			}
+
+			// 2. 创建新的 producer（使用处理后的轨道）
+			const newProducer = await mediasoupClient.produce(newTrack, {
+				kind: 'video',
+				appData: { source: 'camera', hasEffect: true },
+			})
+
+			mediasoupClient.producers.set('video', newProducer)
+
+			// 3. 更新本地流
+			const oldTracks = localStream.value.getVideoTracks()
+			oldTracks.forEach(track => {
+				track.stop()
+				localStream.value.removeTrack(track)
+			})
+			localStream.value.addTrack(newTrack)
+
+			console.log('Background effect track updated')
+		} catch (error) {
+			console.error('Failed to update background track:', error)
+			$notify.error('更新视频失败')
+		}
+	}
 
 	return {
 		// 状态
@@ -1137,5 +1171,6 @@ export function useMedia() {
 		changeAudioDevice,
 		changeVideoDevice,
 		getScreenSharingParticipant,
+		handleBackgroundTrackUpdated,
 	}
 }

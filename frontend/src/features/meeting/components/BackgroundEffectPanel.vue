@@ -1,113 +1,103 @@
 <template>
-	<div class="background-panel">
-		<!-- 头部 -->
-		<div class="panel-header">
-			<span class="text-subtitle-1 font-weight-medium">背景效果</span>
-
-			<v-btn v-if="effectType !== 'none'" variant="text" size="small" prepend-icon="mdi-close" @click="handleDisableEffect"> 关闭效果 </v-btn>
+	<div class="effect-panel d-flex flex-column fill-height bg-surface">
+		<!-- 顶部：标题与开关 -->
+		<div class="pa-4 pb-2 d-flex align-center justify-space-between border-b">
+			<span class="text-subtitle-1 font-weight-medium">背景与特效</span>
 		</div>
 
-		<v-divider></v-divider>
-
-		<!-- 加载状态 -->
-		<div v-if="isLoading" class="loading-wrapper">
-			<v-progress-circular indeterminate color="primary"></v-progress-circular>
-			<p class="text-body-2 mt-4">正在加载资源...</p>
-		</div>
-
-		<!-- 主内容 -->
-		<div v-else class="panel-content">
-			<!-- 效果类型选择 -->
-			<div class="effect-types mb-4">
-				<v-chip-group v-model="effectType" mandatory color="primary" class="effect-chips">
-					<v-chip value="none" filter variant="outlined">
-						<template #prepend>
-							<v-icon icon="mdi-cancel"></v-icon>
-						</template>
-						无效果
-					</v-chip>
-
-					<v-chip value="blur" filter variant="outlined">
-						<template #prepend>
-							<v-icon icon="mdi-blur"></v-icon>
-						</template>
-						背景模糊
-					</v-chip>
-
-					<v-chip value="replace" filter variant="outlined">
-						<template #prepend>
-							<v-icon icon="mdi-image"></v-icon>
-						</template>
-						背景替换
-					</v-chip>
-				</v-chip-group>
+		<!-- 资源加载动画 -->
+		<v-fade-transition v-if="isLoading">
+			<div class="d-flex flex-column align-center justify-center py-8">
+				<v-progress-circular indeterminate color="primary" size="32"></v-progress-circular>
+				<span class="text-caption text-medium-emphasis mt-2">正在初始化资源...</span>
 			</div>
+		</v-fade-transition>
 
-			<!-- 背景图选择（仅替换模式） -->
-			<v-expand-transition>
-				<div v-show="effectType === 'replace'" class="backgrounds-section">
-					<div class="section-header">
-						<span class="text-body-2 font-weight-medium">选择背景</span>
-
-						<v-btn variant="text" size="small" prepend-icon="mdi-upload" @click="handleUploadClick"> 上传 </v-btn>
-					</div>
-
-					<!-- 背景网格 -->
-					<div class="backgrounds-grid">
-						<div
-							v-for="bg in allBackgrounds"
-							:key="bg.id"
-							class="background-item"
-							:class="{ active: selectedBackground === bg.id }"
-							@click="handleSelectBackground(bg.id)"
-						>
-							<v-img :src="bg.thumbnail" :alt="bg.name" aspect-ratio="16/9" cover class="background-thumbnail">
-								<template #placeholder>
-									<div class="d-flex align-center justify-center fill-height">
-										<v-progress-circular indeterminate size="24" width="2" color="primary"></v-progress-circular>
-									</div>
-								</template>
-							</v-img>
-
-							<div class="background-name">
-								<span class="text-caption">{{ bg.name }}</span>
-							</div>
-
-							<!-- 选中标记 -->
-							<v-fade-transition>
-								<div v-show="selectedBackground === bg.id" class="selected-overlay">
-									<v-icon icon="mdi-check-circle" color="primary" size="32"></v-icon>
-								</div>
-							</v-fade-transition>
-
-							<!-- 自定义背景删除按钮 -->
-							<v-btn
-								v-if="bg.id.startsWith('custom_')"
-								icon="mdi-close"
-								variant="text"
-								size="x-small"
-								color="error"
-								class="delete-btn"
-								@click.stop="handleDeleteBackground(bg.id)"
-							></v-btn>
-						</div>
-					</div>
+		<!-- 主内容区域 (滚动) -->
+		<div class="flex-grow-1 overflow-y-auto pa-4 scroll-container">
+			<!-- 实时预览区 -->
+			<v-card class="mb-6 rounded-lg overflow-hidden position-relative preview-card" elevation="2" color="black">
+				<!-- 用一个 Video 元素回显处理后的流，或者回显其中的 Canvas -->
+				<div ref="previewContainer" class="preview-video-container">
+					<!-- 动态插入 video or canvas -->
 				</div>
-			</v-expand-transition>
+				<div class="preview-badge">预览</div>
+			</v-card>
 
 			<!-- 错误提示 -->
-			<v-alert v-if="error" type="error" variant="tonal" density="compact" closable class="mt-4" @click:close="error = null">
+			<v-alert v-if="error" type="error" variant="tonal" density="compact" class="mb-4" closable @click:close="error = null">
 				{{ error }}
 			</v-alert>
+
+			<!-- 1. 基础效果 (无/模糊) -->
+			<div class="mb-4">
+				<div class="text-caption font-weight-bold text-medium-emphasis mb-2 ml-1">效果</div>
+				<div class="effects-grid">
+					<!-- 无效果 -->
+					<v-card
+						v-ripple
+						class="effect-item d-flex align-center justify-center"
+						:class="{ active: effectType === 'none' }"
+						variant="outlined"
+						@click="changeEffect('none')"
+					>
+						<v-icon icon="mdi-block-helper" size="24"></v-icon>
+						<span class="text-caption mt-1">无</span>
+					</v-card>
+
+					<!-- 模糊 -->
+					<v-card
+						v-ripple
+						class="effect-item d-flex align-center justify-center"
+						:class="{ active: effectType === 'blur' }"
+						variant="outlined"
+						@click="changeEffect('blur')"
+					>
+						<v-icon icon="mdi-blur" size="24"></v-icon>
+						<span class="text-caption mt-1">模糊</span>
+					</v-card>
+				</div>
+			</div>
+
+			<!-- 2. 背景图片 (替换) -->
+			<div>
+				<div class="d-flex align-center justify-space-between mb-2 ml-1">
+					<span class="text-caption font-weight-bold text-medium-emphasis">背景图片</span>
+					<v-btn prepend-icon="mdi-plus" variant="text" density="compact" size="small" color="primary" @click="fileInput?.click()"> 添加 </v-btn>
+				</div>
+
+				<div class="effects-grid images-grid">
+					<v-card
+						v-for="bg in allBackgrounds"
+						:key="bg.id"
+						v-ripple
+						class="background-item"
+						:class="{ active: effectType === 'replace' && selectedBackground === bg.id }"
+						@click="changeBackground(bg.id)"
+					>
+						<v-img :src="bg.thumbnail" cover aspect-ratio="1.6" class="bg-image">
+							<template #placeholder>
+								<div class="d-flex align-center justify-center fill-height bg-grey-lighten-4">
+									<v-progress-circular indeterminate size="20" width="2" color="grey"></v-progress-circular>
+								</div>
+							</template>
+							<!-- 选中遮罩 -->
+							<div v-if="effectType === 'replace' && selectedBackground === bg.id" class="active-overlay">
+								<v-icon icon="mdi-check" color="white"></v-icon>
+							</div>
+						</v-img>
+					</v-card>
+				</div>
+			</div>
 		</div>
 
-		<!-- 隐藏的文件上传 -->
+		<!-- 隐藏的上传 -->
 		<input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden @change="handleFileUpload" />
 	</div>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { useBackgroundEffect } from '@/composables/useBackgroundEffect'
 import { $notify } from '@/plugins/notification'
 
@@ -119,37 +109,74 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['track-updated'])
-
 const fileInput = ref(null)
+const previewContainer = ref(null)
+let previewVideo = null
 
-const { effectType, selectedBackground, allBackgrounds, isProcessing, isLoading, error, startEffect, stopEffect, uploadCustomBackground } = useBackgroundEffect()
+const { isReady, effectType, selectedBackground, allBackgrounds, isLoading, error, initResources, startEffect, uploadCustomBackground } = useBackgroundEffect()
 
-// ========== 事件处理 ==========
-async function handleDisableEffect() {
-	effectType.value = 'none'
-	stopEffect()
+/**
+ * 初始化预览视频
+ * 在面板上方显示一个小视频，直接播放当前的 localStream (经过效果处理后的)
+ */
+function initPreview(track) {
+	if (!track || !previewContainer.value) return
 
-	// 恢复原始轨道
-	emit('track-updated', props.videoTrack)
-	$notify.success('已关闭背景效果')
-}
-
-async function handleSelectBackground(bgId) {
-	selectedBackground.value = bgId
-
-	if (effectType.value === 'replace' && props.videoTrack) {
-		try {
-			const newTrack = await startEffect(props.videoTrack)
-			emit('track-updated', newTrack)
-			$notify.success('背景已更换')
-		} catch (err) {
-			$notify.error('更换背景失败')
-		}
+	if (!previewVideo) {
+		previewVideo = document.createElement('video')
+		previewVideo.muted = true
+		previewVideo.autoplay = true
+		previewVideo.playsInline = true
+		previewVideo.style.width = '100%'
+		previewVideo.style.height = '100%'
+		previewVideo.style.objectFit = 'cover'
+		previewContainer.value.appendChild(previewVideo)
 	}
+
+	const stream = new MediaStream([track])
+	previewVideo.srcObject = stream
 }
 
-function handleUploadClick() {
-	fileInput.value?.click()
+/**
+ * 切换效果类型 (None / Blur)
+ */
+async function changeEffect(type) {
+	effectType.value = type
+	await applyEffect()
+}
+
+/**
+ * 切换背景图 (自动切到 Replace 模式)
+ */
+async function changeBackground(bgId) {
+	selectedBackground.value = bgId
+	effectType.value = 'replace'
+	await applyEffect()
+}
+
+/**
+ * 应用效果流程
+ */
+async function applyEffect() {
+	if (!props.videoTrack) {
+		$notify.warning('请先开启摄像头')
+		return
+	}
+
+	try {
+		// startEffect 内部会根据 effectType 和 selectedBackground 处理
+		// 如果 type 是 none，startEffect 仍会返回一个流（直通）
+		const newTrack = await startEffect(props.videoTrack)
+
+		// 1. 发射事件给父组件更新主画面和推流
+		emit('track-updated', newTrack)
+
+		// 2. 更新面板顶部的小预览
+		initPreview(newTrack)
+	} catch (err) {
+		console.error(err)
+		$notify.error('应用效果失败')
+	}
 }
 
 async function handleFileUpload(event) {
@@ -157,152 +184,139 @@ async function handleFileUpload(event) {
 	if (!file) return
 
 	try {
-		const customBg = await uploadCustomBackground(file)
-		selectedBackground.value = customBg.id
+		const bg = await uploadCustomBackground(file)
+		// 自动选中新上传的
+		await changeBackground(bg.id)
 		$notify.success('背景已上传')
 	} catch (err) {
 		$notify.error(err.message || '上传失败')
 	} finally {
-		fileInput.value.value = ''
+		if (fileInput.value) fileInput.value.value = ''
 	}
 }
 
-function handleDeleteBackground(bgId) {
-	// TODO: 从 customBackgrounds 中删除
-	$notify.success('已删除背景')
-}
+// 监听传入的轨道变化（例如用户切换了摄像头）
+watch(
+	() => props.videoTrack,
+	async newTrack => {
+		if (newTrack) {
+			// 如果当前开启了效果，需要重新应用到新轨道
+			if (effectType.value !== 'none') {
+				await applyEffect()
+			} else {
+				// 无效果，直接预览原轨道
+				initPreview(newTrack)
+			}
+		} else {
+			// 清空预览
+			if (previewVideo) {
+				previewVideo.srcObject = null
+			}
+		}
+	},
+	{ immediate: true },
+)
 
-// ========== 监听效果类型变化 ==========
-watch(effectType, async newType => {
-	if (newType === 'none') {
-		return
-	}
-
-	if (!props.videoTrack) {
-		$notify.warning('未检测到视频流')
-		return
-	}
-
-	try {
-		const newTrack = await startEffect(props.videoTrack)
-		emit('track-updated', newTrack)
-
-		const typeName = newType === 'blur' ? '背景模糊' : '背景替换'
-		$notify.success(`已启用${typeName}`)
-	} catch (err) {
-		$notify.error('启用效果失败')
+onUnmounted(() => {
+	if (previewVideo) {
+		previewVideo.srcObject = null
+		previewVideo = null
 	}
 })
 </script>
 
 <style scoped>
-.background-panel {
-	display: flex;
-	flex-direction: column;
-	height: 100%;
-	overflow: hidden;
+.effect-panel {
+	background-color: rgb(var(--v-theme-surface));
 }
 
-.panel-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 12px 16px;
-	background: rgb(var(--v-theme-surface-variant));
+.scroll-container::-webkit-scrollbar {
+	width: 6px;
+}
+.scroll-container::-webkit-scrollbar-thumb {
+	background-color: rgba(var(--v-theme-on-surface), 0.1);
+	border-radius: 4px;
 }
 
-.loading-wrapper {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	flex: 1;
-	padding: 32px;
+/* 预览卡片 */
+.preview-card {
+	aspect-ratio: 16/9;
+	background-color: #202124;
+}
+.preview-badge {
+	position: absolute;
+	bottom: 8px;
+	left: 8px;
+	background: rgba(0, 0, 0, 0.6);
+	color: white;
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: 10px;
+	pointer-events: none;
 }
 
-.panel-content {
-	flex: 1;
-	overflow-y: auto;
-	padding: 16px;
-}
-
-.effect-types {
-	padding: 8px 0;
-}
-
-.effect-chips {
-	gap: 8px;
-}
-
-.backgrounds-section {
-	margin-top: 16px;
-}
-
-.section-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 12px;
-}
-
-.backgrounds-grid {
+/* 效果网格 */
+.effects-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+	grid-template-columns: repeat(2, 1fr); /* 默认两列 */
 	gap: 12px;
 }
 
-.background-item {
-	position: relative;
-	cursor: pointer;
-	border-radius: 8px;
-	overflow: hidden;
-	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-	border: 2px solid transparent;
+.images-grid {
+	/* 图片根据宽度自适应，最小 80px */
+	grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
 }
 
-.background-item:hover {
-	transform: translateY(-2px);
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+/* 选项卡片样式 */
+.effect-item {
+	height: 60px;
+	flex-direction: column;
+	cursor: pointer;
+	border-color: rgba(var(--v-theme-border), 0.5);
+	transition: all 0.2s ease;
+	border-width: 2px;
+}
+
+.effect-item:hover {
+	background-color: rgba(var(--v-theme-primary), 0.05);
+}
+
+.effect-item.active {
+	border-color: rgb(var(--v-theme-primary));
+	background-color: rgba(var(--v-theme-primary), 0.05);
+	color: rgb(var(--v-theme-primary));
+}
+
+/* 背景图项 */
+.background-item {
+	aspect-ratio: 1.6; /* 缩略图比例 */
+	border-radius: 8px;
+	cursor: pointer;
+	overflow: hidden;
+	position: relative;
+	border: 2px solid transparent;
+	transition: all 0.2s;
 }
 
 .background-item.active {
 	border-color: rgb(var(--v-theme-primary));
 }
 
-.background-thumbnail {
-	width: 100%;
-	aspect-ratio: 16/9;
+.bg-image {
+	transition: transform 0.3s;
 }
 
-.background-name {
-	position: absolute;
-	bottom: 0;
-	left: 0;
-	right: 0;
-	padding: 6px 8px;
-	background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
-	color: white;
-	text-align: center;
+.background-item:hover .bg-image {
+	transform: scale(1.1);
 }
 
-.selected-overlay {
+.active-overlay {
 	position: absolute;
 	inset: 0;
+	background-color: rgba(var(--v-theme-primary), 0.4);
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(var(--v-theme-primary), 0.2);
-}
-
-.delete-btn {
-	position: absolute;
-	top: 4px;
-	right: 4px;
-	opacity: 0;
-	transition: opacity 0.2s;
-}
-
-.background-item:hover .delete-btn {
-	opacity: 1;
+	backdrop-filter: blur(1px);
 }
 </style>

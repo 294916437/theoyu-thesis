@@ -22,6 +22,8 @@ public interface RoomMessagePOMapper {
      * 分页查询房间消息
      */
     List<RoomMessagePO> selectByRoomId(@Param("roomId") Long roomId,
+                                       @Param("messageType") Integer messageType,
+                                       @Param("contentType") Integer contentType,
                                        @Param("offset") Integer offset,
                                        @Param("limit") Integer limit);
 

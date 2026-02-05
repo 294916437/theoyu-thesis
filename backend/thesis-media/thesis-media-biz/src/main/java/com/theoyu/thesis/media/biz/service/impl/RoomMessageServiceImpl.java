@@ -128,9 +128,9 @@ public class RoomMessageServiceImpl implements RoomMessageService {
         }
 
         // Redis未命中,从数据库查询
-        log.info("从数据库查询房间消息, roomId: {}", roomId);
+        log.info("从数据库查询房间的用户消息, roomId: {}", roomId);
         Integer offset = (pageNum - 1) * pageSize;
-        List<RoomMessagePO> messageList = roomMessagePOMapper.selectByRoomId(roomId, offset, pageSize);
+        List<RoomMessagePO> messageList = roomMessagePOMapper.selectByRoomId(roomId,2,null, offset, pageSize);
 
         if (messageList.isEmpty()) {
             return Collections.emptyList();

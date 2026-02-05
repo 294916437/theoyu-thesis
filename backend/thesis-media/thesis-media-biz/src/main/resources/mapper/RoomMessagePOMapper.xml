@@ -143,6 +143,12 @@
     SELECT <include refid="Base_Column_List"/>
     FROM t_room_message
     WHERE room_id = #{roomId}
+    <if test="messageType != null">
+      AND message_type = #{messageType,jdbcType=TINYINT}
+    </if>
+    <if test="contentType != null">
+      AND content_type = #{contentType,jdbcType=TINYINT}
+    </if>
     ORDER BY id
     LIMIT #{offset}, #{limit}
   </select>

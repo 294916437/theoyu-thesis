@@ -625,6 +625,7 @@ export function useMedia() {
 			// 9. 监听事件
 			setupSocketListeners()
 			// 10. 监听特效相关状态变化
+			// 10. 监听特效相关状态变化 - 增强版
 			watch([effectType, selectedBackground], async ([newType, newBg], [oldType, oldBg]) => {
 				if (!localStream.value) return
 
@@ -661,15 +662,15 @@ export function useMedia() {
 						return
 					}
 
-					// 情况3: 效果类型变化（blur ↔ replace 或首次启用）
+					// 情况3: 效果类型变化（首次启用或其他情况）
 					if (newType !== oldType || (newType === 'replace' && !oldBg)) {
 						console.log(`[BackgroundEffect] Switching effect: ${oldType} → ${newType}`)
 
-						// 完全停止旧效果（包括清理 WASM 状态）
+						// 如果已有效果在运行，先停止
 						if (effectAnimationId || inferenceTimeoutId) {
 							await stopBackgroundEffect()
 
-							// 等待足够时间确保 WASM 状态清理完成
+							// 等待清理完成
 							await new Promise(resolve => setTimeout(resolve, 200))
 						}
 
@@ -678,9 +679,35 @@ export function useMedia() {
 
 						console.log(`[BackgroundEffect] Effect switched to ${newType}`)
 					}
+					// 检测 blur <-> replace 直接切换
+					if ((oldType === 'blur' && newType === 'replace') || (oldType === 'replace' && newType === 'blur')) {
+						// 步骤1: 完全停止当前效果
+						await stopBackgroundEffect()
+
+						// 步骤2: 恢复到原始摄像头（短暂黑屏）
+						const stream = await navigator.mediaDevices.getUserMedia({
+							video: {
+								width: { ideal: 1280, max: 1920 },
+								height: { ideal: 720, max: 1080 },
+								frameRate: { ideal: 30, max: 60 },
+							},
+						})
+
+						const cleanVideoTrack = stream.getVideoTracks()[0]
+						await replaceVideoTrack(cleanVideoTrack)
+
+						// 步骤3: 等待足够时间确保轨道完全切换
+						await new Promise(resolve => setTimeout(resolve, 300))
+
+						// 步骤4: 应用新效果
+						await applyBackgroundEffect()
+
+						return
+					}
 				} catch (error) {
 					console.error('[BackgroundEffect] Failed to switch effect:', error)
 					$notify.error(`切换效果失败: ${error.message}`)
+
 					// 失败时尝试恢复到无效果状态
 					effectType.value = 'none'
 				}

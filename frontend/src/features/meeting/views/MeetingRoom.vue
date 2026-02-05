@@ -38,6 +38,29 @@
 					</template>
 					<span class="font-weight-medium">{{ participantCount }} 人</span>
 				</v-chip>
+				<v-tooltip location="bottom">
+					<template #activator="{ props }">
+						<v-btn
+							v-bind="props"
+							icon="mdi-image-filter-hdr"
+							variant="text"
+							size="small"
+							:color="effectType !== 'none' ? 'success' : undefined"
+							class="mr-2"
+							@click="toggleBackgroundPanel"
+						>
+							<!-- 显示激活状态指示器 -->
+							<v-badge v-if="effectType !== 'none'" dot color="success" location="top end">
+								<v-icon>mdi-image-filter-hdr</v-icon>
+							</v-badge>
+							<v-icon v-else>mdi-image-filter-hdr</v-icon>
+						</v-btn>
+					</template>
+					<div>
+						<div>背景特效</div>
+						<div v-if="effectType !== 'none'" class="text-caption">当前: {{ effectType === 'blur' ? '背景虚化' : '虚拟背景' }}</div>
+					</div>
+				</v-tooltip>
 
 				<v-btn icon="mdi-cog" variant="text" size="small" @click="showSettings = true"></v-btn>
 			</v-app-bar>
@@ -508,6 +531,18 @@
 											</template>
 
 											<v-list density="compact" bg-color="surface">
+												<v-list-item @click="toggleBackgroundPanel">
+													<template #prepend>
+														<v-icon icon="mdi-image-filter-hdr" :color="effectType !== 'none' ? 'success' : undefined"></v-icon>
+													</template>
+													<v-list-item-title>背景特效</v-list-item-title>
+													<!-- 显示当前效果状态 -->
+													<template v-if="effectType !== 'none'" #append>
+														<v-chip size="x-small" color="success" variant="flat">
+															{{ effectType === 'blur' ? '虚化' : '替换' }}
+														</v-chip>
+													</template>
+												</v-list-item>
 												<v-list-item @click="toggleVideoLayout">
 													<template #prepend>
 														<v-icon icon="mdi-view-grid"></v-icon>
@@ -1447,6 +1482,10 @@ const toggleSidebarChat = () => {
 	sidebarTab.value = 'chat'
 	unreadMessages.value = 0
 }
+const toggleBackgroundPanel = () => {
+	showSidebar.value = true
+	sidebarTab.value = 'background'
+}
 
 const toggleVideoLayout = () => {
 	const layouts = ['grid', 'spotlight', 'sidebar']
@@ -1684,7 +1723,7 @@ useEventListener('beforeunload', e => {
 	flex-shrink: 0;
 	align-items: center;
 	justify-content: space-between;
-	padding: 12px 16px;
+	padding: 6px 8px;
 	background: rgb(var(--v-theme-surface-variant));
 }
 

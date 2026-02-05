@@ -1,7 +1,14 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { socketClient } from '@/utils/SocketClient'
 import { MediasoupClient } from '@/utils/MediasoupClient'
+import init, { MeetProcessor, init_panic_hook } from '@/libs/meet-effect/meet_background_effect.js'
+import wasmUrl from '@/libs/meet-effect/meet_background_effect_bg.wasm?url'
 import { $notify } from '@/plugins/notification'
+
+const MASK_WIDTH = 256
+const MASK_HEIGHT = 144
+const VIDEO_WIDTH = 640
+const VIDEO_HEIGHT = 480
 
 export function useMedia() {
 	// 状态管理
@@ -21,6 +28,45 @@ export function useMedia() {
 		send: { score: 10, quality: 'excellent' },
 		recv: { score: 10, quality: 'excellent' },
 	})
+	// ========== 背景特效状态 ==========
+	const effectType = ref('none') // 'none' | 'blur' | 'replace'
+	const selectedBackground = ref(null)
+	const customBackgrounds = ref([])
+	const effectLoading = ref(false)
+	const effectError = ref(null)
+	// 预设背景列表
+	const presetBackgrounds = ref([
+		{
+			id: 'office-modern',
+			name: '现代办公室',
+			thumbnail: '/backgrounds/stylish_home_office.jpg',
+			url: '/backgrounds/stylish_home_office.jpg',
+		},
+		{
+			id: 'office-break',
+			name: '咖啡休息室',
+			thumbnail: '/backgrounds/office_break_room.jpg',
+			url: '/backgrounds/office_break_room.jpg',
+		},
+	])
+
+	const allBackgrounds = computed(() => [...presetBackgrounds.value, ...customBackgrounds.value])
+
+	// WASM 和推理相关
+	let wasmModule = null
+	let effectProcessor = null
+	let onnxSession = null
+	let effectCanvas = null
+	let effectCtx = null
+	let maskCanvas = null
+	let maskCtx = null
+	let effectStream = null
+	let currentMask = null
+	let isInferring = false
+	let effectAnimationId = null
+	let inferenceTimeoutId = null
+	let sourceVideoElement = null
+	const float32Data = new Float32Array(MASK_WIDTH * MASK_HEIGHT * 3)
 
 	// Mediasoup 客户端实例
 	let mediasoupClient = null
@@ -32,6 +78,391 @@ export function useMedia() {
 		screen: null,
 	})
 	let statsIntervalId = null
+
+	/**
+	 * 初始化背景特效资源
+	 */
+	async function initBackgroundEffect() {
+		if (effectProcessor && onnxSession) {
+			console.log('[BackgroundEffect] Resources already initialized')
+			return true
+		}
+
+		try {
+			effectLoading.value = true
+
+			// 检查 ONNX Runtime
+			if (typeof ort === 'undefined') {
+				throw new Error('ONNX Runtime 未加载，请检查 CDN 连接')
+			}
+
+			// 1. 初始化 WASM
+			console.log('[BackgroundEffect] Initializing WASM...')
+			wasmModule = await init({ module_or_path: wasmUrl })
+			init_panic_hook()
+			effectProcessor = MeetProcessor.new(VIDEO_WIDTH, VIDEO_HEIGHT)
+			console.log('[BackgroundEffect] WASM initialized successfully')
+
+			// 2. 配置 ONNX Runtime WASM 路径
+			ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/'
+			ort.env.wasm.numThreads = 2
+
+			// 3. 加载 ONNX 模型
+			console.log('[BackgroundEffect] Loading ONNX model...')
+			onnxSession = await ort.InferenceSession.create('/models/model_float32_opt.onnx', {
+				executionProviders: ['wasm'],
+				graphOptimizationLevel: 'all',
+			})
+			console.log('[BackgroundEffect] ONNX session created')
+
+			// 4. 创建 Canvas
+			maskCanvas = new OffscreenCanvas(MASK_WIDTH, MASK_HEIGHT)
+			maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true, alpha: false })
+
+			effectCanvas = document.createElement('canvas')
+			effectCanvas.width = VIDEO_WIDTH
+			effectCanvas.height = VIDEO_HEIGHT
+			effectCtx = effectCanvas.getContext('2d', { willReadFrequently: true, alpha: false })
+
+			console.log('[BackgroundEffect] Canvas initialized')
+			return true
+		} catch (error) {
+			console.error('[BackgroundEffect] Initialization failed:', error)
+			effectError.value = `初始化失败: ${error.message}`
+			$notify.error(effectError.value)
+			throw error
+		} finally {
+			effectLoading.value = false
+		}
+	}
+	/**
+	 * 推理循环 - 生成分割 mask
+	 */
+	async function inferenceLoop(sourceVideo) {
+		// 检查是否应该停止
+		if (!sourceVideo || effectType.value === 'none' || !sourceVideoElement) {
+			console.log('[BackgroundEffect] Inference loop stopped')
+			return
+		}
+
+		if (isInferring) {
+			inferenceTimeoutId = setTimeout(() => inferenceLoop(sourceVideo), 30)
+			return
+		}
+
+		try {
+			isInferring = true
+
+			// 检查视频是否准备好
+			if (sourceVideo.readyState < 2) {
+				isInferring = false
+				inferenceTimeoutId = setTimeout(() => inferenceLoop(sourceVideo), 30)
+				return
+			}
+
+			// 绘制到小尺寸 canvas
+			maskCtx.drawImage(sourceVideo, 0, 0, MASK_WIDTH, MASK_HEIGHT)
+			const imgData = maskCtx.getImageData(0, 0, MASK_WIDTH, MASK_HEIGHT).data
+
+			// 归一化
+			for (let i = 0, j = 0; i < imgData.length; i += 4, j += 3) {
+				float32Data[j] = imgData[i] / 255
+				float32Data[j + 1] = imgData[i + 1] / 255
+				float32Data[j + 2] = imgData[i + 2] / 255
+			}
+
+			// 推理
+			const results = await onnxSession.run({
+				'input_1:0': new ort.Tensor('float32', float32Data, [1, MASK_HEIGHT, MASK_WIDTH, 3]),
+			})
+
+			const maskData = results[Object.keys(results)[0]].data
+			const mask = new Float32Array(MASK_WIDTH * MASK_HEIGHT)
+
+			// Sigmoid 处理
+			for (let i = 0; i < MASK_WIDTH * MASK_HEIGHT; i++) {
+				const bg = maskData[i * 2]
+				const fg = maskData[i * 2 + 1]
+				mask[i] = 1.0 / (1.0 + Math.exp(bg - fg))
+			}
+
+			currentMask = mask
+		} catch (error) {
+			console.error('[BackgroundEffect] Inference error:', error)
+		} finally {
+			isInferring = false
+
+			// 继续下一次推理
+			if (sourceVideoElement && effectType.value !== 'none') {
+				inferenceTimeoutId = setTimeout(() => inferenceLoop(sourceVideo), 30)
+			}
+		}
+	}
+
+	/**
+	 * 渲染循环 - 应用特效
+	 */
+	function renderLoop(sourceVideo) {
+		// 检查是否应该停止
+		if (!sourceVideo || effectType.value === 'none' || !sourceVideoElement) {
+			console.log('[BackgroundEffect] Render loop stopped')
+			return
+		}
+
+		try {
+			// 检查视频是否准备好
+			if (sourceVideo.readyState < 2) {
+				effectAnimationId = requestAnimationFrame(() => renderLoop(sourceVideo))
+				return
+			}
+
+			// 绘制原始帧
+			effectCtx.drawImage(sourceVideo, 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
+
+			if (currentMask && effectProcessor && wasmModule) {
+				const frameData = effectCtx.getImageData(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
+
+				// 写入输入帧
+				const inputPtr = effectProcessor.input_ptr()
+				const inputBuffer = new Uint8Array(wasmModule.memory.buffer, inputPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
+				inputBuffer.set(frameData.data)
+
+				// 写入 mask
+				const maskPtr = effectProcessor.mask_ptr()
+				const maskBuffer = new Float32Array(wasmModule.memory.buffer, maskPtr, MASK_WIDTH * MASK_HEIGHT)
+				maskBuffer.set(currentMask)
+
+				// 处理
+				effectProcessor.prepare_mask()
+				if (effectType.value === 'blur') {
+					effectProcessor.render_blur()
+				} else if (effectType.value === 'replace') {
+					effectProcessor.render_replace()
+				}
+
+				// 读取输出
+				const outputPtr = effectProcessor.output_ptr()
+				const outputBuffer = new Uint8ClampedArray(wasmModule.memory.buffer, outputPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
+				effectCtx.putImageData(new ImageData(outputBuffer.slice(), VIDEO_WIDTH, VIDEO_HEIGHT), 0, 0)
+			}
+		} catch (error) {
+			console.error('[BackgroundEffect] Render error:', error)
+		}
+
+		// 继续下一帧
+		if (sourceVideoElement && effectType.value !== 'none') {
+			effectAnimationId = requestAnimationFrame(() => renderLoop(sourceVideo))
+		}
+	}
+	/**
+	 * 应用背景特效到视频流
+	 */
+	async function applyBackgroundEffect() {
+		if (!localStream.value || effectType.value === 'none') return
+
+		try {
+			// 初始化特效资源
+			await initBackgroundEffect()
+
+			// 清理旧的视频元素
+			if (sourceVideoElement) {
+				sourceVideoElement.srcObject?.getTracks().forEach(t => t.stop())
+				sourceVideoElement.srcObject = null
+				sourceVideoElement = null
+			}
+
+			// 获取原始视频轨道
+			const currentVideoTrack = localStream.value.getVideoTracks()[0]
+			if (!currentVideoTrack) {
+				console.warn('[BackgroundEffect] No video track found')
+				return
+			}
+
+			// 创建临时 video 元素
+			sourceVideoElement = document.createElement('video')
+			sourceVideoElement.autoplay = true
+			sourceVideoElement.muted = true
+			sourceVideoElement.playsInline = true
+			sourceVideoElement.width = VIDEO_WIDTH
+			sourceVideoElement.height = VIDEO_HEIGHT
+			// 使用 clone 的轨道（用于推理，不影响原始轨道）
+			sourceVideoElement.srcObject = new MediaStream([currentVideoTrack.clone()])
+
+			await new Promise((resolve, reject) => {
+				sourceVideoElement.onloadedmetadata = () => {
+					sourceVideoElement.play().then(resolve).catch(reject)
+				}
+				sourceVideoElement.onerror = reject
+				// 设置超时
+				setTimeout(() => reject(new Error('Video load timeout')), 5000)
+			})
+
+			console.log('[BackgroundEffect] Source video ready')
+
+			// 如果是虚拟背景，预加载图片
+			if (effectType.value === 'replace' && selectedBackground.value) {
+				await loadBackgroundImage(selectedBackground.value)
+			}
+
+			// 启动推理和渲染循环
+			inferenceLoop(sourceVideoElement)
+			renderLoop(sourceVideoElement)
+
+			// 捕获处理后的流
+			effectStream = effectCanvas.captureStream(30)
+			const newTrack = effectStream.getVideoTracks()[0]
+
+			// 替换 producer 的轨道
+			await replaceVideoTrack(newTrack)
+
+			console.log('[BackgroundEffect] Effect applied successfully')
+		} catch (error) {
+			console.error('[BackgroundEffect] Apply failed:', error)
+
+			// 清理资源
+			stopBackgroundEffect()
+
+			$notify.error(`应用背景特效失败: ${error.message}`)
+			throw error
+		}
+	}
+
+	/**
+	 * 停止背景特效
+	 */
+	// filepath: [useMedia.js](http://_vscodecontentref_/8)
+
+	/**
+	 * 停止背景特效
+	 */
+	function stopBackgroundEffect() {
+		// 停止循环
+		if (effectAnimationId) {
+			cancelAnimationFrame(effectAnimationId)
+			effectAnimationId = null
+		}
+
+		if (inferenceTimeoutId) {
+			clearTimeout(inferenceTimeoutId)
+			inferenceTimeoutId = null
+		}
+
+		// 清理视频元素
+		if (sourceVideoElement) {
+			sourceVideoElement.srcObject?.getTracks().forEach(t => t.stop())
+			sourceVideoElement.srcObject = null
+			sourceVideoElement.pause()
+			sourceVideoElement = null
+		}
+
+		// 清理效果流
+		if (effectStream) {
+			effectStream.getTracks().forEach(track => track.stop())
+			effectStream = null
+		}
+
+		// 不销毁 Canvas，只清空内容（保留引用）
+		if (effectCanvas) {
+			effectCtx.clearRect(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
+		}
+
+		if (maskCanvas) {
+			maskCtx.clearRect(0, 0, MASK_WIDTH, MASK_HEIGHT)
+		}
+
+		currentMask = null
+		isInferring = false
+
+		console.log('[BackgroundEffect] Stopped and cleaned up')
+	}
+
+	/**
+	 * 替换视频轨道（用于特效切换）
+	 */
+	async function replaceVideoTrack(newTrack) {
+		const videoProducer = mediasoupClient.producers.get('video')
+		if (!videoProducer) {
+			console.warn('[BackgroundEffect] No video producer found')
+			return
+		}
+
+		try {
+			// 替换 producer 轨道
+			await videoProducer.replaceTrack({ track: newTrack })
+
+			// 更新本地流时，清理所有旧的视频轨道
+			const oldTracks = localStream.value.getVideoTracks()
+			oldTracks.forEach(track => {
+				track.stop()
+				localStream.value.removeTrack(track)
+			})
+
+			localStream.value.addTrack(newTrack)
+
+			console.log('[BackgroundEffect] Video track replaced:', newTrack.id)
+		} catch (error) {
+			console.error('[BackgroundEffect] Failed to replace track:', error)
+			throw error
+		}
+	}
+
+	/**
+	 * 加载背景图片到 WASM 内存
+	 */
+	async function loadBackgroundImage(bgId) {
+		const bg = allBackgrounds.value.find(b => b.id === bgId)
+		if (!bg) return
+
+		return new Promise((resolve, reject) => {
+			const img = new Image()
+			img.crossOrigin = 'Anonymous'
+			img.src = bg.url
+			img.onload = () => {
+				const canvas = new OffscreenCanvas(VIDEO_WIDTH, VIDEO_HEIGHT)
+				const ctx = canvas.getContext('2d')
+
+				// Cover 模式
+				const scale = Math.max(VIDEO_WIDTH / img.width, VIDEO_HEIGHT / img.height)
+				const x = (VIDEO_WIDTH - img.width * scale) / 2
+				const y = (VIDEO_HEIGHT - img.height * scale) / 2
+				ctx.drawImage(img, x, y, img.width * scale, img.height * scale)
+
+				const imageData = ctx.getImageData(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
+
+				// 写入 WASM 背景缓冲区
+				if (effectProcessor && wasmModule) {
+					const bgPtr = effectProcessor.background_ptr()
+					const bgBuffer = new Uint8Array(wasmModule.memory.buffer, bgPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
+					bgBuffer.set(imageData.data)
+				}
+
+				resolve()
+			}
+			img.onerror = reject
+		})
+	}
+
+	/**
+	 * 上传自定义背景
+	 */
+	async function uploadCustomBackground(file) {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader()
+			reader.onload = e => {
+				const id = 'custom-' + Date.now()
+				const newBg = {
+					id,
+					name: file.name,
+					thumbnail: e.target.result,
+					url: e.target.result,
+				}
+				customBackgrounds.value.push(newBg)
+				resolve(newBg)
+			}
+			reader.onerror = reject
+			reader.readAsDataURL(file)
+		})
+	}
 
 	// 获取远程参与者列表
 	const remoteParticipants = computed(() => participants.value.filter(p => p.peerId !== peerId.value))
@@ -164,6 +595,56 @@ export function useMedia() {
 			}
 			// 9. 监听事件
 			setupSocketListeners()
+			/**
+			 * 监听背景特效切换
+			 */
+			watch([effectType, selectedBackground], async ([newType, newBg], [oldType, oldBg]) => {
+				if (localStream.value) {
+					if (newType === 'none') {
+						// 停止特效
+						stopBackgroundEffect()
+
+						// 重新获取摄像头轨道
+						console.log('[BackgroundEffect] Restoring original camera')
+						try {
+							const stream = await navigator.mediaDevices.getUserMedia({
+								video: {
+									width: { ideal: 1280, max: 1920 },
+									height: { ideal: 720, max: 1080 },
+									frameRate: { ideal: 30, max: 60 },
+								},
+							})
+
+							const newVideoTrack = stream.getVideoTracks()[0]
+							await replaceVideoTrack(newVideoTrack)
+
+							console.log('[BackgroundEffect] Original camera restored')
+						} catch (error) {
+							console.error('[BackgroundEffect] Failed to restore camera:', error)
+							$notify.error('恢复摄像头失败')
+						}
+					} else {
+						// 检查是否需要重新加载背景图片
+						const isBackgroundChanged = newType === 'replace' && newBg !== oldBg
+						const isEffectTypeChanged = newType !== oldType
+
+						// 如果背景图片或效果类型发生变化，重新应用特效
+						if (isBackgroundChanged || isEffectTypeChanged) {
+							console.log('[BackgroundEffect] Effect or background changed, reapplying...')
+
+							// 先停止旧的特效（但不销毁 Canvas）
+							if (effectAnimationId || inferenceTimeoutId) {
+								stopBackgroundEffect()
+								// 等待清理完成
+								await new Promise(resolve => setTimeout(resolve, 100))
+							}
+
+							// 应用新特效
+							await applyBackgroundEffect()
+						}
+					}
+				}
+			})
 
 			// 10. 订阅现有参与者的媒体流
 			for (const peer of joinResponse.peers) {
@@ -174,16 +655,11 @@ export function useMedia() {
 				}
 			}
 
-			// 11. 启动统计信息收集
-			// startStatsCollection()
-
 			connectionState.value = 'connected'
 		} catch (error) {
 			console.error('Failed to join meeting', error)
 			connectionState.value = 'failed'
 			$notify.error(`加入会议失败: ${error.message}`)
-			// 关闭统计数据收集
-			// stopStatsCollection()
 			throw error
 		}
 	}
@@ -978,9 +1454,34 @@ export function useMedia() {
 	async function leaveMeeting() {
 		try {
 			console.log('Leaving meeting', roomId.value)
+			// 1. 停止背景特效
+			if (effectCanvas) {
+				effectCtx = null
+				effectCanvas.width = 0
+				effectCanvas.height = 0
+				effectCanvas = null
+			}
+			if (maskCanvas) {
+				maskCtx = null
+				maskCanvas = null
+			}
+			// 清理 ONNX Session
+			if (onnxSession) {
+				try {
+					onnxSession.release()
+					onnxSession = null
+					console.log('[BackgroundEffect] ONNX session released')
+				} catch (error) {
+					console.error('[BackgroundEffect] Failed to release ONNX session:', error)
+				}
+			}
 
-			// 1. 停止统计信息收集
-			stopStatsCollection()
+			// 清理 WASM
+			if (effectProcessor) {
+				effectProcessor.free()
+				effectProcessor = null
+			}
+			wasmModule = null
 
 			// 2. 通知服务器离开
 			if (socketClient.connected.value && roomId.value) {
@@ -1031,11 +1532,6 @@ export function useMedia() {
 			connectionQuality.value = {
 				send: { score: 10, quality: 'excellent' },
 				recv: { score: 10, quality: 'excellent' },
-			}
-			stats.value = {
-				audio: null,
-				video: null,
-				screen: null,
 			}
 
 			console.log('Left meeting successfully')
@@ -1100,44 +1596,6 @@ export function useMedia() {
 			$notify.error('更换视频设备失败')
 		}
 	}
-	// 处理背景效果更新的视频轨道
-	async function handleBackgroundTrackUpdated(newTrack) {
-		if (!newTrack) return
-
-		try {
-			// 1. 停止原 video producer
-			const videoProducer = mediasoupClient.producers.get('video')
-			if (videoProducer) {
-				await socketClient.emit('closeProducer', {
-					roomId: roomId.value,
-					producerId: videoProducer.id,
-				})
-				videoProducer.close()
-				mediasoupClient.producers.delete('video')
-			}
-
-			// 2. 创建新的 producer（使用处理后的轨道）
-			const newProducer = await mediasoupClient.produce(newTrack, {
-				kind: 'video',
-				appData: { source: 'camera', hasEffect: true },
-			})
-
-			mediasoupClient.producers.set('video', newProducer)
-
-			// 3. 更新本地流
-			const oldTracks = localStream.value.getVideoTracks()
-			oldTracks.forEach(track => {
-				track.stop()
-				localStream.value.removeTrack(track)
-			})
-			localStream.value.addTrack(newTrack)
-
-			console.log('Background effect track updated')
-		} catch (error) {
-			console.error('Failed to update background track:', error)
-			$notify.error('更新视频失败')
-		}
-	}
 
 	return {
 		// 状态
@@ -1157,6 +1615,11 @@ export function useMedia() {
 		connectionQuality,
 		stats,
 		hasScreenShare,
+		effectType,
+		selectedBackground,
+		allBackgrounds,
+		effectLoading,
+		effectError,
 
 		// 方法
 		joinMeeting,
@@ -1171,6 +1634,8 @@ export function useMedia() {
 		changeAudioDevice,
 		changeVideoDevice,
 		getScreenSharingParticipant,
-		handleBackgroundTrackUpdated,
+		applyBackgroundEffect,
+		stopBackgroundEffect,
+		uploadCustomBackground,
 	}
 }

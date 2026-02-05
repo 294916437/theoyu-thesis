@@ -305,7 +305,90 @@
 								</v-tabs-window-item>
 								<!-- 背景效果面板 -->
 								<v-tabs-window-item value="background" class="fill-height">
-									<BackgroundEffectPanel :video-track="localVideoTrack" @track-updated="handleBackgroundTrackUpdated" />
+									<div class="effect-panel">
+										<!-- 顶部标题 -->
+										<div class="effect-panel__header">
+											<span class="text-subtitle-1 font-weight-medium">背景与特效</span>
+											<v-chip v-if="effectLoading" size="x-small" color="info" variant="flat">
+												<v-progress-circular indeterminate size="12" width="2" class="mr-1"></v-progress-circular>
+												加载资源中
+											</v-chip>
+										</div>
+
+										<!-- 滚动区域 -->
+										<div class="effect-panel__content">
+											<!-- 错误提示 -->
+											<v-alert v-if="effectError" type="error" variant="tonal" density="compact" closable class="mb-4" @click:close="effectError = null">
+												{{ effectError }}
+											</v-alert>
+
+											<!-- 效果选择 -->
+											<div class="mb-5">
+												<div class="effect-section-title">基础设置</div>
+												<div class="effects-grid">
+													<v-card
+														v-ripple
+														class="effect-card"
+														:class="{ 'effect-card--active': effectType === 'none' }"
+														variant="outlined"
+														@click="changeEffect('none')"
+													>
+														<v-icon icon="mdi-block-helper" size="20" class="mb-1"></v-icon>
+														<span class="text-caption">无效果</span>
+													</v-card>
+
+													<v-card
+														v-ripple
+														class="effect-card"
+														:class="{ 'effect-card--active': effectType === 'blur' }"
+														variant="outlined"
+														@click="changeEffect('blur')"
+													>
+														<v-icon icon="mdi-blur" size="20" class="mb-1"></v-icon>
+														<span class="text-caption">背景虚化</span>
+													</v-card>
+												</div>
+											</div>
+
+											<!-- 虚拟背景选择 -->
+											<div>
+												<div class="d-flex align-center justify-space-between mb-2">
+													<span class="effect-section-title">虚拟背景</span>
+													<v-btn prepend-icon="mdi-upload" variant="text" density="compact" size="small" color="primary" @click="bgFileInput?.click()">
+														自定义
+													</v-btn>
+												</div>
+
+												<div class="backgrounds-grid">
+													<v-card
+														v-for="bg in allBackgrounds"
+														:key="bg.id"
+														v-ripple
+														elevation="0"
+														class="background-card"
+														:class="{ 'background-card--active': effectType === 'replace' && selectedBackground === bg.id }"
+														@click="changeBackground(bg.id)"
+													>
+														<v-img :src="bg.thumbnail" cover aspect-ratio="1.6">
+															<template #placeholder>
+																<div class="d-flex align-center justify-center fill-height bg-grey-lighten-4">
+																	<v-icon icon="mdi-image-outline" color="grey"></v-icon>
+																</div>
+															</template>
+
+															<!-- 选中遮罩 -->
+															<div v-if="effectType === 'replace' && selectedBackground === bg.id" class="background-card__overlay">
+																<v-icon icon="mdi-check-circle" color="white" size="24"></v-icon>
+															</div>
+														</v-img>
+													</v-card>
+												</div>
+											</div>
+										</div>
+
+										<!-- 隐藏的文件输入 -->
+										<input ref="bgFileInput" type="file" accept="image/*" hidden @change="handleBgFileUpload" />
+									</div>
 								</v-tabs-window-item>
 							</v-tabs-window>
 						</div>
@@ -687,7 +770,6 @@ import {
 } from '@vueuse/core'
 import VideoGrid from '../components/VideoGrid.vue'
 import ParticipantsList from '../components/ParticipantsList.vue'
-import BackgroundEffectPanel from '../components/BackgroundEffectPanel.vue'
 import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
 import FilePreview from '@/components/common/FilePreview.vue'
 import { useFilePreview } from '@/composables/useFilePreview'
@@ -760,6 +842,11 @@ const {
 	connectionState,
 	connectionQuality,
 	stats,
+	effectType,
+	selectedBackground,
+	allBackgrounds,
+	effectLoading,
+	effectError,
 	joinMeeting,
 	leaveMeeting,
 	toggleAudio,
@@ -768,8 +855,34 @@ const {
 	stopScreenShare,
 	changeAudioDevice,
 	changeVideoDevice,
-	handleBackgroundTrackUpdated,
+	uploadCustomBackground,
 } = useMedia()
+// 处理背景替换文件上传处理
+const bgFileInput = ref(null)
+const handleBgFileUpload = async event => {
+	const file = event.target.files?.[0]
+	if (!file) return
+
+	try {
+		const bg = await uploadCustomBackground(file)
+		selectedBackground.value = bg.id
+		effectType.value = 'replace'
+		$notify.success('背景已添加')
+	} catch (error) {
+		$notify.error('上传失败')
+	} finally {
+		if (bgFileInput.value) bgFileInput.value.value = ''
+	}
+}
+
+const changeEffect = async type => {
+	effectType.value = type
+}
+
+const changeBackground = async bgId => {
+	selectedBackground.value = bgId
+	effectType.value = 'replace'
+}
 // 本地视频轨道（从 localStream 提取）
 const localVideoTrack = computed(() => {
 	return localStream.value?.getVideoTracks()[0] || null
@@ -1901,6 +2014,197 @@ useEventListener('beforeunload', e => {
 
 .send-btn {
 	flex-shrink: 0;
+}
+/* 背景特效面板样式 */
+/* ==================== 背景特效面板 ==================== */
+
+/* 面板容器 */
+.effect-panel {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	background: rgb(var(--v-theme-surface));
+	border-left: 1px solid rgba(var(--v-theme-border), 0.5);
+}
+
+/* 面板头部 */
+.effect-panel__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid rgba(var(--v-theme-border), 0.3);
+	flex-shrink: 0;
+}
+
+/* 面板内容区 */
+.effect-panel__content {
+	flex: 1;
+	overflow-y: auto;
+	padding: 16px;
+	min-height: 0;
+}
+
+/* 自定义滚动条 */
+.effect-panel__content::-webkit-scrollbar {
+	width: 6px;
+}
+
+.effect-panel__content::-webkit-scrollbar-track {
+	background: rgba(var(--v-theme-surface-variant), 0.3);
+	border-radius: 3px;
+}
+
+.effect-panel__content::-webkit-scrollbar-thumb {
+	background: rgba(var(--v-theme-primary), 0.3);
+	border-radius: 3px;
+	transition: background 0.2s;
+}
+
+.effect-panel__content::-webkit-scrollbar-thumb:hover {
+	background: rgba(var(--v-theme-primary), 0.5);
+}
+
+/* 分区标题 */
+.effect-section-title {
+	font-size: 0.75rem;
+	font-weight: 700;
+	color: rgb(var(--v-theme-on-surface-variant));
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	margin-bottom: 8px;
+}
+
+/* ==================== 效果选择网格 ==================== */
+
+.effects-grid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 12px;
+}
+
+/* 效果卡片 */
+.effect-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 16px 12px;
+	min-height: 80px;
+	cursor: pointer;
+	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+	border-width: 2px;
+	border-style: solid;
+	border-color: rgba(var(--v-theme-border), 0.5);
+}
+
+.effect-card:hover {
+	border-color: rgb(var(--v-theme-primary));
+	background: rgba(var(--v-theme-primary), 0.05);
+	transform: translateY(-2px);
+	box-shadow: 0 4px 12px rgba(var(--v-theme-primary), 0.15);
+}
+
+.effect-card--active {
+	border-color: rgb(var(--v-theme-primary));
+	background: linear-gradient(135deg, rgba(var(--v-theme-primary), 0.12) 0%, rgba(var(--v-theme-primary), 0.08) 100%);
+	color: rgb(var(--v-theme-primary));
+	font-weight: 600;
+}
+
+.effect-card--active:hover {
+	background: linear-gradient(135deg, rgba(var(--v-theme-primary), 0.18) 0%, rgba(var(--v-theme-primary), 0.12) 100%);
+}
+
+/* ==================== 背景图网格 ==================== */
+
+.backgrounds-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+	gap: 12px;
+}
+
+/* 背景卡片 */
+.background-card {
+	position: relative;
+	border-radius: 8px;
+	overflow: hidden;
+	cursor: pointer;
+	border: 2px solid transparent;
+	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.background-card:hover {
+	transform: translateY(-3px) scale(1.02);
+	box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+	border-color: rgba(var(--v-theme-primary), 0.3);
+}
+
+.background-card--active {
+	border-color: rgb(var(--v-theme-primary));
+	box-shadow: 0 4px 16px rgba(var(--v-theme-primary), 0.3);
+}
+
+.background-card--active:hover {
+	transform: translateY(-3px) scale(1.02);
+	box-shadow: 0 8px 24px rgba(var(--v-theme-primary), 0.4);
+}
+
+/* 背景选中遮罩 */
+.background-card__overlay {
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(135deg, rgba(var(--v-theme-primary), 0.4) 0%, rgba(var(--v-theme-primary), 0.25) 100%);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	backdrop-filter: blur(2px);
+	animation: overlayFadeIn 0.2s ease-out;
+}
+
+@keyframes overlayFadeIn {
+	from {
+		opacity: 0;
+		transform: scale(0.9);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+/* ==================== 响应式调整 ==================== */
+
+@media (max-width: 1280px) {
+	.backgrounds-grid {
+		grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+		gap: 10px;
+	}
+}
+
+@media (max-width: 960px) {
+	.effect-panel__header {
+		padding: 12px;
+	}
+
+	.effect-panel__content {
+		padding: 12px;
+	}
+
+	.effects-grid {
+		gap: 10px;
+	}
+
+	.effect-card {
+		min-height: 70px;
+		padding: 12px 8px;
+	}
+
+	.backgrounds-grid {
+		grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+		gap: 8px;
+	}
 }
 /* 底部控制栏动画 */
 .slide-up-enter-active,

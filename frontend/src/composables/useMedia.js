@@ -624,18 +624,26 @@ export function useMedia() {
 							$notify.error('恢复摄像头失败')
 						}
 					} else {
-						// 检查是否需要重新加载背景图片
-						const isBackgroundChanged = newType === 'replace' && newBg !== oldBg
+						// 1. 检查是否只是背景图片变化（特效类型未变）
+						const isOnlyBackgroundChanged = newType === oldType && newType === 'replace' && newBg !== oldBg
+
+						if (isOnlyBackgroundChanged) {
+							// 只需重新加载背景图片，无需重启整个特效流程
+							console.log('[BackgroundEffect] Background image changed, reloading...')
+							await loadBackgroundImage(newBg)
+							return
+						}
+
+						// 2. 特效类型变化或首次启用
 						const isEffectTypeChanged = newType !== oldType
+						const isBackgroundChanged = newType === 'replace' && newBg !== oldBg
 
-						// 如果背景图片或效果类型发生变化，重新应用特效
-						if (isBackgroundChanged || isEffectTypeChanged) {
-							console.log('[BackgroundEffect] Effect or background changed, reapplying...')
+						if (isEffectTypeChanged || isBackgroundChanged) {
+							console.log('[BackgroundEffect] Effect type or background changed, reapplying...')
 
-							// 先停止旧的特效（但不销毁 Canvas）
+							// 先停止旧特效（但不销毁 Canvas）
 							if (effectAnimationId || inferenceTimeoutId) {
 								stopBackgroundEffect()
-								// 等待清理完成
 								await new Promise(resolve => setTimeout(resolve, 100))
 							}
 

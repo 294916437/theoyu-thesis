@@ -25,9 +25,7 @@
 					<div class="user-info">
 						<v-chip size="small" color="primary" variant="flat" class="user-name-chip">
 							<template #prepend>
-								<v-icon v-if="!localAudioEnabled" size="x-small" color="error">
-									mdi-microphone-off
-								</v-icon>
+								<v-icon v-if="!localAudioEnabled" size="x-small" color="error"> mdi-microphone-off </v-icon>
 							</template>
 							我 (本地)
 						</v-chip>
@@ -60,13 +58,7 @@
 				}"
 			>
 				<!-- 视频元素 -->
-				<video
-					:ref="el => setVideoRef(el, participant.peerId)"
-					autoplay
-					playsinline
-					:muted="false"
-					class="video-element"
-				/>
+				<video :ref="el => setVideoRef(el, participant.peerId)" autoplay playsinline :muted="false" class="video-element" />
 
 				<!-- 无视频时的占位符 -->
 				<div v-if="!hasValidVideoTrack(participant)" class="video-placeholder">
@@ -86,9 +78,7 @@
 						>
 							<template #prepend>
 								<v-icon v-if="participant.isScreenSharing" size="x-small"> mdi-monitor-share </v-icon>
-								<v-icon v-else-if="!participant.audioEnabled" size="x-small" color="error">
-									mdi-microphone-off
-								</v-icon>
+								<v-icon v-else-if="!participant.audioEnabled" size="x-small" color="error"> mdi-microphone-off </v-icon>
 							</template>
 							{{ participant.name }}
 							<span v-if="participant.isScreenSharing" class="ml-1 text-caption"> - 屏幕共享 </span>
@@ -99,11 +89,7 @@
 					<div v-if="showConnectionQuality" class="connection-quality">
 						<v-tooltip location="top">
 							<template #activator="{ props: tooltipProps }">
-								<v-icon
-									v-bind="tooltipProps"
-									size="small"
-									:color="getConnectionQuality(participant).color"
-								>
+								<v-icon v-bind="tooltipProps" size="small" :color="getConnectionQuality(participant).color">
 									{{ getConnectionQuality(participant).icon }}
 								</v-icon>
 							</template>
@@ -127,9 +113,7 @@
 				<v-avatar size="64" color="primary" variant="tonal">
 					<v-icon size="48">mdi-account-multiple</v-icon>
 				</v-avatar>
-				<div class="text-h6 mt-4" style="color: rgb(var(--v-theme-on-surface))">
-					+{{ hiddenParticipantCount }} 更多
-				</div>
+				<div class="text-h6 mt-4" style="color: rgb(var(--v-theme-on-surface))">+{{ hiddenParticipantCount }} 更多</div>
 			</div>
 		</div>
 
@@ -150,19 +134,8 @@
 
 			<!-- 参与者缩略图栏 -->
 			<div class="participants-thumbnails">
-				<div
-					v-for="participant in allParticipantsWithLocal"
-					:key="participant.id"
-					class="thumbnail-tile"
-					:class="{ 'is-local': participant.isLocal }"
-				>
-					<video
-						:ref="el => setThumbnailRef(el, participant.id)"
-						autoplay
-						playsinline
-						:muted="participant.isLocal"
-						class="thumbnail-video"
-					></video>
+				<div v-for="participant in allParticipantsWithLocal" :key="participant.id" class="thumbnail-tile" :class="{ 'is-local': participant.isLocal }">
+					<video :ref="el => setThumbnailRef(el, participant.id)" autoplay playsinline :muted="participant.isLocal" class="thumbnail-video"></video>
 
 					<div v-if="!participant.videoEnabled" class="thumbnail-placeholder">
 						<v-avatar size="32" color="primary">
@@ -180,8 +153,9 @@
 </template>
 
 <script setup>
+import { useDebounceFn } from '@vueuse/core'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-
+const streamCache = ref(new Map())
 const props = defineProps({
 	participants: {
 		type: Array,
@@ -421,22 +395,46 @@ function setVideoRef(el, peerId) {
 	if (el) {
 		videoRefs.value.set(peerId, el)
 
-		// 设置 srcObject
 		const participant = formattedParticipants.value.find(p => p.peerId === peerId)
 		if (participant?.stream) {
-			el.srcObject = participant.stream
+			const newStreamId = participant.stream.id
+			const cachedStreamId = streamCache.value.get(peerId)
 
-			// 确保播放
-			nextTick(() => {
-				el.play().catch(err => {
-					console.warn(`Failed to autoplay video for ${peerId}:`, err)
+			// ========== 只在流 ID 变化时才更新 srcObject ==========
+			if (cachedStreamId !== newStreamId) {
+				console.log(`Setting stream for ${peerId}:`, {
+					oldStreamId: cachedStreamId,
+					newStreamId: newStreamId,
 				})
-			})
+
+				// 先暂停旧视频
+				if (el.srcObject && el.srcObject !== participant.stream) {
+					el.pause()
+					el.srcObject = null
+				}
+
+				// 设置新流
+				el.srcObject = participant.stream
+				streamCache.value.set(peerId, newStreamId)
+
+				// 延迟播放，确保流已准备好
+				nextTick(() => {
+					el.play().catch(err => {
+						// 忽略 AbortError，其他错误才报警
+						if (err.name !== 'AbortError') {
+							console.error(`Failed to play video for ${peerId}:`, err)
+						}
+					})
+				})
+			} else {
+				console.log(`Stream ${newStreamId} already set for ${peerId}, skipping`)
+			}
 		} else {
 			console.warn(`No stream found for peer ${peerId}`)
 		}
 	} else {
 		videoRefs.value.delete(peerId)
+		streamCache.value.delete(peerId)
 	}
 }
 
@@ -495,26 +493,38 @@ watch(
 	{ immediate: true },
 )
 
-// 监听参与者流变化
-watch(
-	() => formattedParticipants.value,
-	newParticipants => {
-		newParticipants.forEach(participant => {
-			const videoEl = videoRefs.value.get(participant.peerId)
+// 使用防抖处理流更新
+const handleParticipantsUpdate = useDebounceFn(newParticipants => {
+	newParticipants.forEach(participant => {
+		const videoEl = videoRefs.value.get(participant.peerId)
 
-			if (videoEl && participant.stream) {
-				// 只有当流改变时才更新
-				if (videoEl.srcObject?.id !== participant.stream.id) {
-					videoEl.srcObject = participant.stream
-					videoEl.play().catch(err => {
+		if (videoEl && participant.stream) {
+			const currentStreamId = videoEl.srcObject?.id
+			const newStreamId = participant.stream.id
+
+			// 只有当流 ID 改变时才更新
+			if (currentStreamId !== newStreamId) {
+				console.log(`Updating stream for ${participant.name}:`, {
+					oldStreamId: currentStreamId,
+					newStreamId: newStreamId,
+				})
+
+				videoEl.pause()
+				videoEl.srcObject = participant.stream
+				streamCache.value.set(participant.peerId, newStreamId)
+
+				videoEl.play().catch(err => {
+					if (err.name !== 'AbortError') {
 						console.error(`Play error for ${participant.name}:`, err)
-					})
-				}
+					}
+				})
 			}
-		})
-	},
-	{ deep: true },
-)
+		}
+	})
+}, 100) // 100ms 防抖
+
+// 监听参与者流变化
+watch(() => formattedParticipants.value, handleParticipantsUpdate, { deep: true })
 
 // ==================== 生命周期 ====================
 

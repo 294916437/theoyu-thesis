@@ -28,7 +28,7 @@
 		<!-- 主内容 -->
 		<template v-else-if="meetingDetail">
 			<v-row>
-				<v-col cols="12">
+				<v-col cols="12" class="pa-1">
 					<v-btn variant="text" prepend-icon="mdi-arrow-left" @click="goBack"> 返回 </v-btn>
 				</v-col>
 			</v-row>
@@ -43,9 +43,9 @@
 								<h2 class="text-h5">{{ meetingDetail.title }}</h2>
 							</div>
 
-							<v-chip :color="statusColor" variant="elevated" size="large">
-								<v-icon start size="small">{{ statusIcon }}</v-icon>
-								{{ statusText }}
+							<v-chip :color="statusColor" variant="elevated" size="medium" class="pa-1">
+								<v-icon start size="16">{{ statusIcon }}</v-icon>
+								<p class="text-subtitle-2">{{ statusText }}</p>
 							</v-chip>
 						</v-card-title>
 
@@ -85,10 +85,7 @@
 											<div class="text-caption text-grey-darken-1">主持人</div>
 											<div class="d-flex align-center mt-1">
 												<v-avatar size="24" class="mr-2">
-													<v-img
-														v-if="meetingDetail.host.avatar"
-														:src="meetingDetail.host.avatar"
-													>
+													<v-img v-if="meetingDetail.host.avatar" :src="meetingDetail.host.avatar">
 														<template #error>
 															<v-icon icon="mdi-account" size="16"></v-icon>
 														</template>
@@ -108,9 +105,7 @@
 										<v-icon color="grey-darken-1">mdi-account-multiple</v-icon>
 										<div>
 											<div class="text-caption text-grey-darken-1">参与人数</div>
-											<div class="text-body-1 font-weight-medium">
-												{{ meetingDetail.participantCount }} 人
-											</div>
+											<div class="text-body-1 font-weight-medium">{{ meetingDetail.participantCount }} 人</div>
 										</div>
 									</div>
 								</v-col>
@@ -121,30 +116,15 @@
 										<div class="flex-grow-1">
 											<div class="text-caption text-grey-darken-1 mb-2">会议设置</div>
 											<div class="d-flex flex-wrap gap-2">
-												<v-chip
-													v-if="parsedDescription.enableRecording"
-													size="small"
-													color="primary"
-													variant="tonal"
-												>
+												<v-chip v-if="parsedDescription.enableRecording" size="small" color="primary" variant="tonal">
 													<v-icon start size="16">mdi-record-circle</v-icon>
 													启用录制
 												</v-chip>
-												<v-chip
-													v-if="parsedDescription.enableWhiteboard"
-													size="small"
-													color="secondary"
-													variant="tonal"
-												>
+												<v-chip v-if="parsedDescription.enableWhiteboard" size="small" color="secondary" variant="tonal">
 													<v-icon start size="16">mdi-drawing</v-icon>
 													启用白板
 												</v-chip>
-												<v-chip
-													v-if="parsedDescription.enableScreenShare"
-													size="small"
-													color="accent"
-													variant="tonal"
-												>
+												<v-chip v-if="parsedDescription.enableScreenShare" size="small" color="accent" variant="tonal">
 													<v-icon start size="16">mdi-monitor-share</v-icon>
 													启用屏幕共享
 												</v-chip>
@@ -158,22 +138,9 @@
 							<v-card variant="outlined" class="mt-6" color="surface-variant">
 								<v-card-text class="pa-4">
 									<div class="text-subtitle-2 mb-3 text-grey-darken-2">会议链接</div>
-									<v-text-field
-										:model-value="meetingLink"
-										readonly
-										variant="outlined"
-										density="comfortable"
-										hide-details
-										bg-color="surface"
-									>
+									<v-text-field :model-value="meetingLink" readonly variant="outlined" density="comfortable" hide-details bg-color="surface">
 										<template #append-inner>
-											<v-btn
-												icon="mdi-content-copy"
-												size="small"
-												variant="text"
-												color="primary"
-												@click="copyLink"
-											></v-btn>
+											<v-btn icon="mdi-content-copy" size="small" variant="text" color="primary" @click="copyLink"></v-btn>
 										</template>
 									</v-text-field>
 								</v-card-text>
@@ -181,61 +148,26 @@
 
 							<!-- 操作按钮 -->
 							<div class="d-flex flex-wrap gap-3 mt-6 align-center">
-								<v-btn
-									v-if="canJoinMeeting"
-									color="primary"
-									size="large"
-									prepend-icon="mdi-video"
-									elevation="2"
-									@click="joinMeeting"
-								>
-									加入会议
-								</v-btn>
+								<v-btn v-if="canJoinMeeting" color="primary" size="large" prepend-icon="mdi-video" elevation="2" @click="joinMeeting"> 加入会议 </v-btn>
 
 								<v-spacer></v-spacer>
 
-								<v-btn
-									v-if="canEditMeeting"
-									variant="outlined"
-									color="primary"
-									prepend-icon="mdi-pencil"
-									@click="editMeeting"
-								>
-									编辑
-								</v-btn>
+								<v-btn v-if="canEditMeeting" variant="outlined" color="primary" prepend-icon="mdi-pencil" @click="editMeeting"> 编辑 </v-btn>
 
-								<v-btn
-									variant="outlined"
-									color="secondary"
-									prepend-icon="mdi-share-variant"
-									@click="shareMeeting"
-								>
-									分享
-								</v-btn>
+								<v-btn variant="outlined" color="secondary" prepend-icon="mdi-share-variant" @click="shareMeeting"> 分享 </v-btn>
 
 								<v-menu>
 									<template #activator="{ props }">
-										<v-btn
-											icon="mdi-dots-vertical"
-											variant="text"
-											color="grey-darken-1"
-											v-bind="props"
-										></v-btn>
+										<v-btn icon="mdi-dots-vertical" variant="text" color="grey-darken-1" v-bind="props"></v-btn>
 									</template>
 									<v-list>
-										<v-list-item
-											v-if="meetingDetail.recording?.available"
-											@click="downloadRecording"
-										>
+										<v-list-item v-if="meetingDetail.recording?.available" @click="downloadRecording">
 											<template #prepend>
 												<v-icon color="primary">mdi-download</v-icon>
 											</template>
 											<v-list-item-title>下载录像</v-list-item-title>
 										</v-list-item>
-										<v-list-item
-											v-if="meetingDetail.transcript?.available"
-											@click="exportTranscript"
-										>
+										<v-list-item v-if="meetingDetail.transcript?.available" @click="exportTranscript">
 											<template #prepend>
 												<v-icon color="primary">mdi-file-document</v-icon>
 											</template>
@@ -263,19 +195,10 @@
 						<v-divider></v-divider>
 						<v-card-text class="pa-0">
 							<v-list v-if="meetingDetail.participants.length > 0">
-								<template
-									v-for="(participant, index) in meetingDetail.participants"
-									:key="participant.userId"
-								>
+								<template v-for="(participant, index) in meetingDetail.participants" :key="participant.userId">
 									<v-list-item class="px-6 py-3">
 										<template #prepend>
-											<v-badge
-												:color="getParticipantStatusColor(participant.status)"
-												dot
-												location="bottom right"
-												offset-x="4"
-												offset-y="4"
-											>
+											<v-badge :color="getParticipantStatusColor(participant.status)" dot location="bottom right" offset-x="4" offset-y="4">
 												<v-avatar color="primary" size="40">
 													<v-img v-if="participant.avatar" :src="participant.avatar"></v-img>
 													<v-icon v-else icon="mdi-account" size="20"></v-icon>
@@ -285,37 +208,15 @@
 
 										<v-list-item-title class="d-flex align-center">
 											<span class="font-weight-medium">{{ participant.userName }}</span>
-											<v-chip
-												v-if="participant.role === 2"
-												size="x-small"
-												color="warning"
-												variant="flat"
-												class="ml-2"
-											>
-												主持人
-											</v-chip>
-											<v-chip
-												v-else-if="participant.role === 1"
-												size="x-small"
-												color="info"
-												variant="tonal"
-												class="ml-2"
-											>
-												成员
-											</v-chip>
+											<v-chip v-if="participant.role === 2" size="x-small" color="warning" variant="flat" class="ml-2"> 主持人 </v-chip>
+											<v-chip v-else-if="participant.role === 1" size="x-small" color="info" variant="tonal" class="ml-2"> 成员 </v-chip>
 										</v-list-item-title>
 
 										<v-list-item-subtitle class="d-flex align-center mt-1">
-											<v-icon v-if="participant.audioMuted" size="16" color="error" class="mr-1">
-												mdi-microphone-off
-											</v-icon>
-											<v-icon v-else size="16" color="success" class="mr-1">
-												mdi-microphone
-											</v-icon>
+											<v-icon v-if="participant.audioMuted" size="16" color="error" class="mr-1"> mdi-microphone-off </v-icon>
+											<v-icon v-else size="16" color="success" class="mr-1"> mdi-microphone </v-icon>
 
-											<v-icon v-if="participant.videoMuted" size="16" color="error" class="mr-2">
-												mdi-video-off
-											</v-icon>
+											<v-icon v-if="participant.videoMuted" size="16" color="error" class="mr-2"> mdi-video-off </v-icon>
 											<v-icon v-else size="16" color="success" class="mr-2"> mdi-video </v-icon>
 
 											<span class="text-caption text-grey-darken-1">
@@ -348,8 +249,10 @@
 					<!-- 会议统计 -->
 					<v-card elevation="2" class="mb-4">
 						<v-card-title class="pa-6">
-							<v-icon color="primary" class="mr-2">mdi-chart-box</v-icon>
-							会议统计
+							<div class="d-flex align-center">
+								<v-icon color="primary" size="32" class="mr-3">mdi-chart-box</v-icon>
+								<h2 class="text-h5">会议统计</h2>
+							</div>
 						</v-card-title>
 						<v-divider></v-divider>
 						<v-card-text class="pa-6">
@@ -358,11 +261,7 @@
 					</v-card>
 
 					<!-- 录像与记录 -->
-					<v-card
-						v-if="meetingDetail.recording?.available || meetingDetail.transcript?.available"
-						elevation="2"
-						class="mb-4"
-					>
+					<v-card v-if="meetingDetail.recording?.available || meetingDetail.transcript?.available" elevation="2" class="mb-4">
 						<v-card-title class="pa-6">
 							<v-icon color="primary" class="mr-2">mdi-file-video</v-icon>
 							录像与记录
@@ -374,21 +273,12 @@
 									<v-icon color="primary">mdi-play-circle</v-icon>
 								</template>
 								<v-list-item-title>观看录像</v-list-item-title>
-								<v-list-item-subtitle>
-									{{ formatFileSize(meetingDetail.recording.size) }} ·
-									{{ meetingDetail.recording.duration }} 分钟
-								</v-list-item-subtitle>
+								<v-list-item-subtitle> {{ formatFileSize(meetingDetail.recording.size) }} · {{ meetingDetail.recording.duration }} 分钟 </v-list-item-subtitle>
 							</v-list-item>
 
-							<v-divider
-								v-if="meetingDetail.recording?.available && meetingDetail.transcript?.available"
-							></v-divider>
+							<v-divider v-if="meetingDetail.recording?.available && meetingDetail.transcript?.available"></v-divider>
 
-							<v-list-item
-								v-if="meetingDetail.transcript?.available"
-								class="px-6"
-								@click="viewTranscript"
-							>
+							<v-list-item v-if="meetingDetail.transcript?.available" class="px-6" @click="viewTranscript">
 								<template #prepend>
 									<v-icon color="secondary">mdi-text-box</v-icon>
 								</template>

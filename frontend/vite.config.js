@@ -21,4 +21,12 @@ export default defineConfig({
 			},
 		},
 	},
+	build: {
+		// 确保 WASM 文件被正确处理
+		rollupOptions: {
+			external: [],
+		},
+		// 增加资源内联限制，防止 WASM 被内联
+		assetsInlineLimit: 0,
+	},
 })

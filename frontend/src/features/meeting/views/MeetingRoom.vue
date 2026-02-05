@@ -1000,11 +1000,28 @@ const { arrivedState } = useScroll(messageContainer, {
 })
 
 // 自动滚动到底部
-const scrollToBottom = async () => {
+const scrollToBottom = async (smooth = false) => {
+	// 等待 DOM 完全更新
 	await nextTick()
-	if (messageContainer.value) {
-		messageContainer.value.scrollTop = messageContainer.value.scrollHeight
+
+	// 再等待一帧，确保布局计算完成
+	await new Promise(resolve => requestAnimationFrame(resolve))
+
+	const container = messageContainer.value
+
+	// 强制滚动到最底部
+	const scrollOptions = {
+		top: container.scrollHeight,
+		behavior: smooth ? 'smooth' : 'auto',
 	}
+
+	container.scrollTo(scrollOptions)
+
+	console.log('[Chat] Scrolled to bottom:', {
+		scrollTop: container.scrollTop,
+		scrollHeight: container.scrollHeight,
+		clientHeight: container.clientHeight,
+	})
 }
 
 // 按日期分组消息
@@ -1155,13 +1172,28 @@ const loadMessageHistory = async (page = 1) => {
 		if (data.length > 0) {
 			// 转换消息格式
 			const transformedMessages = data.map(transformMessage)
+			// 记录加载前的滚动高度（用于加载更多时保持位置）
+			const containerEl = messageContainer.value
+			const oldScrollHeight = containerEl?.scrollHeight || 0
 
 			// 如果是第一页，直接替换
 			if (page === 1) {
 				chatMessages.value = transformedMessages
+
+				// 首次加载，等待 DOM 更新后滚动到底部
+				await nextTick()
+				await new Promise(resolve => setTimeout(resolve, 100)) // 额外等待渲染
+				scrollToBottom()
 			} else {
-				// 追加到顶部
+				// 追加到顶部（加载更多历史）
 				chatMessages.value.unshift(...transformedMessages)
+
+				// 恢复滚动位置（避免跳动）
+				await nextTick()
+				if (containerEl) {
+					const newScrollHeight = containerEl.scrollHeight
+					containerEl.scrollTop = newScrollHeight - oldScrollHeight
+				}
 			}
 
 			// 判断是否还有更多
@@ -1401,14 +1433,32 @@ watch(
 		}
 	},
 )
+// ========== 监听标签切换到聊天时自动滚动 ==========
+watch(sidebarTab, async (newTab, oldTab) => {
+	if (newTab === 'chat' && oldTab !== 'chat') {
+		// 重置未读消息
+		unreadMessages.value = 0
 
+		// 等待标签内容渲染完成
+		await nextTick()
+		await new Promise(resolve => setTimeout(resolve, 200))
+
+		// 滚动到底部
+		scrollToBottom(true)
+	}
+})
 // 监听新消息自动滚动
 watch(
 	() => chatMessages.value.length,
-	() => {
+	async (newLength, oldLength) => {
+		// 只在消息增加时触发
+		if (newLength <= oldLength) return
+		// 如果当前在聊天标签或已经在底部，自动滚动
 		if (sidebarTab.value === 'chat' || arrivedState.bottom) {
-			scrollToBottom()
+			await nextTick()
+			scrollToBottom(true)
 		} else {
+			// 否则只增加未读计数
 			unreadMessages.value++
 		}
 	},
@@ -1477,10 +1527,14 @@ const handleClearChat = () => {
 }
 
 // ==================== 会议控制 ====================
-const toggleSidebarChat = () => {
+const toggleSidebarChat = async () => {
 	showSidebar.value = true
 	sidebarTab.value = 'chat'
 	unreadMessages.value = 0
+	// 切换后滚动到底部
+	await nextTick()
+	await new Promise(resolve => setTimeout(resolve, 150)) // 等待标签切换动画
+	scrollToBottom(true) // 使用平滑滚动
 }
 const toggleBackgroundPanel = () => {
 	showSidebar.value = true

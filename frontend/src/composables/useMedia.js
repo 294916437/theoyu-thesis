@@ -234,6 +234,7 @@ export function useMedia() {
 
 				// 处理
 				effectProcessor.prepare_mask()
+				// 根据当前效果类型调用不同渲染函数
 				if (effectType.value === 'blur') {
 					effectProcessor.render_blur()
 				} else if (effectType.value === 'replace') {
@@ -247,10 +248,11 @@ export function useMedia() {
 			}
 		} catch (error) {
 			console.error('[BackgroundEffect] Render error:', error)
+			return
 		}
 
 		// 继续下一帧
-		if (sourceVideoElement && effectType.value !== 'none') {
+		if (sourceVideoElement && effectType.value !== 'none' && effectCtx) {
 			effectAnimationId = requestAnimationFrame(() => renderLoop(sourceVideo))
 		}
 	}
@@ -263,6 +265,12 @@ export function useMedia() {
 		try {
 			// 初始化特效资源
 			await initBackgroundEffect()
+			if (effectProcessor && wasmModule) {
+				// 清空背景缓冲区（重要！）
+				const bgPtr = effectProcessor.background_ptr()
+				const bgBuffer = new Uint8Array(wasmModule.memory.buffer, bgPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
+				bgBuffer.fill(0)
+			}
 
 			// 清理旧的视频元素
 			if (sourceVideoElement) {
@@ -326,17 +334,17 @@ export function useMedia() {
 			throw error
 		}
 	}
-
 	/**
 	 * 停止背景特效
 	 */
-	// filepath: [useMedia.js](http://_vscodecontentref_/8)
+	async function stopBackgroundEffect() {
+		console.log('[BackgroundEffect] Stopping effect...')
 
-	/**
-	 * 停止背景特效
-	 */
-	function stopBackgroundEffect() {
-		// 停止循环
+		// 1. 立即设置停止标志
+		const wasRunning = !!(sourceVideoElement && (effectAnimationId || inferenceTimeoutId))
+		sourceVideoElement = null // 阻止新的循环启动
+
+		// 2. 取消所有异步任务
 		if (effectAnimationId) {
 			cancelAnimationFrame(effectAnimationId)
 			effectAnimationId = null
@@ -347,7 +355,15 @@ export function useMedia() {
 			inferenceTimeoutId = null
 		}
 
-		// 清理视频元素
+		// 3. 等待当前正在执行的推理完成（最多等待100ms）
+		if (isInferring && wasRunning) {
+			const startTime = Date.now()
+			while (isInferring && Date.now() - startTime < 100) {
+				await new Promise(resolve => setTimeout(resolve, 10))
+			}
+		}
+
+		// 4. 清理视频元素
 		if (sourceVideoElement) {
 			sourceVideoElement.srcObject?.getTracks().forEach(t => t.stop())
 			sourceVideoElement.srcObject = null
@@ -355,25 +371,38 @@ export function useMedia() {
 			sourceVideoElement = null
 		}
 
-		// 清理效果流
+		// 5. 清理效果流
 		if (effectStream) {
 			effectStream.getTracks().forEach(track => track.stop())
 			effectStream = null
 		}
 
-		// 不销毁 Canvas，只清空内容（保留引用）
-		if (effectCanvas) {
+		// 6. 清空 Canvas 内容（但不销毁引用）
+		if (effectCanvas && effectCtx) {
 			effectCtx.clearRect(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
 		}
 
-		if (maskCanvas) {
+		if (maskCanvas && maskCtx) {
 			maskCtx.clearRect(0, 0, MASK_WIDTH, MASK_HEIGHT)
 		}
 
+		// 7. 清理 WASM 背景缓冲区
+		if (effectProcessor && wasmModule) {
+			try {
+				// 将背景缓冲区填充为透明黑色
+				const bgPtr = effectProcessor.background_ptr()
+				const bgBuffer = new Uint8Array(wasmModule.memory.buffer, bgPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
+				bgBuffer.fill(0) // 全部填充为 0（透明黑）
+			} catch (error) {
+				console.error('[BackgroundEffect] Failed to clear background buffer:', error)
+			}
+		}
+
+		// 8. 重置状态
 		currentMask = null
 		isInferring = false
 
-		console.log('[BackgroundEffect] Stopped and cleaned up')
+		console.log('[BackgroundEffect] Stopped successfully')
 	}
 
 	/**
@@ -595,66 +624,69 @@ export function useMedia() {
 			}
 			// 9. 监听事件
 			setupSocketListeners()
-			/**
-			 * 监听背景特效切换
-			 */
+			// 10. 监听特效相关状态变化
 			watch([effectType, selectedBackground], async ([newType, newBg], [oldType, oldBg]) => {
-				if (localStream.value) {
+				if (!localStream.value) return
+
+				try {
+					// 情况1: 关闭所有效果
 					if (newType === 'none') {
+						console.log('[BackgroundEffect] Disabling all effects')
+
 						// 停止特效
-						stopBackgroundEffect()
+						await stopBackgroundEffect()
 
-						// 重新获取摄像头轨道
-						console.log('[BackgroundEffect] Restoring original camera')
-						try {
-							const stream = await navigator.mediaDevices.getUserMedia({
-								video: {
-									width: { ideal: 1280, max: 1920 },
-									height: { ideal: 720, max: 1080 },
-									frameRate: { ideal: 30, max: 60 },
-								},
-							})
+						// 重新获取原始摄像头轨道
+						const stream = await navigator.mediaDevices.getUserMedia({
+							video: {
+								width: { ideal: 1280, max: 1920 },
+								height: { ideal: 720, max: 1080 },
+								frameRate: { ideal: 30, max: 60 },
+							},
+						})
 
-							const newVideoTrack = stream.getVideoTracks()[0]
-							await replaceVideoTrack(newVideoTrack)
+						const newVideoTrack = stream.getVideoTracks()[0]
+						await replaceVideoTrack(newVideoTrack)
 
-							console.log('[BackgroundEffect] Original camera restored')
-						} catch (error) {
-							console.error('[BackgroundEffect] Failed to restore camera:', error)
-							$notify.error('恢复摄像头失败')
-						}
-					} else {
-						// 1. 检查是否只是背景图片变化（特效类型未变）
-						const isOnlyBackgroundChanged = newType === oldType && newType === 'replace' && newBg !== oldBg
-
-						if (isOnlyBackgroundChanged) {
-							// 只需重新加载背景图片，无需重启整个特效流程
-							console.log('[BackgroundEffect] Background image changed, reloading...')
-							await loadBackgroundImage(newBg)
-							return
-						}
-
-						// 2. 特效类型变化或首次启用
-						const isEffectTypeChanged = newType !== oldType
-						const isBackgroundChanged = newType === 'replace' && newBg !== oldBg
-
-						if (isEffectTypeChanged || isBackgroundChanged) {
-							console.log('[BackgroundEffect] Effect type or background changed, reapplying...')
-
-							// 先停止旧特效（但不销毁 Canvas）
-							if (effectAnimationId || inferenceTimeoutId) {
-								stopBackgroundEffect()
-								await new Promise(resolve => setTimeout(resolve, 100))
-							}
-
-							// 应用新特效
-							await applyBackgroundEffect()
-						}
+						console.log('[BackgroundEffect] Original camera restored')
+						return
 					}
+
+					// 情况2: 仅背景图片变化（类型仍为 replace）
+					if (newType === 'replace' && oldType === 'replace' && newBg !== oldBg) {
+						console.log('[BackgroundEffect] Background image changed, reloading...')
+
+						// 只需重新加载背景图片，无需重启整个流程
+						await loadBackgroundImage(newBg)
+						return
+					}
+
+					// 情况3: 效果类型变化（blur ↔ replace 或首次启用）
+					if (newType !== oldType || (newType === 'replace' && !oldBg)) {
+						console.log(`[BackgroundEffect] Switching effect: ${oldType} → ${newType}`)
+
+						// 完全停止旧效果（包括清理 WASM 状态）
+						if (effectAnimationId || inferenceTimeoutId) {
+							await stopBackgroundEffect()
+
+							// 等待足够时间确保 WASM 状态清理完成
+							await new Promise(resolve => setTimeout(resolve, 200))
+						}
+
+						// 应用新效果
+						await applyBackgroundEffect()
+
+						console.log(`[BackgroundEffect] Effect switched to ${newType}`)
+					}
+				} catch (error) {
+					console.error('[BackgroundEffect] Failed to switch effect:', error)
+					$notify.error(`切换效果失败: ${error.message}`)
+					// 失败时尝试恢复到无效果状态
+					effectType.value = 'none'
 				}
 			})
 
-			// 10. 订阅现有参与者的媒体流
+			// 11. 订阅现有参与者的媒体流
 			for (const peer of joinResponse.peers) {
 				if (peer.producers && peer.producers.length > 0) {
 					for (const producer of peer.producers) {
@@ -1461,35 +1493,8 @@ export function useMedia() {
 	 */
 	async function leaveMeeting() {
 		try {
-			console.log('Leaving meeting', roomId.value)
-			// 1. 停止背景特效
-			if (effectCanvas) {
-				effectCtx = null
-				effectCanvas.width = 0
-				effectCanvas.height = 0
-				effectCanvas = null
-			}
-			if (maskCanvas) {
-				maskCtx = null
-				maskCanvas = null
-			}
-			// 清理 ONNX Session
-			if (onnxSession) {
-				try {
-					onnxSession.release()
-					onnxSession = null
-					console.log('[BackgroundEffect] ONNX session released')
-				} catch (error) {
-					console.error('[BackgroundEffect] Failed to release ONNX session:', error)
-				}
-			}
-
-			// 清理 WASM
-			if (effectProcessor) {
-				effectProcessor.free()
-				effectProcessor = null
-			}
-			wasmModule = null
+			// 1. 先同步停止背景特效
+			await stopBackgroundEffect()
 
 			// 2. 通知服务器离开
 			if (socketClient.connected.value && roomId.value) {
@@ -1525,7 +1530,38 @@ export function useMedia() {
 			// 6. 断开 Socket 连接
 			socketClient.disconnect()
 
-			// 7. 重置所有状态
+			// 7. 清理 WASM 和 ONNX（放到最后，确保循环已停止）
+			if (onnxSession) {
+				try {
+					await onnxSession.release()
+					onnxSession = null
+					console.log('[BackgroundEffect] ONNX session released')
+				} catch (error) {
+					console.error('[BackgroundEffect] Failed to release ONNX session:', error)
+				}
+			}
+
+			if (effectProcessor) {
+				effectProcessor.free()
+				effectProcessor = null
+			}
+
+			// 8. 销毁 Canvas（确保循环已停止）
+			if (effectCanvas) {
+				effectCtx = null
+				effectCanvas.width = 0
+				effectCanvas.height = 0
+				effectCanvas = null
+			}
+
+			if (maskCanvas) {
+				maskCtx = null
+				maskCanvas = null
+			}
+
+			wasmModule = null
+
+			// 9. 重置所有状态
 			roomId.value = null
 			peerId.value = null
 			userId.value = null

@@ -308,7 +308,6 @@
 									<div class="effect-panel">
 										<!-- 顶部标题 -->
 										<div class="effect-panel__header">
-											<span class="text-subtitle-1 font-weight-medium">背景与特效</span>
 											<v-chip v-if="effectLoading" size="x-small" color="info" variant="flat">
 												<v-progress-circular indeterminate size="12" width="2" class="mr-1"></v-progress-circular>
 												加载资源中
@@ -920,9 +919,9 @@ const networkQuality = computed(() => {
 	const type = effectiveType.value
 	const speed = downlink.value
 
-	if (type === '4g' && speed > 5) {
+	if (type === '5g' && speed > 5) {
 		return { text: '网络优秀', color: 'success', icon: 'mdi-wifi-strength-4' }
-	} else if (type === '3g' || speed > 1) {
+	} else if (type === '4g' || speed > 1) {
 		return { text: '网络良好', color: 'info', icon: 'mdi-wifi-strength-3' }
 	} else {
 		return { text: '网络较差', color: 'warning', icon: 'mdi-wifi-strength-1' }
@@ -2073,7 +2072,6 @@ useEventListener('beforeunload', e => {
 	color: rgb(var(--v-theme-on-surface-variant));
 	text-transform: uppercase;
 	letter-spacing: 0.5px;
-	margin-bottom: 8px;
 }
 
 /* ==================== 效果选择网格 ==================== */

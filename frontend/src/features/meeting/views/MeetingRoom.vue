@@ -122,6 +122,7 @@
 								<v-tabs-window-item value="participants" class="fill-height">
 									<ParticipantsList
 										:participants="mergedParticipants"
+										:is-host="isHost"
 										:current-user-id="currentUserId"
 										:meeting-no="meetingInfo.roomNo"
 										:meeting-id="meetingInfo.roomId"
@@ -129,6 +130,7 @@
 										:local-video-enabled="videoEnabled"
 										@mute-participant="handleMuteParticipant"
 										@remove-participant="handleRemoveParticipant"
+										@disable-video="handleDisableParticipantVideo"
 										@pin-participant="handlePinParticipant"
 										@spotlight-participant="handleSpotlightParticipant"
 									/>
@@ -934,8 +936,11 @@ const {
 	changeAudioDevice,
 	changeVideoDevice,
 	uploadCustomBackground,
+	muteParticipant,
+	disableParticipantVideo,
 } = useMedia()
 // 处理背景替换文件上传处理
+
 const bgFileInput = ref(null)
 const handleBgFileUpload = async event => {
 	const file = event.target.files?.[0]
@@ -1639,18 +1644,71 @@ const confirmLeaveMeeting = async () => {
 		isLoading.value = false
 	}
 }
+// 判断当前用户是否为主持人
+const isHost = computed(() => currentUserId.value === meetingInfo.value.hostId)
+
+// 获取参与者的音视频状态
+const getParticipantMediaState = participant => {
+	return {
+		audioEnabled: !participant.producers?.audio?.paused,
+		videoEnabled: !participant.producers?.video?.paused,
+		isForceMuted: participant.producers?.audio?.appData?.forceMuted || false,
+		isForceVideoDisabled: participant.producers?.video?.appData?.forceDisabled || false,
+	}
+}
 
 // ==================== 参与者管理 ====================
 const handleMuteParticipant = async participantId => {
-	console.log('Mute participant', participantId)
-	$notify.info('该功能需要主持人权限')
-	// TODO: 实现远程静音
+	if (!isHost.value) {
+		$notify.error('只有主持人可以静音他人')
+		return
+	}
+
+	try {
+		const participant = participants.value.find(p => p.peerId === participantId)
+		const currentlyMuted = participant?.producers?.audio?.paused
+
+		await muteParticipant(participantId, !currentlyMuted)
+
+		$notify.success(`已${!currentlyMuted ? '静音' : '取消静音'} ${participant?.username}`)
+	} catch (error) {
+		console.error('Mute participant failed:', error)
+		$notify.error(error.message || '操作失败')
+	}
+}
+/**
+ * 处理禁用参与者视频（主持人专用）
+ */
+const handleDisableParticipantVideo = async participantId => {
+	if (!isHost.value) {
+		$notify.error('只有主持人可以关闭他人摄像头')
+		return
+	}
+
+	try {
+		const participant = participants.value.find(p => p.peerId === participantId)
+		const currentlyDisabled = participant?.producers?.video?.paused
+
+		await disableParticipantVideo(participantId, !currentlyDisabled)
+
+		$notify.success(`已${!currentlyDisabled ? '关闭' : '开启'} ${participant?.username} 的摄像头`)
+	} catch (error) {
+		console.error('Disable video failed:', error)
+		$notify.error(error.message || '操作失败')
+	}
 }
 
+/**
+ * 移除参与者（保留原逻辑，仅主持人）
+ */
 const handleRemoveParticipant = async participantId => {
+	if (!isHost.value) {
+		$notify.error('只有主持人可以移除参与者')
+		return
+	}
+
 	console.log('Remove participant', participantId)
-	$notify.info('该功能需要主持人权限')
-	// TODO: 实现踢出参与者
+	// TODO: 调用后端 API 踢出参与者
 }
 
 const handlePinParticipant = participantId => {

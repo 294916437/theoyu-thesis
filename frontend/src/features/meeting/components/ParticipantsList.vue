@@ -7,6 +7,10 @@ const props = defineProps({
 		type: Array,
 		default: () => [],
 	},
+	isHost: {
+		type: Boolean,
+		default: false,
+	},
 	currentUserId: {
 		type: String,
 		required: true,
@@ -38,6 +42,7 @@ const emit = defineEmits([
 	'spotlight-participant',
 	'toggle-audio',
 	'toggle-video',
+	'disable-video',
 ])
 // 按角色分组
 const participantsByRole = computed(() => {
@@ -47,13 +52,6 @@ const participantsByRole = computed(() => {
 	return { hosts, members }
 })
 const showInviteDialog = ref(false)
-const currentUserRole = computed(() => {
-	const currentUser = props.participants.find(p => p.userId === props.currentUserId)
-	return currentUser?.role || 1 // 默认为普通成员
-})
-
-// 判断是否为主持人
-const isHost = computed(() => currentUserRole.value === 2)
 
 /**
  * 检查是否可以控制目标参与者
@@ -67,7 +65,7 @@ const canControlParticipant = targetParticipant => {
 	}
 
 	// 2. 如果不是主持人，不能控制他人
-	if (!isHost.value) {
+	if (!props.isHost) {
 		return false
 	}
 
@@ -91,7 +89,7 @@ const canMuteParticipant = targetParticipant => {
  */
 const canRemoveParticipant = targetParticipant => {
 	// 只有主持人可以移除他人
-	return isHost.value && targetParticipant.role === 1
+	return props.isHost && targetParticipant.role === 1
 }
 
 /**
@@ -104,7 +102,7 @@ const shouldShowControlMenu = targetParticipant => {
 	}
 
 	// 如果是主持人且目标不是主持人，显示控制项
-	return isHost.value && targetParticipant.role === 1
+	return props.isHost && targetParticipant.role === 1
 }
 
 const meetingLink = computed(() => {
@@ -172,7 +170,7 @@ const shareInvite = () => {
 }
 
 const handleMuteAll = () => {
-	if (!isHost.value) {
+	if (!props.isHost) {
 		$notify.warning('仅主持人可执行此操作')
 		return
 	}
@@ -184,7 +182,7 @@ const handleMuteAll = () => {
 }
 
 const handleUnmuteAll = () => {
-	if (!isHost.value) {
+	if (!props.isHost) {
 		$notify.warning('仅主持人可执行此操作')
 		return
 	}
@@ -225,14 +223,7 @@ const handleRemoveParticipant = participant => {
 				<!-- 邀请按钮 -->
 				<v-tooltip location="bottom">
 					<template #activator="{ props }">
-						<v-btn
-							v-bind="props"
-							icon="mdi-account-plus"
-							size="small"
-							variant="text"
-							color="primary"
-							@click="showInviteDialog = true"
-						></v-btn>
+						<v-btn v-bind="props" icon="mdi-account-plus" size="small" variant="text" color="primary" @click="showInviteDialog = true"></v-btn>
 					</template>
 					<span>邀请参与者</span>
 				</v-tooltip>
@@ -240,13 +231,7 @@ const handleRemoveParticipant = participant => {
 				<!-- 更多选项 -->
 				<v-menu v-if="isHost">
 					<template #activator="{ props }">
-						<v-btn
-							v-bind="props"
-							icon="mdi-dots-vertical"
-							size="small"
-							variant="text"
-							color="primary"
-						></v-btn>
+						<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text" color="primary"></v-btn>
 					</template>
 
 					<v-list density="compact" class="menu-list">
@@ -305,14 +290,10 @@ const handleRemoveParticipant = participant => {
 						<div class="participant-name">
 							<span class="font-weight-medium">
 								{{ participant.username }}
-								<span v-if="participant.userId === currentUserId" class="text-caption text-primary">
-									（我）
-								</span>
+								<span v-if="participant.userId === currentUserId" class="text-caption text-primary"> （我） </span>
 							</span>
 							<v-chip size="x-small" color="primary" variant="flat" class="ml-2"> 主持人 </v-chip>
-							<v-icon v-if="participant.handRaised" size="small" color="warning" class="ml-1">
-								mdi-hand-back-right
-							</v-icon>
+							<v-icon v-if="participant.handRaised" size="small" color="warning" class="ml-1"> mdi-hand-back-right </v-icon>
 						</div>
 						<div class="participant-status">
 							<v-icon size="small" :color="participant.audioEnabled ? 'success' : 'error'">
@@ -321,12 +302,7 @@ const handleRemoveParticipant = participant => {
 							<v-icon size="small" :color="participant.videoEnabled ? 'success' : 'error'" class="ml-1">
 								{{ participant.videoEnabled ? 'mdi-video' : 'mdi-video-off' }}
 							</v-icon>
-							<v-icon
-								v-if="participant.connectionQuality"
-								size="small"
-								:color="getConnectionColor(participant.connectionQuality)"
-								class="ml-2"
-							>
+							<v-icon v-if="participant.connectionQuality" size="small" :color="getConnectionColor(participant.connectionQuality)" class="ml-2">
 								{{ getConnectionIcon(participant.connectionQuality) }}
 							</v-icon>
 						</div>
@@ -335,13 +311,7 @@ const handleRemoveParticipant = participant => {
 					<!-- 操作菜单 -->
 					<v-menu v-if="shouldShowControlMenu(participant)">
 						<template #activator="{ props }">
-							<v-btn
-								v-bind="props"
-								icon="mdi-dots-vertical"
-								size="small"
-								variant="text"
-								color="primary"
-							></v-btn>
+							<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text" color="primary"></v-btn>
 						</template>
 
 						<v-list density="compact" class="menu-list">
@@ -436,13 +406,9 @@ const handleRemoveParticipant = participant => {
 						<div class="participant-name">
 							<span class="font-weight-medium">
 								{{ participant.username }}
-								<span v-if="participant.userId === currentUserId" class="text-caption text-primary">
-									（我）
-								</span>
+								<span v-if="participant.userId === currentUserId" class="text-caption text-primary"> （我） </span>
 							</span>
-							<v-icon v-if="participant.handRaised" size="small" color="warning" class="ml-2">
-								mdi-hand-back-right
-							</v-icon>
+							<v-icon v-if="participant.handRaised" size="small" color="warning" class="ml-2"> mdi-hand-back-right </v-icon>
 						</div>
 						<div class="participant-status">
 							<v-icon size="small" :color="participant.audioEnabled ? 'success' : 'error'">
@@ -451,12 +417,7 @@ const handleRemoveParticipant = participant => {
 							<v-icon size="small" :color="participant.videoEnabled ? 'success' : 'error'" class="ml-1">
 								{{ participant.videoEnabled ? 'mdi-video' : 'mdi-video-off' }}
 							</v-icon>
-							<v-icon
-								v-if="participant.connectionQuality"
-								size="small"
-								:color="getConnectionColor(participant.connectionQuality)"
-								class="ml-2"
-							>
+							<v-icon v-if="participant.connectionQuality" size="small" :color="getConnectionColor(participant.connectionQuality)" class="ml-2">
 								{{ getConnectionIcon(participant.connectionQuality) }}
 							</v-icon>
 						</div>
@@ -465,13 +426,7 @@ const handleRemoveParticipant = participant => {
 					<!-- 操作菜单 -->
 					<v-menu>
 						<template #activator="{ props }">
-							<v-btn
-								v-bind="props"
-								icon="mdi-dots-vertical"
-								size="small"
-								variant="text"
-								color="primary"
-							></v-btn>
+							<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text" color="primary"></v-btn>
 						</template>
 
 						<v-list density="compact" class="menu-list">
@@ -539,15 +494,7 @@ const handleRemoveParticipant = participant => {
 			<div v-if="onlineParticipants.length === 0" class="empty-state">
 				<v-icon size="64" color="primary-lighten-1">mdi-account-group-outline</v-icon>
 				<div class="text-body-2 text-medium-emphasis mt-4">暂无其他参与者</div>
-				<v-btn
-					color="primary"
-					variant="elevated"
-					prepend-icon="mdi-account-plus"
-					class="mt-4"
-					@click="showInviteDialog = true"
-				>
-					邀请参与者
-				</v-btn>
+				<v-btn color="primary" variant="elevated" prepend-icon="mdi-account-plus" class="mt-4" @click="showInviteDialog = true"> 邀请参与者 </v-btn>
 			</div>
 		</div>
 
@@ -556,13 +503,7 @@ const handleRemoveParticipant = participant => {
 			<v-card class="invite-dialog">
 				<v-card-title class="d-flex align-center justify-space-between bg-primary">
 					<span class="text-h6 text-white">邀请参与者</span>
-					<v-btn
-						icon="mdi-close"
-						variant="text"
-						size="small"
-						color="white"
-						@click="showInviteDialog = false"
-					></v-btn>
+					<v-btn icon="mdi-close" variant="text" size="small" color="white" @click="showInviteDialog = false"></v-btn>
 				</v-card-title>
 
 				<v-divider></v-divider>
@@ -570,44 +511,18 @@ const handleRemoveParticipant = participant => {
 				<v-card-text class="pa-6">
 					<div class="mb-4">
 						<label class="text-subtitle-2 mb-2 d-block text-primary">会议链接</label>
-						<v-text-field
-							:model-value="meetingLink"
-							readonly
-							variant="outlined"
-							density="comfortable"
-							color="primary"
-							hide-details
-						>
+						<v-text-field :model-value="meetingLink" readonly variant="outlined" density="comfortable" color="primary" hide-details>
 							<template #append-inner>
-								<v-btn
-									icon="mdi-content-copy"
-									size="small"
-									variant="text"
-									color="primary"
-									@click="copyMeetingLink"
-								></v-btn>
+								<v-btn icon="mdi-content-copy" size="small" variant="text" color="primary" @click="copyMeetingLink"></v-btn>
 							</template>
 						</v-text-field>
 					</div>
 
 					<div>
 						<label class="text-subtitle-2 mb-2 d-block text-primary">会议号</label>
-						<v-text-field
-							:model-value="meetingNo"
-							readonly
-							variant="outlined"
-							density="comfortable"
-							color="primary"
-							hide-details
-						>
+						<v-text-field :model-value="meetingNo" readonly variant="outlined" density="comfortable" color="primary" hide-details>
 							<template #append-inner>
-								<v-btn
-									icon="mdi-content-copy"
-									size="small"
-									variant="text"
-									color="primary"
-									@click="copyMeetingNo"
-								></v-btn>
+								<v-btn icon="mdi-content-copy" size="small" variant="text" color="primary" @click="copyMeetingNo"></v-btn>
 							</template>
 						</v-text-field>
 					</div>

@@ -266,7 +266,6 @@ export function useMedia() {
 		}
 
 		// 强制 30FPS 循环 (约33ms)
-		// 改用 setTimeout 而非 requestAnimationFrame，确保后台也能尝试推流
 		effectAnimationId = setTimeout(renderLoop, 33)
 	}
 	/**
@@ -418,7 +417,7 @@ export function useMedia() {
 			effectAnimationId = null
 		}
 		if (inferenceTimeoutId) {
-			clearTimeout(inferenceTimeoutId) // 假设 inferenceLoop 也改用了 setTimeout
+			clearTimeout(inferenceTimeoutId)
 			inferenceTimeoutId = null
 		}
 
@@ -445,7 +444,7 @@ export function useMedia() {
 			}
 		}
 
-		// 5. 恢复原始摄像头 (保持原有逻辑)
+		// 5. 恢复原始摄像头
 		if (originalCameraTrack.value && originalCameraTrack.value.readyState === 'live') {
 			const newProducer = await mediasoupClient.produce(originalCameraTrack.value, {
 				kind: 'video',
@@ -467,7 +466,7 @@ export function useMedia() {
 				localStream.value.addTrack(originalCameraTrack.value)
 			}
 		} else {
-			// 重新请求摄像头 (原有逻辑)
+			// 重新请求摄像头
 			const stream = await navigator.mediaDevices.getUserMedia({
 				video: { width: 1280, height: 720 },
 			})
@@ -478,7 +477,7 @@ export function useMedia() {
 			})
 			mediasoupClient.producers.set('video', newProducer)
 			updateLocalProducer('video', newProducer)
-			// ...刷新通过 newTrack 更新 localStream...
+			// 刷新通过 newTrack 更新 localStream...
 			const localPeer = participants.value.find(p => p.peerId === peerId.value)
 			if (localPeer && localPeer.streams.video) {
 				localPeer.streams.video.getTracks().forEach(t => t.stop()) // kill old
@@ -579,6 +578,75 @@ export function useMedia() {
 			}
 			reader.onerror = reject
 			reader.readAsDataURL(file)
+		})
+	}
+
+	/**
+	 * 主持人：远程控制参与者音频
+	 */
+	async function muteParticipant(targetPeerId, muted) {
+		try {
+			// 权限检查
+			// if (userId.value !== hostId) {
+			// 	throw new Error('没有主持人权限')
+			// }
+
+			// 通知服务器
+			await socketClient.emit('muteParticipant', {
+				roomId: roomId.value,
+				targetPeerId: targetPeerId,
+				muted: muted,
+			})
+
+			console.log(`Host ${muted ? 'muted' : 'unmuted'} participant ${targetPeerId}`)
+		} catch (error) {
+			console.error('Failed to mute participant:', error)
+			throw error
+		}
+	}
+
+	/**
+	 * 主持人：远程控制参与者视频
+	 */
+	async function disableParticipantVideo(targetPeerId, disabled) {
+		try {
+			// 权限检查
+			// if (userId.value !== hostId) {
+			// 	throw new Error('没有主持人权限')
+			// }
+
+			// 通知服务器
+			await socketClient.emit('disableParticipantVideo', {
+				roomId: roomId.value,
+				targetPeerId: targetPeerId,
+				disabled: disabled,
+			})
+
+			console.log(`Host ${disabled ? 'disabled' : 'enabled'} video for ${targetPeerId}`)
+		} catch (error) {
+			console.error('Failed to disable participant video:', error)
+			throw error
+		}
+	}
+
+	/**
+	 * 处理被主持人强制控制（被动方）
+	 */
+	function setupHostControlListeners() {
+		// 被主持人静音
+		socketClient.on('forceMuted', async data => {
+			if (audioEnabled.value) {
+				await toggleAudio() // 关闭本地音频
+				$notify.warning(`您已被主持人${data.muted ? '静音' : '取消静音'}`)
+			}
+		})
+
+		// 被主持人关闭摄像头
+		socketClient.on('forceVideoDisabled', async data => {
+			if (videoEnabled.value && data.disabled) {
+				await toggleVideo() // 关闭本地视频
+				$notify.warning('您的摄像头已被主持人关闭')
+			}
 		})
 	}
 
@@ -713,6 +781,7 @@ export function useMedia() {
 			}
 			// 9. 监听事件
 			setupSocketListeners()
+			setupHostControlListeners()
 			// 10. 监听特效相关状态变化
 			watch([effectType, selectedBackground], async ([newType, newBg], [oldType, oldBg]) => {
 				if (!localStream.value) return
@@ -1103,6 +1172,11 @@ export function useMedia() {
 				console.warn('No audio producer found')
 				return
 			}
+			// 检查是否被主持人强制静音（通过 appData 标记）
+			if (audioProducer.appData?.forceMuted && !audioEnabled.value) {
+				$notify.warning('您已被主持人静音，无法自行取消静音')
+				return
+			}
 
 			if (audioEnabled.value) {
 				// 暂停音频
@@ -1144,6 +1218,12 @@ export function useMedia() {
 			const videoProducer = mediasoupClient.producers.get('video')
 			if (!videoProducer) {
 				console.warn('No video producer found')
+				return
+			}
+
+			// 检查是否被主持人强制禁用
+			if (videoProducer.appData?.forceDisabled && !videoEnabled.value) {
+				$notify.warning('您的摄像头已被主持人禁用，无法自行开启')
 				return
 			}
 
@@ -1765,5 +1845,7 @@ export function useMedia() {
 		changeVideoDevice,
 		getScreenSharingParticipant,
 		uploadCustomBackground,
+		muteParticipant,
+		disableParticipantVideo,
 	}
 }

@@ -29,11 +29,15 @@ export function useMedia() {
 		recv: { score: 10, quality: 'excellent' },
 	})
 	// ========== 背景特效状态 ==========
+	const effectStream = ref(null) // 特效流
+	const originalCameraTrack = ref(null) // 保存原始摄像头轨道
+	const effectProducerActive = ref(false) // 特效 producer 是否激活
 	const effectType = ref('none') // 'none' | 'blur' | 'replace'
 	const selectedBackground = ref(null)
 	const customBackgrounds = ref([])
 	const effectLoading = ref(false)
 	const effectError = ref(null)
+
 	// 预设背景列表
 	const presetBackgrounds = ref([
 		{
@@ -60,7 +64,6 @@ export function useMedia() {
 	let effectCtx = null
 	let maskCanvas = null
 	let maskCtx = null
-	let effectStream = null
 	let currentMask = null
 	let isInferring = false
 	let effectAnimationId = null
@@ -200,209 +203,295 @@ export function useMedia() {
 	}
 
 	/**
-	 * 渲染循环 - 应用特效
+	 * 渲染循环 - 应用特效（改为定时器驱动，增强稳定性）
 	 */
-	function renderLoop(sourceVideo) {
-		// 检查是否应该停止
-		if (!sourceVideo || effectType.value === 'none' || !sourceVideoElement) {
-			console.log('[BackgroundEffect] Render loop stopped')
+	function renderLoop() {
+		// 使用闭包或全局引用 sourceVideoElement
+		const videoEl = sourceVideoElement
+
+		// 检查停止条件
+		if (!videoEl || effectType.value === 'none' || !effectProducerActive.value) {
 			return
 		}
 
 		try {
-			// 检查视频是否准备好
-			if (sourceVideo.readyState < 2) {
-				effectAnimationId = requestAnimationFrame(() => renderLoop(sourceVideo))
-				return
-			}
+			// 只有当视频准备好且有宽/高时才绘制
+			if (videoEl.readyState >= 2 && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+				// 1. 绘制源视频到 Canvas
+				effectCtx.drawImage(videoEl, 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
 
-			// 绘制原始帧
-			effectCtx.drawImage(sourceVideo, 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
+				// 2. 应用特效 (WASM/Mask)
+				if (currentMask && effectProcessor && wasmModule) {
+					try {
+						const frameData = effectCtx.getImageData(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
 
-			if (currentMask && effectProcessor && wasmModule) {
-				const frameData = effectCtx.getImageData(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
+						// 写入输入帧
+						const inputPtr = effectProcessor.input_ptr()
+						const inputBuffer = new Uint8Array(wasmModule.memory.buffer, inputPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
+						inputBuffer.set(frameData.data)
 
-				// 写入输入帧
-				const inputPtr = effectProcessor.input_ptr()
-				const inputBuffer = new Uint8Array(wasmModule.memory.buffer, inputPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
-				inputBuffer.set(frameData.data)
+						// 写入 mask
+						const maskPtr = effectProcessor.mask_ptr()
+						const maskBuffer = new Float32Array(wasmModule.memory.buffer, maskPtr, MASK_WIDTH * MASK_HEIGHT)
+						maskBuffer.set(currentMask)
 
-				// 写入 mask
-				const maskPtr = effectProcessor.mask_ptr()
-				const maskBuffer = new Float32Array(wasmModule.memory.buffer, maskPtr, MASK_WIDTH * MASK_HEIGHT)
-				maskBuffer.set(currentMask)
+						// 处理
+						effectProcessor.prepare_mask()
 
-				// 处理
-				effectProcessor.prepare_mask()
-				// 根据当前效果类型调用不同渲染函数
-				if (effectType.value === 'blur') {
-					effectProcessor.render_blur()
-				} else if (effectType.value === 'replace') {
-					effectProcessor.render_replace()
+						if (effectType.value === 'blur') {
+							effectProcessor.render_blur()
+						} else if (effectType.value === 'replace') {
+							const bgPtr = effectProcessor.background_ptr()
+							const bgBuffer = new Uint8Array(wasmModule.memory.buffer, bgPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
+							// 简单的非零检查，确认背景已加载
+							if (bgBuffer.some(p => p !== 0)) {
+								effectProcessor.render_replace()
+							} else {
+								effectProcessor.render_blur()
+							}
+						}
+
+						// 读取输出并绘回
+						const outputPtr = effectProcessor.output_ptr()
+						const outputBuffer = new Uint8ClampedArray(wasmModule.memory.buffer, outputPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
+						effectCtx.putImageData(new ImageData(outputBuffer.slice(), VIDEO_WIDTH, VIDEO_HEIGHT), 0, 0)
+					} catch (err) {
+						// 忽略单帧处理错误，防止循环中断
+						console.warn('Effect processing error:', err)
+					}
 				}
-
-				// 读取输出
-				const outputPtr = effectProcessor.output_ptr()
-				const outputBuffer = new Uint8ClampedArray(wasmModule.memory.buffer, outputPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
-				effectCtx.putImageData(new ImageData(outputBuffer.slice(), VIDEO_WIDTH, VIDEO_HEIGHT), 0, 0)
 			}
 		} catch (error) {
 			console.error('[BackgroundEffect] Render error:', error)
-			return
 		}
 
-		// 继续下一帧
-		if (sourceVideoElement && effectType.value !== 'none' && effectCtx) {
-			effectAnimationId = requestAnimationFrame(() => renderLoop(sourceVideo))
-		}
+		// 强制 30FPS 循环 (约33ms)
+		// 改用 setTimeout 而非 requestAnimationFrame，确保后台也能尝试推流
+		effectAnimationId = setTimeout(renderLoop, 33)
 	}
 	/**
-	 * 应用背景特效到视频流
+	 * 启动背景特效流
 	 */
-	async function applyBackgroundEffect() {
-		if (!localStream.value || effectType.value === 'none') return
-
+	async function startEffectStream() {
 		try {
-			// 初始化特效资源
+			if (effectProducerActive.value) return
+
 			await initBackgroundEffect()
-			if (effectProcessor && wasmModule) {
-				// 清空背景缓冲区（重要！）
-				const bgPtr = effectProcessor.background_ptr()
-				const bgBuffer = new Uint8Array(wasmModule.memory.buffer, bgPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
-				bgBuffer.fill(0)
-			}
 
-			// 清理旧的视频元素
-			if (sourceVideoElement) {
-				sourceVideoElement.srcObject?.getTracks().forEach(t => t.stop())
-				sourceVideoElement.srcObject = null
-				sourceVideoElement = null
-			}
+			const currentVideoProducer = mediasoupClient.producers.get('video')
+			if (!currentVideoProducer) throw new Error('No camera producer found')
 
-			// 获取原始视频轨道
-			const currentVideoTrack = localStream.value.getVideoTracks()[0]
-			if (!currentVideoTrack) {
-				console.warn('[BackgroundEffect] No video track found')
-				return
-			}
+			// 1. 克隆轨道
+			originalCameraTrack.value = currentVideoProducer.track
+			const clonedTrack = currentVideoProducer.track.clone()
 
-			// 创建临时 video 元素
+			// 2. 创建源视频元素
+			// [关键修复] 将视频元素挂载到 DOM，防止浏览器停止解码
 			sourceVideoElement = document.createElement('video')
+			sourceVideoElement.id = 'effect-source-hidden'
 			sourceVideoElement.autoplay = true
 			sourceVideoElement.muted = true
 			sourceVideoElement.playsInline = true
 			sourceVideoElement.width = VIDEO_WIDTH
 			sourceVideoElement.height = VIDEO_HEIGHT
-			// 使用 clone 的轨道（用于推理，不影响原始轨道）
-			sourceVideoElement.srcObject = new MediaStream([currentVideoTrack.clone()])
 
+			// 样式设置：不可见但占据布局（避免 display:none）
+			sourceVideoElement.style.position = 'absolute'
+			sourceVideoElement.style.top = '-9999px'
+			sourceVideoElement.style.left = '-9999px'
+			sourceVideoElement.style.width = '1px'
+			sourceVideoElement.style.height = '1px'
+			sourceVideoElement.style.opacity = '0'
+			sourceVideoElement.style.pointerEvents = 'none'
+			document.body.appendChild(sourceVideoElement)
+
+			sourceVideoElement.srcObject = new MediaStream([clonedTrack])
+
+			// 3. 等待播放
 			await new Promise((resolve, reject) => {
+				const timeout = setTimeout(() => reject(new Error('Video load timeout')), 3000)
 				sourceVideoElement.onloadedmetadata = () => {
-					sourceVideoElement.play().then(resolve).catch(reject)
+					sourceVideoElement
+						.play()
+						.then(() => {
+							clearTimeout(timeout)
+							resolve()
+						})
+						.catch(reject)
 				}
-				sourceVideoElement.onerror = reject
-				// 设置超时
-				setTimeout(() => reject(new Error('Video load timeout')), 5000)
 			})
 
-			console.log('[BackgroundEffect] Source video ready')
-
-			// 如果是虚拟背景，预加载图片
+			// 4. 加载背景
 			if (effectType.value === 'replace' && selectedBackground.value) {
 				await loadBackgroundImage(selectedBackground.value)
 			}
 
-			// 启动推理和渲染循环
+			// 5. 启动循环
+			effectProducerActive.value = true
 			inferenceLoop(sourceVideoElement)
-			renderLoop(sourceVideoElement)
+			renderLoop() // 不传参，使用闭包变量
 
-			// 捕获处理后的流
-			effectStream = effectCanvas.captureStream(30)
-			const newTrack = effectStream.getVideoTracks()[0]
+			// 6. 等待稳定
+			await new Promise(resolve => setTimeout(resolve, 500))
 
-			// 替换 producer 的轨道
-			await replaceVideoTrack(newTrack)
+			// 7. 捕获流
+			effectStream.value = effectCanvas.captureStream(30)
+			const effectVideoTrack = effectStream.value.getVideoTracks()[0]
+			effectVideoTrack.contentHint = 'motion'
 
-			console.log('[BackgroundEffect] Effect applied successfully')
+			// 8. 关闭旧 Producer
+			await socketClient.emit('closeProducer', {
+				roomId: roomId.value,
+				producerId: currentVideoProducer.id,
+			})
+			currentVideoProducer.close()
+			mediasoupClient.producers.delete('video')
+
+			// 9. 创建新 Producer
+			// [关键修复] 移除 encodings，禁用 Simulcast，解决单帧卡死问题
+			const effectProducer = await mediasoupClient.produce(effectVideoTrack, {
+				kind: 'video',
+				appData: {
+					source: 'effect',
+					effectType: effectType.value,
+				},
+				// encodings: [] // 不要传这个！
+			})
+
+			effectVideoTrack.onended = () => {
+				stopEffectStream()
+			}
+			mediasoupClient.producers.set('video', effectProducer)
+
+			// 10. 更新本地状态
+			const localPeer = participants.value.find(p => p.peerId === peerId.value)
+			if (localPeer) {
+				localPeer.producers.video = {
+					id: effectProducer.id,
+					kind: 'video',
+					paused: false,
+					appData: { source: 'effect', effectType: effectType.value },
+				}
+
+				// 更新显示
+				if (localPeer.streams.video) {
+					const videoStream = localPeer.streams.video
+					videoStream.getTracks().forEach(t => videoStream.removeTrack(t))
+					videoStream.addTrack(effectVideoTrack)
+				}
+
+				if (localStream.value) {
+					localStream.value.getTracks().forEach(t => {
+						if (t.kind === 'video') localStream.value.removeTrack(t)
+					})
+					localStream.value.addTrack(effectVideoTrack)
+				}
+			}
+
+			return effectProducer
 		} catch (error) {
-			console.error('[BackgroundEffect] Apply failed:', error)
-
-			// 清理资源
-			stopBackgroundEffect()
-
-			$notify.error(`应用背景特效失败: ${error.message}`)
+			console.error('Failed to start effect:', error)
+			await stopEffectStream()
 			throw error
 		}
 	}
 	/**
-	 * 停止背景特效
+	 * 停止背景特效流
 	 */
-	async function stopBackgroundEffect() {
-		console.log('[BackgroundEffect] Stopping effect...')
+	async function stopEffectStream() {
+		if (!effectProducerActive.value) return
 
-		// 1. 立即设置停止标志
-		const wasRunning = !!(sourceVideoElement && (effectAnimationId || inferenceTimeoutId))
-		sourceVideoElement = null // 阻止新的循环启动
-
-		// 2. 取消所有异步任务
-		if (effectAnimationId) {
-			cancelAnimationFrame(effectAnimationId)
-			effectAnimationId = null
-		}
-
-		if (inferenceTimeoutId) {
-			clearTimeout(inferenceTimeoutId)
-			inferenceTimeoutId = null
-		}
-
-		// 3. 等待当前正在执行的推理完成（最多等待100ms）
-		if (isInferring && wasRunning) {
-			const startTime = Date.now()
-			while (isInferring && Date.now() - startTime < 100) {
-				await new Promise(resolve => setTimeout(resolve, 10))
-			}
-		}
-
-		// 4. 清理视频元素
+		// 1. 清理 DOM 元素
 		if (sourceVideoElement) {
-			sourceVideoElement.srcObject?.getTracks().forEach(t => t.stop())
-			sourceVideoElement.srcObject = null
-			sourceVideoElement.pause()
+			if (sourceVideoElement.srcObject) {
+				sourceVideoElement.srcObject.getTracks().forEach(t => t.stop())
+			}
+			if (sourceVideoElement.parentNode) {
+				sourceVideoElement.parentNode.removeChild(sourceVideoElement)
+			}
 			sourceVideoElement = null
 		}
 
-		// 5. 清理效果流
-		if (effectStream) {
-			effectStream.getTracks().forEach(track => track.stop())
-			effectStream = null
+		// 2. 停止定时器
+		if (effectAnimationId) {
+			clearTimeout(effectAnimationId)
+			effectAnimationId = null
+		}
+		if (inferenceTimeoutId) {
+			clearTimeout(inferenceTimeoutId) // 假设 inferenceLoop 也改用了 setTimeout
+			inferenceTimeoutId = null
 		}
 
-		// 6. 清空 Canvas 内容（但不销毁引用）
-		if (effectCanvas && effectCtx) {
-			effectCtx.clearRect(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
+		isInferring = false
+
+		// 3. 停止流
+		if (effectStream.value) {
+			effectStream.value.getTracks().forEach(t => t.stop())
+			effectStream.value = null
 		}
 
-		if (maskCanvas && maskCtx) {
-			maskCtx.clearRect(0, 0, MASK_WIDTH, MASK_HEIGHT)
-		}
-
-		// 7. 清理 WASM 背景缓冲区
-		if (effectProcessor && wasmModule) {
+		// 4. 关闭服务器 producer
+		const effectProducer = mediasoupClient.producers.get('video')
+		if (effectProducer && effectProducer.appData?.source === 'effect') {
 			try {
-				// 将背景缓冲区填充为透明黑色
-				const bgPtr = effectProcessor.background_ptr()
-				const bgBuffer = new Uint8Array(wasmModule.memory.buffer, bgPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
-				bgBuffer.fill(0) // 全部填充为 0（透明黑）
-			} catch (error) {
-				console.error('[BackgroundEffect] Failed to clear background buffer:', error)
+				await socketClient.emit('closeProducer', {
+					roomId: roomId.value,
+					producerId: effectProducer.id,
+				})
+				effectProducer.close()
+				mediasoupClient.producers.delete('video')
+			} catch (e) {
+				console.warn(e)
 			}
 		}
 
-		// 8. 重置状态
-		currentMask = null
-		isInferring = false
+		// 5. 恢复原始摄像头 (保持原有逻辑)
+		if (originalCameraTrack.value && originalCameraTrack.value.readyState === 'live') {
+			const newProducer = await mediasoupClient.produce(originalCameraTrack.value, {
+				kind: 'video',
+				appData: { source: 'camera' },
+			})
+			mediasoupClient.producers.set('video', newProducer)
+			updateLocalProducer('video', newProducer)
 
-		console.log('[BackgroundEffect] Stopped successfully')
+			// 刷新 Track 到本地流
+			const localPeer = participants.value.find(p => p.peerId === peerId.value)
+			if (localPeer && localPeer.streams.video) {
+				localPeer.streams.video.getTracks().forEach(t => localPeer.streams.video.removeTrack(t))
+				localPeer.streams.video.addTrack(originalCameraTrack.value)
+			}
+			if (localStream.value) {
+				localStream.value.getTracks().forEach(t => {
+					if (t.kind === 'video') localStream.value.removeTrack(t)
+				})
+				localStream.value.addTrack(originalCameraTrack.value)
+			}
+		} else {
+			// 重新请求摄像头 (原有逻辑)
+			const stream = await navigator.mediaDevices.getUserMedia({
+				video: { width: 1280, height: 720 },
+			})
+			const newTrack = stream.getVideoTracks()[0]
+			const newProducer = await mediasoupClient.produce(newTrack, {
+				kind: 'video',
+				appData: { source: 'camera' },
+			})
+			mediasoupClient.producers.set('video', newProducer)
+			updateLocalProducer('video', newProducer)
+			// ...刷新通过 newTrack 更新 localStream...
+			const localPeer = participants.value.find(p => p.peerId === peerId.value)
+			if (localPeer && localPeer.streams.video) {
+				localPeer.streams.video.getTracks().forEach(t => t.stop()) // kill old
+				localPeer.streams.video.addTrack(newTrack)
+			}
+			if (localStream.value) {
+				localStream.value.addTrack(newTrack)
+			}
+		}
+
+		// 6. 重置状态
+		effectProducerActive.value = false
+		originalCameraTrack.value = null
 	}
 
 	/**
@@ -625,17 +714,14 @@ export function useMedia() {
 			// 9. 监听事件
 			setupSocketListeners()
 			// 10. 监听特效相关状态变化
-			// 10. 监听特效相关状态变化 - 增强版
 			watch([effectType, selectedBackground], async ([newType, newBg], [oldType, oldBg]) => {
 				if (!localStream.value) return
 
 				try {
 					// 情况1: 关闭所有效果
 					if (newType === 'none') {
-						console.log('[BackgroundEffect] Disabling all effects')
-
 						// 停止特效
-						await stopBackgroundEffect()
+						await stopEffectStream()
 
 						// 重新获取原始摄像头轨道
 						const stream = await navigator.mediaDevices.getUserMedia({
@@ -653,62 +739,26 @@ export function useMedia() {
 						return
 					}
 
-					// 情况2: 仅背景图片变化（类型仍为 replace）
+					// 情况2: 仅背景图片变化（replace -> replace）
 					if (newType === 'replace' && oldType === 'replace' && newBg !== oldBg) {
-						console.log('[BackgroundEffect] Background image changed, reloading...')
-
-						// 只需重新加载背景图片，无需重启整个流程
+						// 只需重新加载背景，无需重建流
 						await loadBackgroundImage(newBg)
 						return
 					}
 
-					// 情况3: 效果类型变化（首次启用或其他情况）
+					// 情况3: 效果类型变化或首次启用
 					if (newType !== oldType || (newType === 'replace' && !oldBg)) {
-						console.log(`[BackgroundEffect] Switching effect: ${oldType} → ${newType}`)
-
-						// 如果已有效果在运行，先停止
-						if (effectAnimationId || inferenceTimeoutId) {
-							await stopBackgroundEffect()
-
-							// 等待清理完成
+						// 先停止旧效果（如果有）
+						if (effectProducerActive.value) {
+							await stopEffectStream()
 							await new Promise(resolve => setTimeout(resolve, 200))
 						}
 
-						// 应用新效果
-						await applyBackgroundEffect()
-
-						console.log(`[BackgroundEffect] Effect switched to ${newType}`)
-					}
-					// 检测 blur <-> replace 直接切换
-					if ((oldType === 'blur' && newType === 'replace') || (oldType === 'replace' && newType === 'blur')) {
-						// 步骤1: 完全停止当前效果
-						await stopBackgroundEffect()
-
-						// 步骤2: 恢复到原始摄像头（短暂黑屏）
-						const stream = await navigator.mediaDevices.getUserMedia({
-							video: {
-								width: { ideal: 1280, max: 1920 },
-								height: { ideal: 720, max: 1080 },
-								frameRate: { ideal: 30, max: 60 },
-							},
-						})
-
-						const cleanVideoTrack = stream.getVideoTracks()[0]
-						await replaceVideoTrack(cleanVideoTrack)
-
-						// 步骤3: 等待足够时间确保轨道完全切换
-						await new Promise(resolve => setTimeout(resolve, 300))
-
-						// 步骤4: 应用新效果
-						await applyBackgroundEffect()
-
-						return
+						// 启动新效果
+						await startEffectStream()
 					}
 				} catch (error) {
 					console.error('[BackgroundEffect] Failed to switch effect:', error)
-					$notify.error(`切换效果失败: ${error.message}`)
-
-					// 失败时尝试恢复到无效果状态
 					effectType.value = 'none'
 				}
 			})
@@ -805,9 +855,8 @@ export function useMedia() {
 			if (!participant.consumers) participant.consumers = {}
 			if (!participant.producers) participant.producers = {}
 
-			// 创建或更新对应类型的 MediaStream(screen/audio/video)
+			// 创建或更新对应类型的 MediaStream(screen/audio/camera/effect)
 			const kind = consumer.track.kind
-			const isScreenShare = consumer.appData?.source === 'screen'
 
 			// 创建或更新流
 			if (!participant.streams[kind]) {
@@ -826,6 +875,16 @@ export function useMedia() {
 
 				existingStream.addTrack(consumer.track)
 				console.log(`Updated ${kind} stream for peer ${remotePeerId}`)
+			}
+			if (kind === 'effect') {
+				setTimeout(() => {
+					// 通过 socket 请求关键帧 (需要后端支持 requestKeyframe 事件，或者简单的暂停再恢复)
+					// 如果后端没有 requestKeyframe，可以忽略此步，通常 resume 已经足够
+
+					// 前端 hack: 强制 Video 元素重载
+					const newStreamId = participant.streams[kind].id
+					// 触发 VideoGrid 里的 update
+				}, 500)
 			}
 
 			// 记录到 producers（用于 UI 判断状态）
@@ -960,7 +1019,6 @@ export function useMedia() {
 			if (participant && participant.consumers[data.producerId]) {
 				const consumer = participant.consumers[data.producerId]
 				const kind = consumer.track.kind
-				const isScreenShare = consumer.appData?.source === 'screen'
 
 				// 关闭消费者
 				consumer.close()
@@ -1521,7 +1579,7 @@ export function useMedia() {
 	async function leaveMeeting() {
 		try {
 			// 1. 先同步停止背景特效
-			await stopBackgroundEffect()
+			await stopEffectStream()
 
 			// 2. 通知服务器离开
 			if (socketClient.connected.value && roomId.value) {
@@ -1687,6 +1745,7 @@ export function useMedia() {
 		stats,
 		hasScreenShare,
 		effectType,
+		effectProducerActive,
 		selectedBackground,
 		allBackgrounds,
 		effectLoading,
@@ -1705,8 +1764,6 @@ export function useMedia() {
 		changeAudioDevice,
 		changeVideoDevice,
 		getScreenSharingParticipant,
-		applyBackgroundEffect,
-		stopBackgroundEffect,
 		uploadCustomBackground,
 	}
 }

@@ -31,13 +31,15 @@
 						<div v-if="effectiveType">网络类型: {{ effectiveType }}</div>
 					</div>
 				</v-tooltip>
-
+				<!-- 会议人数显示 -->
 				<v-chip color="success" variant="flat" size="small" class="mr-4">
 					<template #prepend>
 						<v-icon icon="mdi-account-multiple" size="small"></v-icon>
 					</template>
 					<span class="font-weight-medium">{{ participantCount }} 人</span>
 				</v-chip>
+				<!-- 视频特效应用 -->
+				<!-- 修改顶部工具栏的背景特效按钮 -->
 				<v-tooltip location="bottom">
 					<template #activator="{ props }">
 						<v-btn
@@ -45,12 +47,13 @@
 							icon="mdi-image-filter-hdr"
 							variant="text"
 							size="small"
-							:color="effectType !== 'none' ? 'success' : undefined"
+							:color="effectProducerActive ? 'success' : undefined"
+							:loading="effectLoading"
 							class="mr-2"
 							@click="toggleBackgroundPanel"
 						>
 							<!-- 显示激活状态指示器 -->
-							<v-badge v-if="effectType !== 'none'" dot color="success" location="top end">
+							<v-badge v-if="effectProducerActive" dot color="success" location="top end">
 								<v-icon>mdi-image-filter-hdr</v-icon>
 							</v-badge>
 							<v-icon v-else>mdi-image-filter-hdr</v-icon>
@@ -58,7 +61,8 @@
 					</template>
 					<div>
 						<div>背景特效</div>
-						<div v-if="effectType !== 'none'" class="text-caption">当前: {{ effectType === 'blur' ? '背景虚化' : '虚拟背景' }}</div>
+						<div v-if="effectProducerActive" class="text-caption">当前: {{ effectType === 'blur' ? '背景虚化' : '虚拟背景' }}</div>
+						<div v-if="effectLoading" class="text-caption text-warning">加载中...</div>
 					</div>
 				</v-tooltip>
 
@@ -331,9 +335,16 @@
 									<div class="effect-panel">
 										<!-- 顶部标题 -->
 										<div class="effect-panel__header">
+											<!-- 加载状态 -->
 											<v-chip v-if="effectLoading" size="x-small" color="info" variant="flat">
 												<v-progress-circular indeterminate size="12" width="2" class="mr-1"></v-progress-circular>
 												加载资源中
+											</v-chip>
+
+											<!-- 激活状态 -->
+											<v-chip v-else-if="effectProducerActive" size="x-small" color="success" variant="flat">
+												<v-icon icon="mdi-check-circle" size="12" class="mr-1"></v-icon>
+												{{ effectType === 'blur' ? '虚化生效' : '背景替换中' }}
 											</v-chip>
 										</div>
 
@@ -351,8 +362,12 @@
 													<v-card
 														v-ripple
 														class="effect-card"
-														:class="{ 'effect-card--active': effectType === 'none' }"
+														:class="{
+															'effect-card--active': effectType === 'none',
+															'effect-card--loading': effectLoading,
+														}"
 														variant="outlined"
+														:disabled="effectLoading"
 														@click="changeEffect('none')"
 													>
 														<v-icon icon="mdi-block-helper" size="20" class="mb-1"></v-icon>
@@ -362,8 +377,12 @@
 													<v-card
 														v-ripple
 														class="effect-card"
-														:class="{ 'effect-card--active': effectType === 'blur' }"
+														:class="{
+															'effect-card--active': effectType === 'blur',
+															'effect-card--loading': effectLoading,
+														}"
 														variant="outlined"
+														:disabled="effectLoading"
 														@click="changeEffect('blur')"
 													>
 														<v-icon icon="mdi-blur" size="20" class="mb-1"></v-icon>
@@ -376,11 +395,20 @@
 											<div>
 												<div class="d-flex align-center justify-space-between mb-2">
 													<span class="effect-section-title">虚拟背景</span>
-													<v-btn prepend-icon="mdi-upload" variant="text" density="compact" size="small" color="primary" @click="bgFileInput?.click()">
+													<v-btn
+														prepend-icon="mdi-upload"
+														variant="text"
+														density="compact"
+														size="small"
+														color="primary"
+														:disabled="effectLoading"
+														@click="bgFileInput?.click()"
+													>
 														自定义
 													</v-btn>
 												</div>
 
+												<!-- 背景网格 -->
 												<div class="backgrounds-grid">
 													<v-card
 														v-for="bg in allBackgrounds"
@@ -388,7 +416,11 @@
 														v-ripple
 														elevation="0"
 														class="background-card"
-														:class="{ 'background-card--active': effectType === 'replace' && selectedBackground === bg.id }"
+														:class="{
+															'background-card--active': effectType === 'replace' && selectedBackground === bg.id,
+															'background-card--loading': effectLoading,
+														}"
+														:disabled="effectLoading"
 														@click="changeBackground(bg.id)"
 													>
 														<v-img :src="bg.thumbnail" cover aspect-ratio="1.6">
@@ -402,6 +434,11 @@
 															<div v-if="effectType === 'replace' && selectedBackground === bg.id" class="background-card__overlay">
 																<v-icon icon="mdi-check-circle" color="white" size="24"></v-icon>
 															</div>
+
+															<!-- 加载遮罩 -->
+															<div v-if="effectLoading && effectType === 'replace' && selectedBackground === bg.id" class="background-card__loading">
+																<v-progress-circular indeterminate size="24" width="3" color="white"></v-progress-circular>
+															</div>
 														</v-img>
 													</v-card>
 												</div>
@@ -409,7 +446,7 @@
 										</div>
 
 										<!-- 隐藏的文件输入 -->
-										<input ref="bgFileInput" type="file" accept="image/*" hidden @change="handleBgFileUpload" />
+										<input ref="bgFileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden @change="handleBgFileUpload" />
 									</div>
 								</v-tabs-window-item>
 							</v-tabs-window>
@@ -531,16 +568,22 @@
 											</template>
 
 											<v-list density="compact" bg-color="surface">
-												<v-list-item @click="toggleBackgroundPanel">
+												<v-list-item :disabled="effectLoading" @click="toggleBackgroundPanel">
 													<template #prepend>
-														<v-icon icon="mdi-image-filter-hdr" :color="effectType !== 'none' ? 'success' : undefined"></v-icon>
+														<v-icon icon="mdi-image-filter-hdr" :color="effectProducerActive ? 'success' : undefined"></v-icon>
 													</template>
 													<v-list-item-title>背景特效</v-list-item-title>
+
 													<!-- 显示当前效果状态 -->
-													<template v-if="effectType !== 'none'" #append>
+													<template v-if="effectProducerActive" #append>
 														<v-chip size="x-small" color="success" variant="flat">
 															{{ effectType === 'blur' ? '虚化' : '替换' }}
 														</v-chip>
+													</template>
+
+													<!-- 加载状态 -->
+													<template v-else-if="effectLoading" #append>
+														<v-progress-circular indeterminate size="16" width="2" color="primary"></v-progress-circular>
 													</template>
 												</v-list-item>
 												<v-list-item @click="toggleVideoLayout">
@@ -881,6 +924,7 @@ const {
 	allBackgrounds,
 	effectLoading,
 	effectError,
+	effectProducerActive,
 	joinMeeting,
 	leaveMeeting,
 	toggleAudio,
@@ -897,18 +941,37 @@ const handleBgFileUpload = async event => {
 	const file = event.target.files?.[0]
 	if (!file) return
 
+	// 文件大小限制 (5MB)
+	const maxSize = 5 * 1024 * 1024
+	if (file.size > maxSize) {
+		$notify.error('背景图片不能超过5MB')
+		return
+	}
+
+	// 文件类型校验
+	if (!file.type.startsWith('image/')) {
+		$notify.error('仅支持图片格式')
+		return
+	}
+
 	try {
+		effectLoading.value = true
 		const bg = await uploadCustomBackground(file)
+
+		// 自动应用新背景
 		selectedBackground.value = bg.id
 		effectType.value = 'replace'
-		$notify.success('背景已添加')
 	} catch (error) {
-		$notify.error('上传失败')
+		console.error('[MeetingRoom] Upload background failed:', error)
+		$notify.error(`上传失败: ${error.message}`)
 	} finally {
-		if (bgFileInput.value) bgFileInput.value.value = ''
+		effectLoading.value = false
+		// 清空文件输入
+		if (bgFileInput.value) {
+			bgFileInput.value.value = ''
+		}
 	}
 }
-
 const changeEffect = async type => {
 	effectType.value = type
 }
@@ -917,11 +980,6 @@ const changeBackground = async bgId => {
 	selectedBackground.value = bgId
 	effectType.value = 'replace'
 }
-// 本地视频轨道（从 localStream 提取）
-const localVideoTrack = computed(() => {
-	return localStream.value?.getVideoTracks()[0] || null
-})
-
 // ==================== 房间参与者 ====================
 const { mergedParticipants, onlineParticipants, loading: participantsLoading, loadParticipants } = useParticipants(roomId, participants)
 // ==================== 网络状态监控 ====================
@@ -1182,7 +1240,7 @@ const loadMessageHistory = async (page = 1) => {
 
 				// 首次加载，等待 DOM 更新后滚动到底部
 				await nextTick()
-				await new Promise(resolve => setTimeout(resolve, 100)) // 额外等待渲染
+				await new Promise(resolve => setTimeout(resolve, 500)) // 额外等待渲染
 				scrollToBottom()
 			} else {
 				// 追加到顶部（加载更多历史）
@@ -1448,21 +1506,21 @@ watch(sidebarTab, async (newTab, oldTab) => {
 	}
 })
 // 监听新消息自动滚动
-watch(
-	() => chatMessages.value.length,
-	async (newLength, oldLength) => {
-		// 只在消息增加时触发
-		if (newLength <= oldLength) return
-		// 如果当前在聊天标签或已经在底部，自动滚动
-		if (sidebarTab.value === 'chat' || arrivedState.bottom) {
-			await nextTick()
-			scrollToBottom(true)
-		} else {
-			// 否则只增加未读计数
-			unreadMessages.value++
-		}
-	},
-)
+// watch(
+// 	() => chatMessages.value.length,
+// 	async (newLength, oldLength) => {
+// 		// 只在消息增加时触发
+// 		if (newLength <= oldLength) return
+// 		// 如果当前在聊天标签或已经在底部，自动滚动
+// 		if (sidebarTab.value === 'chat' || arrivedState.bottom) {
+// 			await nextTick()
+// 			scrollToBottom(true)
+// 		} else {
+// 			// 否则只增加未读计数
+// 			unreadMessages.value++
+// 		}
+// 	},
+// )
 // 音视频控制
 watch(audioEnabled, async enabled => {
 	console.log('Audio state changed', enabled)
@@ -2236,6 +2294,20 @@ useEventListener('beforeunload', e => {
 	border-color: rgb(var(--v-theme-primary));
 	box-shadow: 0 4px 16px rgba(var(--v-theme-primary), 0.3);
 }
+.background-card--loading {
+	opacity: 0.6;
+	pointer-events: none;
+}
+.background-card__loading {
+	position: absolute;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	backdrop-filter: blur(2px);
+	animation: overlayFadeIn 0.2s ease-out;
+}
 
 .background-card--active:hover {
 	transform: translateY(-3px) scale(1.02);
@@ -2252,6 +2324,39 @@ useEventListener('beforeunload', e => {
 	justify-content: center;
 	backdrop-filter: blur(2px);
 	animation: overlayFadeIn 0.2s ease-out;
+}
+/* 效果卡片禁用状态 */
+.effect-card:disabled,
+.effect-card--loading {
+	opacity: 0.5;
+	pointer-events: none;
+	cursor: not-allowed;
+}
+
+/* 过渡动画优化 */
+.effect-card,
+.background-card {
+	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* 过渡动画优化 */
+.effect-card,
+.background-card {
+	transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 成功状态动画 */
+@keyframes successPulse {
+	0%,
+	100% {
+		box-shadow: 0 0 0 0 rgba(var(--v-theme-success), 0.4);
+	}
+	50% {
+		box-shadow: 0 0 0 8px rgba(var(--v-theme-success), 0);
+	}
+}
+
+.effect-card--active {
+	animation: successPulse 2s infinite;
 }
 
 @keyframes overlayFadeIn {

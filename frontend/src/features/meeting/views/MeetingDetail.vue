@@ -35,7 +35,7 @@
 
 			<v-row>
 				<!-- 左侧详情 -->
-				<v-col cols="12" md="8">
+				<v-col cols="12" md="8" class="pa-0">
 					<v-card elevation="2" class="mb-4">
 						<v-card-title class="d-flex align-center justify-space-between pa-6">
 							<div class="d-flex align-center">
@@ -245,7 +245,7 @@
 				</v-col>
 
 				<!-- 右侧信息 -->
-				<v-col cols="12" md="4">
+				<v-col cols="12" md="4" class="pt-0">
 					<!-- 会议统计 -->
 					<v-card elevation="2" class="mb-4">
 						<v-card-title class="pa-6">

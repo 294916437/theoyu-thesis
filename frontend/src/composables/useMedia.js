@@ -586,12 +586,6 @@ export function useMedia() {
 	 */
 	async function muteParticipant(targetPeerId, muted) {
 		try {
-			// 权限检查
-			// if (userId.value !== hostId) {
-			// 	throw new Error('没有主持人权限')
-			// }
-
-			// 通知服务器
 			await socketClient.emit('muteParticipant', {
 				roomId: roomId.value,
 				targetPeerId: targetPeerId,
@@ -610,12 +604,6 @@ export function useMedia() {
 	 */
 	async function disableParticipantVideo(targetPeerId, disabled) {
 		try {
-			// 权限检查
-			// if (userId.value !== hostId) {
-			// 	throw new Error('没有主持人权限')
-			// }
-
-			// 通知服务器
 			await socketClient.emit('disableParticipantVideo', {
 				roomId: roomId.value,
 				targetPeerId: targetPeerId,
@@ -630,23 +618,23 @@ export function useMedia() {
 	}
 
 	/**
-	 * 处理被主持人强制控制（被动方）
+	 * 处理主持人控制请求（新增监听）
 	 */
 	function setupHostControlListeners() {
-		// 被主持人静音
-		socketClient.on('forceMuted', async data => {
-			if (audioEnabled.value) {
-				await toggleAudio() // 关闭本地音频
-				$notify.warning(`您已被主持人${data.muted ? '静音' : '取消静音'}`)
-			}
+		// 收到主持人静音请求（提示性）
+		socketClient.on('hostMuteRequest', async data => {
+			$notify.warning(`主持人 ${data.hostName} 请求您${data.muted ? '静音' : '取消静音'}`, {
+				timeout: 5000,
+			})
+			// 不强制执行，用户可以选择忽略
 		})
 
-		// 被主持人关闭摄像头
-		socketClient.on('forceVideoDisabled', async data => {
-			if (videoEnabled.value && data.disabled) {
-				await toggleVideo() // 关闭本地视频
-				$notify.warning('您的摄像头已被主持人关闭')
-			}
+		// 收到主持人关闭视频请求（提示性）
+		socketClient.on('hostVideoRequest', async data => {
+			$notify.warning(`主持人 ${data.hostName} 请求您${data.disabled ? '关闭摄像头' : '开启摄像头'}`, {
+				timeout: 5000,
+			})
+			// 不强制执行，用户可以选择忽略
 		})
 	}
 
@@ -1167,42 +1155,20 @@ export function useMedia() {
 	 */
 	async function toggleAudio() {
 		try {
-			const audioProducer = mediasoupClient.producers.get('audio')
-			if (!audioProducer) {
-				console.warn('No audio producer found')
-				return
-			}
-			// 检查是否被主持人强制静音（通过 appData 标记）
-			if (audioProducer.appData?.forceMuted && !audioEnabled.value) {
-				$notify.warning('您已被主持人静音，无法自行取消静音')
-				return
-			}
+			const willEnable = !audioEnabled.value
 
-			if (audioEnabled.value) {
-				// 暂停音频
-				await mediasoupClient.pauseProducer('audio')
-				localStream.value?.getAudioTracks().forEach(track => (track.enabled = false))
+			await socketClient.emit('toggleAudio', {
+				roomId: roomId.value,
+				enabled: willEnable,
+			})
 
-				await socketClient.emit('pauseProducer', {
-					roomId: roomId.value,
-					producerId: audioProducer.id,
-				})
+			// 本地轨道控制
+			localStream.value?.getAudioTracks().forEach(track => {
+				track.enabled = willEnable
+			})
 
-				audioEnabled.value = false
-			} else {
-				// 恢复音频
-				await mediasoupClient.resumeProducer('audio')
-				localStream.value?.getAudioTracks().forEach(track => (track.enabled = true))
-
-				await socketClient.emit('resumeProducer', {
-					roomId: roomId.value,
-					producerId: audioProducer.id,
-				})
-
-				audioEnabled.value = true
-			}
-
-			console.log('Audio toggled', audioEnabled.value)
+			audioEnabled.value = willEnable
+			console.log('Audio toggled to:', willEnable)
 		} catch (error) {
 			console.error('Failed to toggle audio', error)
 			$notify.error('切换音频失败')
@@ -1213,45 +1179,23 @@ export function useMedia() {
 	/**
 	 * 切换视频
 	 */
+
 	async function toggleVideo() {
 		try {
-			const videoProducer = mediasoupClient.producers.get('video')
-			if (!videoProducer) {
-				console.warn('No video producer found')
-				return
-			}
+			const willEnable = !videoEnabled.value
 
-			// 检查是否被主持人强制禁用
-			if (videoProducer.appData?.forceDisabled && !videoEnabled.value) {
-				$notify.warning('您的摄像头已被主持人禁用，无法自行开启')
-				return
-			}
+			await socketClient.emit('toggleVideo', {
+				roomId: roomId.value,
+				enabled: willEnable,
+			})
 
-			if (videoEnabled.value) {
-				// 暂停视频
-				await mediasoupClient.pauseProducer('video')
-				localStream.value?.getVideoTracks().forEach(track => (track.enabled = false))
+			// 本地轨道控制
+			localStream.value?.getVideoTracks().forEach(track => {
+				track.enabled = willEnable
+			})
 
-				await socketClient.emit('pauseProducer', {
-					roomId: roomId.value,
-					producerId: videoProducer.id,
-				})
-
-				videoEnabled.value = false
-			} else {
-				// 恢复视频
-				await mediasoupClient.resumeProducer('video')
-				localStream.value?.getVideoTracks().forEach(track => (track.enabled = true))
-
-				await socketClient.emit('resumeProducer', {
-					roomId: roomId.value,
-					producerId: videoProducer.id,
-				})
-
-				videoEnabled.value = true
-			}
-
-			console.log('Video toggled', videoEnabled.value)
+			videoEnabled.value = willEnable
+			console.log('Video toggled to:', willEnable)
 		} catch (error) {
 			console.error('Failed to toggle video', error)
 			$notify.error('切换视频失败')

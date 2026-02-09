@@ -1095,26 +1095,7 @@ export function useMedia() {
 			const { producerId, peerId: remotePeerId, kind, paused, reason } = data
 
 			// 1. 更新参与者的 producers 状态
-			updateProducerState(remotePeerId, producerId, paused)
-
-			// 2. 如果是本地用户被主持人控制
-			if (remotePeerId === peerId.value && reason === 'host_forced') {
-				const action = kind === 'audio' ? (paused ? '关闭了您的麦克风' : '开启了您的麦克风') : paused ? '关闭了您的摄像头' : '开启了您的摄像头'
-
-				$notify.warning(`主持人${action}`, {
-					timeout: 3000,
-				})
-
-				// 打印当前状态
-				console.log('[Media] After control of the host:', {
-					videoEnabled: videoEnabled.value,
-					localStreamTracks: localStream.value?.getVideoTracks().map(t => ({
-						id: t.id,
-						enabled: t.enabled,
-						readyState: t.readyState,
-					})),
-				})
-			}
+			updateProducerState(remotePeerId, producerId, paused, reason)
 
 			// 3. 强制触发响应式更新
 			participants.value = [...participants.value]
@@ -1124,7 +1105,7 @@ export function useMedia() {
 	/**
 	 * 更新生产者状态
 	 */
-	function updateProducerState(remotePeerId, producerId, paused) {
+	function updateProducerState(remotePeerId, producerId, paused, reason) {
 		const participant = participants.value.find(p => p.peerId === remotePeerId)
 
 		if (!participant) {
@@ -1135,11 +1116,16 @@ export function useMedia() {
 		let targetKind = null
 
 		// 1. 更新 producers 记录
+		console.log('1. 更新 producers 记录')
 		if (participant.producers) {
 			for (const [kind, producer] of Object.entries(participant.producers)) {
 				if (producer && producer.id === producerId) {
 					targetKind = kind
-					participant.producers[kind].paused = paused
+					// 区分本地和远程。本地 Producer 是实例，paused 往往是只读的，且本地状态由 audioEnabled/videoEnabled 变量控制
+					// 对于本地 producer，我们不直接修改实例属性
+					if (reason !== 'host_forced') {
+						participant.producers[kind].paused = paused
+					}
 					console.log(`[Media] Updated ${kind} producer state to paused=${paused}`)
 					break
 				}
@@ -1147,6 +1133,7 @@ export function useMedia() {
 		}
 
 		// 2. 同步 Consumer 状态
+		console.log('2. 同步 Consumer 状态')
 		if (participant.consumers && targetKind) {
 			for (const [consumerId, consumer] of Object.entries(participant.consumers)) {
 				if (consumer.producerId === producerId) {
@@ -1182,8 +1169,13 @@ export function useMedia() {
 		}
 
 		// 3. 如果是本地用户被主持人控制
-		if (participant.peerId === peerId.value && targetKind) {
-			console.log(`[Media] Syncing local ${targetKind} state: enabled=${!paused}`)
+		console.log('3. 如果是本地用户被主持人控制')
+		if (participant.peerId === peerId.value) {
+			const action = targetKind === 'audio' ? (paused ? '关闭了您的麦克风' : '开启了您的麦克风') : paused ? '关闭了您的摄像头' : '开启了您的摄像头'
+
+			$notify.warning(`主持人${action}`, {
+				timeout: 3000,
+			})
 
 			// 3.1 更新状态变量
 			if (targetKind === 'audio') {

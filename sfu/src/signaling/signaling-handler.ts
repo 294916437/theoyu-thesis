@@ -18,7 +18,7 @@ export class SignalingHandler {
 	private sessionManager: SessionManager
 	private transportManager: TransportManager
 	private monitoring: MonitoringService
-	private logger = new Logger("EnhancedSignalingHandler")
+	private logger = new Logger("SignalingHandler")
 
 	constructor(io: Server) {
 		this.io = io
@@ -69,103 +69,45 @@ export class SignalingHandler {
 
 	private registerHandlers(socket: Socket): void {
 		// 房间相关
-		socket.on("joinRoom", (data, callback) =>
-			this.withErrorHandling(socket, "joinRoom", data, callback, this.handleJoinRoom)
-		)
-		socket.on("leaveRoom", (data, callback) =>
-			this.withErrorHandling(socket, "leaveRoom", data, callback, this.handleLeaveRoom)
-		)
+		socket.on("joinRoom", (data, callback) => this.withErrorHandling(socket, "joinRoom", data, callback, this.handleJoinRoom))
+		socket.on("leaveRoom", (data, callback) => this.withErrorHandling(socket, "leaveRoom", data, callback, this.handleLeaveRoom))
 
 		// 媒体协商相关
-		socket.on("getRouterRtpCapabilities", (data, callback) =>
-			this.withErrorHandling(
-				socket,
-				"getRouterRtpCapabilities",
-				data,
-				callback,
-				this.handleGetRouterRtpCapabilities
-			)
-		)
-		socket.on("createWebRtcTransport", (data, callback) =>
-			this.withErrorHandling(
-				socket,
-				"createWebRtcTransport",
-				data,
-				callback,
-				this.handleCreateWebRtcTransport
-			)
-		)
-		socket.on("connectWebRtcTransport", (data, callback) =>
-			this.withErrorHandling(
-				socket,
-				"connectWebRtcTransport",
-				data,
-				callback,
-				this.handleConnectWebRtcTransport
-			)
-		)
+		socket.on("getRouterRtpCapabilities", (data, callback) => this.withErrorHandling(socket, "getRouterRtpCapabilities", data, callback, this.handleGetRouterRtpCapabilities))
+		socket.on("createWebRtcTransport", (data, callback) => this.withErrorHandling(socket, "createWebRtcTransport", data, callback, this.handleCreateWebRtcTransport))
+		socket.on("connectWebRtcTransport", (data, callback) => this.withErrorHandling(socket, "connectWebRtcTransport", data, callback, this.handleConnectWebRtcTransport))
 
 		// 生产者相关
-		socket.on("produce", (data, callback) =>
-			this.withErrorHandling(socket, "produce", data, callback, this.handleProduce)
-		)
-		socket.on("pauseProducer", (data, callback) =>
-			this.withErrorHandling(socket, "pauseProducer", data, callback, this.handlePauseProducer)
-		)
-		socket.on("resumeProducer", (data, callback) =>
-			this.withErrorHandling(
-				socket,
-				"resumeProducer",
-				data,
-				callback,
-				this.handleResumeProducer
-			)
-		)
-		socket.on("closeProducer", (data, callback) =>
-			this.withErrorHandling(socket, "closeProducer", data, callback, this.handleCloseProducer)
-		)
+		socket.on("produce", (data, callback) => this.withErrorHandling(socket, "produce", data, callback, this.handleProduce))
+		socket.on("pauseProducer", (data, callback) => this.withErrorHandling(socket, "pauseProducer", data, callback, this.handlePauseProducer))
+		socket.on("resumeProducer", (data, callback) => this.withErrorHandling(socket, "resumeProducer", data, callback, this.handleResumeProducer))
+		socket.on("closeProducer", (data, callback) => this.withErrorHandling(socket, "closeProducer", data, callback, this.handleCloseProducer))
 
 		// 消费者相关
-		socket.on("consume", (data, callback) =>
-			this.withErrorHandling(socket, "consume", data, callback, this.handleConsume)
-		)
-		socket.on("resumeConsumer", (data, callback) =>
-			this.withErrorHandling(
-				socket,
-				"resumeConsumer",
-				data,
-				callback,
-				this.handleResumeConsumer
-			)
-		)
-		socket.on("pauseConsumer", (data, callback) =>
-			this.withErrorHandling(socket, "pauseConsumer", data, callback, this.handlePauseConsumer)
-		)
+		socket.on("consume", (data, callback) => this.withErrorHandling(socket, "consume", data, callback, this.handleConsume))
+		socket.on("resumeConsumer", (data, callback) => this.withErrorHandling(socket, "resumeConsumer", data, callback, this.handleResumeConsumer))
+		socket.on("pauseConsumer", (data, callback) => this.withErrorHandling(socket, "pauseConsumer", data, callback, this.handlePauseConsumer))
+
+		// 音视频控制相关
+		socket.on("muteParticipant", (data, callback) => this.withErrorHandling(socket, "muteParticipant", data, callback, this.handleMuteParticipant))
+		socket.on("disableParticipantVideo", (data, callback) => this.withErrorHandling(socket, "disableParticipantVideo", data, callback, this.handleDisableParticipantVideo))
+		socket.on("toggleAudio", (data, callback) => this.withErrorHandling(socket, "toggleAudio", data, callback, this.handleToggleAudio))
+		socket.on("toggleVideo", (data, callback) => this.withErrorHandling(socket, "toggleVideo", data, callback, this.handleToggleVideo))
 
 		// Simulcast/SVC 支持
-		socket.on("setPreferredLayers", (data, callback) =>
-			this.withErrorHandling(
-				socket,
-				"setPreferredLayers",
-				data,
-				callback,
-				this.handleSetPreferredLayers
-			)
-		)
+		socket.on("setPreferredLayers", (data, callback) => this.withErrorHandling(socket, "setPreferredLayers", data, callback, this.handleSetPreferredLayers))
 
 		// 统计和监控
-		socket.on("getStats", (data, callback) =>
-			this.withErrorHandling(socket, "getStats", data, callback, this.handleGetStats)
-		)
+		socket.on("getStats", (data, callback) => this.withErrorHandling(socket, "getStats", data, callback, this.handleGetStats))
 
 		// 心跳响应处理
-		socket.on('ping', (data: { timestamp: number }) => {
+		socket.on("ping", (data: { timestamp: number }) => {
 			// 更新活动时间
 			this.sessionManager.updateActivity(socket.id)
 			this.connectionManager.updateActivity(socket.id)
-			
+
 			// 立即响应 pong
-			socket.emit('pong', { timestamp: data.timestamp })
+			socket.emit("pong", { timestamp: data.timestamp })
 		})
 	}
 
@@ -175,14 +117,14 @@ export class SignalingHandler {
 		eventName: string,
 		data: any,
 		callback: Function,
-		handler: (socket: Socket, data: any, callback: Function) => Promise<void>
+		handler: (socket: Socket, data: any, callback: Function) => Promise<void>,
 	): Promise<void> {
 		const startTime = Date.now()
 		try {
 			// 同时更新两个管理器的活动时间
 			this.sessionManager.updateActivity(socket.id)
 			this.connectionManager.updateActivity(socket.id)
-			
+
 			this.monitoring.recordMessage(eventName)
 
 			await handler.call(this, socket, data, callback)
@@ -200,11 +142,7 @@ export class SignalingHandler {
 		}
 	}
 
-	private async handleJoinRoom(
-		socket: Socket,
-		data: { roomId: string; userId: string; username: string; token: string },
-		callback: Function
-	): Promise<void> {
+	private async handleJoinRoom(socket: Socket, data: { roomId: string; userId: string; username: string; token: string }, callback: Function): Promise<void> {
 		const { roomId, userId, username, token } = data
 
 		// 创建会话
@@ -232,7 +170,7 @@ export class SignalingHandler {
 				username,
 				roomId,
 			},
-			socket
+			socket,
 		)
 
 		room.addPeer(peer)
@@ -269,11 +207,7 @@ export class SignalingHandler {
 		this.logger.info(`User ${username} joined room ${roomId}`)
 	}
 
-	private async handleGetRouterRtpCapabilities(
-		socket: Socket,
-		data: { roomId: string },
-		callback: Function
-	): Promise<void> {
+	private async handleGetRouterRtpCapabilities(socket: Socket, data: { roomId: string }, callback: Function): Promise<void> {
 		const { roomId } = data
 		const room = this.roomManager.getRoom(roomId)
 
@@ -292,7 +226,7 @@ export class SignalingHandler {
 			consuming: boolean
 			sctpCapabilities?: mediasoupTypes.SctpCapabilities
 		},
-		callback: Function
+		callback: Function,
 	): Promise<void> {
 		const { roomId, producing, consuming, sctpCapabilities } = data
 
@@ -354,7 +288,7 @@ export class SignalingHandler {
 			transportId: string
 			dtlsParameters: mediasoupTypes.DtlsParameters
 		},
-		callback: Function
+		callback: Function,
 	): Promise<void> {
 		const { roomId, transportId, dtlsParameters } = data
 
@@ -370,8 +304,7 @@ export class SignalingHandler {
 			throw new Error("Room or peer not found")
 		}
 
-		const transport =
-			peer.sendTransport?.id === transportId ? peer.sendTransport : peer.recvTransport
+		const transport = peer.sendTransport?.id === transportId ? peer.sendTransport : peer.recvTransport
 
 		if (!transport) {
 			throw new Error("Transport not found")
@@ -392,7 +325,7 @@ export class SignalingHandler {
 			rtpParameters: mediasoupTypes.RtpParameters
 			appData?: any
 		},
-		callback: Function
+		callback: Function,
 	): Promise<void> {
 		const { roomId, transportId, kind, rtpParameters, appData } = data
 
@@ -454,7 +387,7 @@ export class SignalingHandler {
 			producerId: string
 			rtpCapabilities: mediasoupTypes.RtpCapabilities
 		},
-		callback: Function
+		callback: Function,
 	): Promise<void> {
 		const { roomId, producerId, rtpCapabilities } = data
 
@@ -511,11 +444,7 @@ export class SignalingHandler {
 		this.logger.info(`Consumer ${consumer.id} created`)
 	}
 
-	private async handleResumeConsumer(
-		socket: Socket,
-		data: { roomId: string; consumerId: string },
-		callback: Function
-	): Promise<void> {
+	private async handleResumeConsumer(socket: Socket, data: { roomId: string; consumerId: string }, callback: Function): Promise<void> {
 		const { roomId, consumerId } = data
 
 		const session = this.sessionManager.getSession(socket.id)
@@ -541,11 +470,7 @@ export class SignalingHandler {
 		this.logger.info(`Consumer ${consumerId} resumed`)
 	}
 
-	private async handlePauseConsumer(
-		socket: Socket,
-		data: { roomId: string; consumerId: string },
-		callback: Function
-	): Promise<void> {
+	private async handlePauseConsumer(socket: Socket, data: { roomId: string; consumerId: string }, callback: Function): Promise<void> {
 		const { roomId, consumerId } = data
 
 		const session = this.sessionManager.getSession(socket.id)
@@ -571,11 +496,7 @@ export class SignalingHandler {
 		this.logger.info(`Consumer ${consumerId} paused`)
 	}
 
-	private async handlePauseProducer(
-		socket: Socket,
-		data: { roomId: string; producerId: string },
-		callback: Function
-	): Promise<void> {
+	private async handlePauseProducer(socket: Socket, data: { roomId: string; producerId: string }, callback: Function): Promise<void> {
 		const { roomId, producerId } = data
 
 		const session = this.sessionManager.getSession(socket.id)
@@ -606,11 +527,7 @@ export class SignalingHandler {
 		this.logger.info(`Producer ${producerId} paused`)
 	}
 
-	private async handleResumeProducer(
-		socket: Socket,
-		data: { roomId: string; producerId: string },
-		callback: Function
-	): Promise<void> {
+	private async handleResumeProducer(socket: Socket, data: { roomId: string; producerId: string }, callback: Function): Promise<void> {
 		const { roomId, producerId } = data
 
 		const session = this.sessionManager.getSession(socket.id)
@@ -641,11 +558,7 @@ export class SignalingHandler {
 		this.logger.info(`Producer ${producerId} resumed`)
 	}
 
-	private async handleCloseProducer(
-		socket: Socket,
-		data: { roomId: string; producerId: string },
-		callback: Function
-	): Promise<void> {
+	private async handleCloseProducer(socket: Socket, data: { roomId: string; producerId: string }, callback: Function): Promise<void> {
 		const { roomId, producerId } = data
 
 		const session = this.sessionManager.getSession(socket.id)
@@ -685,7 +598,7 @@ export class SignalingHandler {
 			spatialLayer: number
 			temporalLayer?: number
 		},
-		callback: Function
+		callback: Function,
 	): Promise<void> {
 		const { roomId, consumerId, spatialLayer, temporalLayer } = data
 
@@ -709,16 +622,205 @@ export class SignalingHandler {
 		await consumer.setPreferredLayers({ spatialLayer, temporalLayer })
 
 		callback({ success: true })
-		this.logger.info(
-			`Consumer ${consumerId} preferred layers set: spatial=${spatialLayer}, temporal=${temporalLayer}`
-		)
+		this.logger.info(`Consumer ${consumerId} preferred layers set: spatial=${spatialLayer}, temporal=${temporalLayer}`)
 	}
 
-	private async handleGetStats(
+	// 主持人静音参与者（暂时性关闭，非永久控制）
+	private async handleMuteParticipant(socket: Socket, data: { isHost: boolean; roomId: string; targetPeerId: string; muted: boolean }, callback: Function): Promise<void> {
+		const { isHost, roomId, targetPeerId, muted } = data
+
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
+		}
+
+		const room = this.roomManager.getRoom(roomId)
+		if (!room) {
+			throw new Error("Room not found")
+		}
+
+		// 验证是否为主持人
+		if (!isHost) {
+			throw new Error("Only host can mute participants")
+		}
+
+		// 找到目标参与者
+		const targetPeer = room.getPeer(targetPeerId)
+		if (!targetPeer) {
+			throw new Error("Target peer not found")
+		}
+
+		// 找到目标的 audio producer
+		const audioProducer = Array.from(targetPeer.producers.values()).find((p) => p.kind === "audio")
+
+		if (!audioProducer) {
+			throw new Error("Target has no audio producer")
+		}
+
+		// 执行静音/取消静音
+		if (muted) {
+			await audioProducer.pause()
+		} else {
+			await audioProducer.resume()
+		}
+
+		// 通知目标参与者（临时通知，不强制）
+		this.io.to(targetPeer.socket.id).emit("hostMuteRequest", {
+			muted,
+			hostId: session.userId,
+			hostName: session.username,
+		})
+
+		// 广播状态变化
+		this.io.to(roomId).emit("producerPaused", {
+			producerId: audioProducer.id,
+			peerId: targetPeerId,
+			paused: muted,
+		})
+
+		callback({ success: true })
+		this.logger.info(`Host ${session.userId} ${muted ? "muted" : "unmuted"} peer ${targetPeerId}`)
+	}
+
+	// 主持人关闭参与者视频（临时性）
+	private async handleDisableParticipantVideo(
 		socket: Socket,
-		data: { roomId: string; producerId?: string; consumerId?: string },
-		callback: Function
+		data: { isHost: boolean; roomId: string; targetPeerId: string; disabled: boolean },
+		callback: Function,
 	): Promise<void> {
+		const { isHost, roomId, targetPeerId, disabled } = data
+
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
+		}
+
+		const room = this.roomManager.getRoom(roomId)
+		if (!room) {
+			throw new Error("Room not found")
+		}
+
+		// 验证是否为主持人
+		if (!isHost) {
+			throw new Error("Only host can disable video")
+		}
+
+		// 找到目标参与者
+		const targetPeer = room.getPeer(targetPeerId)
+		if (!targetPeer) {
+			throw new Error("Target peer not found")
+		}
+
+		// 找到目标的 video producer
+		const videoProducer = Array.from(targetPeer.producers.values()).find((p) => p.kind === "video")
+
+		if (!videoProducer) {
+			throw new Error("Target has no video producer")
+		}
+
+		// 执行关闭/开启
+		if (disabled) {
+			await videoProducer.pause()
+		} else {
+			await videoProducer.resume()
+		}
+
+		// 通知目标参与者
+		this.io.to(targetPeer.socket.id).emit("hostVideoRequest", {
+			disabled,
+			hostId: session.userId,
+			hostName: session.username,
+		})
+
+		// 广播状态变化
+		this.io.to(roomId).emit("producerPaused", {
+			producerId: videoProducer.id,
+			peerId: targetPeerId,
+			paused: disabled,
+		})
+
+		callback({ success: true })
+		this.logger.info(`Host ${session.userId} ${disabled ? "disabled" : "enabled"} video for peer ${targetPeerId}`)
+	}
+
+	// 参与者自主控制音频
+	private async handleToggleAudio(socket: Socket, data: { roomId: string; enabled: boolean }, callback: Function): Promise<void> {
+		const { roomId, enabled } = data
+
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
+		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer) {
+			throw new Error("Room or peer not found")
+		}
+
+		const audioProducer = Array.from(peer.producers.values()).find((p) => p.kind === "audio")
+
+		if (!audioProducer) {
+			throw new Error("No audio producer found")
+		}
+
+		// 参与者自主控制
+		if (enabled) {
+			await audioProducer.resume()
+		} else {
+			await audioProducer.pause()
+		}
+
+		// 广播状态
+		socket.to(roomId).emit(enabled ? "producerResumed" : "producerPaused", {
+			producerId: audioProducer.id,
+			peerId: peer.id,
+		})
+
+		callback({ success: true })
+		this.logger.info(`Peer ${peer.id} ${enabled ? "enabled" : "disabled"} audio`)
+	}
+	// 参与者自主控制视频
+	private async handleToggleVideo(socket: Socket, data: { roomId: string; enabled: boolean }, callback: Function): Promise<void> {
+		const { roomId, enabled } = data
+
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
+		}
+
+		const room = this.roomManager.getRoom(roomId)
+		const peer = room?.getPeer(session.userId)
+
+		if (!room || !peer) {
+			throw new Error("Room or peer not found")
+		}
+
+		const videoProducer = Array.from(peer.producers.values()).find((p) => p.kind === "video")
+
+		if (!videoProducer) {
+			throw new Error("No video producer found")
+		}
+
+		// 参与者自主控制
+		if (enabled) {
+			await videoProducer.resume()
+		} else {
+			await videoProducer.pause()
+		}
+
+		// 广播状态
+		socket.to(roomId).emit(enabled ? "producerResumed" : "producerPaused", {
+			producerId: videoProducer.id,
+			peerId: peer.id,
+		})
+
+		callback({ success: true })
+		this.logger.info(`Peer ${peer.id} ${enabled ? "enabled" : "disabled"} video`)
+	}
+
+	private async handleGetStats(socket: Socket, data: { roomId: string; producerId?: string; consumerId?: string }, callback: Function): Promise<void> {
 		const { roomId, producerId, consumerId } = data
 
 		const session = this.sessionManager.getSession(socket.id)

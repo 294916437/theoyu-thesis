@@ -128,8 +128,8 @@
 										:meeting-id="meetingInfo.roomId"
 										:local-audio-enabled="audioEnabled"
 										:local-video-enabled="videoEnabled"
-										@toggle-audio="handleToggleAudio"
-										@toggle-video="handleToggleVideo"
+										@toggle-audio="toggleAudio"
+										@toggle-video="toggleVideo"
 										@mute-participant="handleMuteParticipant"
 										@remove-participant="handleRemoveParticipant"
 										@disable-video="handleDisableParticipantVideo"
@@ -496,7 +496,7 @@
 													:variant="audioEnabled ? 'elevated' : 'flat'"
 													size="large"
 													class="control-btn"
-													@click="audioEnabled = !audioEnabled"
+													@click="toggleAudio"
 												></v-btn>
 											</template>
 											<span>{{ audioEnabled ? '静音' : '取消静音' }}</span>
@@ -512,7 +512,7 @@
 													:variant="videoEnabled ? 'elevated' : 'flat'"
 													size="large"
 													class="control-btn"
-													@click="videoEnabled = !videoEnabled"
+													@click="toggleVideo"
 												></v-btn>
 											</template>
 											<span>{{ videoEnabled ? '关闭摄像头' : '开启摄像头' }}</span>
@@ -1512,33 +1512,6 @@ watch(sidebarTab, async (newTab, oldTab) => {
 		scrollToBottom(true)
 	}
 })
-// 监听新消息自动滚动
-// watch(
-// 	() => chatMessages.value.length,
-// 	async (newLength, oldLength) => {
-// 		// 只在消息增加时触发
-// 		if (newLength <= oldLength) return
-// 		// 如果当前在聊天标签或已经在底部，自动滚动
-// 		if (sidebarTab.value === 'chat' || arrivedState.bottom) {
-// 			await nextTick()
-// 			scrollToBottom(true)
-// 		} else {
-// 			// 否则只增加未读计数
-// 			unreadMessages.value++
-// 		}
-// 	},
-// )
-// 音视频控制
-watch(audioEnabled, async enabled => {
-	console.log('Audio state changed', enabled)
-	await toggleAudio()
-})
-
-watch(videoEnabled, async enabled => {
-	console.log('Video state changed', enabled)
-	await toggleVideo()
-})
-
 // 设备切换
 watch(selectedCamera, async deviceId => {
 	if (deviceId && localStream.value) {
@@ -1660,20 +1633,6 @@ const getParticipantMediaState = participant => {
 }
 
 // ==================== 参与者管理 ====================
-const handleToggleAudio = async participantId => {
-	if (participantId === peerId.value) {
-		await toggleAudio()
-	} else {
-		await handleMuteParticipant(participantId)
-	}
-}
-const handleToggleVideo = async participantId => {
-	if (participantId === peerId.value) {
-		await toggleVideo()
-	} else {
-		await handleDisableParticipantVideo(participantId)
-	}
-}
 /**
  * 处理禁用参与者音频（主持人操作）
  */

@@ -53,17 +53,17 @@
 				:class="{
 					'is-speaking': participant.isSpeaking,
 					'video-disabled': !participant.videoEnabled,
+					'audio-only': !participant.videoEnabled && participant.audioEnabled,
 					'is-screen-sharing': participant.isScreenSharing,
 					...tileClass,
 				}"
 			>
-				<!-- 视频元素 -->
-				<video :ref="el => setVideoRef(el, participant.peerId)" autoplay playsinline :muted="false" class="video-element" />
-
-				<!-- 无视频时的占位符 -->
-				<div v-if="!hasValidVideoTrack(participant)" class="video-placeholder">
+				<!-- 视频元素：当视频启用时显示 -->
+				<video v-show="participant.videoEnabled" :ref="el => setVideoRef(el, participant.peerId)" autoplay playsinline :muted="false" class="video-element" />
+				<!-- 占位符：当视频关闭但音频开启时显示 -->
+				<div v-if="!participant.videoEnabled" class="video-placeholder">
 					<v-avatar :size="avatarSize" color="secondary">
-						<span :class="avatarTextClass">{{ participant.name }}</span>
+						<span :class="avatarTextClass">{{ getInitials(participant.name) }}</span>
 					</v-avatar>
 				</div>
 
@@ -77,8 +77,12 @@
 							class="user-name-chip"
 						>
 							<template #prepend>
+								<!-- 屏幕共享优先显示 -->
 								<v-icon v-if="participant.isScreenSharing" size="x-small"> mdi-monitor-share </v-icon>
+								<!-- 音频关闭图标 -->
 								<v-icon v-else-if="!participant.audioEnabled" size="x-small" color="error"> mdi-microphone-off </v-icon>
+								<!-- 视频关闭但音频开启时显示麦克风图标 -->
+								<v-icon v-else-if="!participant.videoEnabled && participant.audioEnabled" size="x-small" color="success"> mdi-microphone </v-icon>
 							</template>
 							{{ participant.name }}
 							<span v-if="participant.isScreenSharing" class="ml-1 text-caption"> - 屏幕共享 </span>
@@ -154,6 +158,7 @@
 
 <script setup>
 import { useDebounceFn } from '@vueuse/core'
+import { getInitials } from '@/utils/common'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 const streamCache = ref(new Map())
 const props = defineProps({
@@ -202,7 +207,7 @@ const pinnedParticipantId = ref(null)
 // 格式化参与者数据
 const formattedParticipants = computed(() => {
 	return props.participants
-		.filter(p => !p.isLocal) // 过滤掉本地参与者
+		.filter(p => !p.isLocal)
 		.map(p => {
 			// 合并音视频流
 			let combinedStream = null
@@ -231,7 +236,7 @@ const formattedParticipants = computed(() => {
 				}
 			}
 
-			// 判断音视频状态
+			// 综合判断音视频状态
 			let audioEnabled = false
 			let videoEnabled = false
 
@@ -239,8 +244,21 @@ const formattedParticipants = computed(() => {
 				const audioTracks = combinedStream.getAudioTracks()
 				const videoTracks = combinedStream.getVideoTracks()
 
-				audioEnabled = audioTracks.length > 0 && audioTracks.some(t => t.readyState === 'live' && t.enabled)
-				videoEnabled = videoTracks.length > 0 && videoTracks.some(t => t.readyState === 'live' && t.enabled)
+				// 1. 轨道存在且 live
+				const hasAudioTrack = audioTracks.some(t => t.readyState === 'live')
+				const hasVideoTrack = videoTracks.some(t => t.readyState === 'live')
+
+				// 2. producer 未被暂停（服务器端状态）
+				const audioProducerActive = !p.producers?.audio?.paused
+				const videoProducerActive = !p.producers?.video?.paused
+
+				// 3. 轨道本身已启用
+				const audioTrackEnabled = audioTracks.some(t => t.enabled)
+				const videoTrackEnabled = videoTracks.some(t => t.enabled)
+
+				// 三个条件都满足才显示
+				audioEnabled = hasAudioTrack && audioProducerActive && audioTrackEnabled
+				videoEnabled = hasVideoTrack && videoProducerActive && videoTrackEnabled
 			}
 
 			const isScreenSharing = p.producers?.video?.appData?.source === 'screen'
@@ -254,11 +272,19 @@ const formattedParticipants = computed(() => {
 				videoEnabled,
 				isScreenSharing,
 				isSpeaking: false,
-				isLocal: false, // 确保标记为远程参与者
+				isLocal: false,
 				connectionQuality: 'good',
 			}
 		})
-		.filter(p => p.stream && p.stream.getTracks().length > 0) // 过滤无效流
+		.filter(p => {
+			// 1. 必须有 stream
+			if (!p.stream || p.stream.getTracks().length === 0) {
+				return false
+			}
+			// 2. 至少音频或视频其中一个是启用的
+			const shouldRender = p.audioEnabled || p.videoEnabled
+			return shouldRender
+		})
 })
 
 // 所有参与者(包含本地)
@@ -604,6 +630,12 @@ onUnmounted(() => {
 	border-color: rgb(var(--v-theme-success));
 	box-shadow: 0 0 20px rgba(var(--v-theme-success), 0.5);
 }
+.video-tile.audio-only {
+	background: linear-gradient(135deg, rgba(var(--v-theme-secondary), 0.1) 0%, rgba(var(--v-theme-primary), 0.1) 100%);
+}
+.video-tile.audio-only .video-placeholder {
+	background: linear-gradient(135deg, rgb(var(--v-theme-secondary)) 0%, rgb(var(--v-theme-primary)) 100%);
+}
 
 .video-tile.is-local {
 	border-color: rgba(var(--v-theme-primary), 0.5);
@@ -619,6 +651,7 @@ onUnmounted(() => {
 	height: 100%;
 	object-fit: cover;
 	background: rgb(var(--v-theme-surface));
+	transition: opacity 0.3s ease-in-out;
 }
 
 .video-placeholder {
@@ -631,6 +664,17 @@ onUnmounted(() => {
 	align-items: center;
 	justify-content: center;
 	background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgb(var(--v-theme-secondary)) 100%);
+	animation: fadeIn 0.3s ease-in-out;
+}
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+		transform: scale(0.95);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
 }
 
 /* ==================== 覆盖层 ==================== */

@@ -1,5 +1,6 @@
 <script setup>
 import { $notify } from '@/plugins/notification'
+import { getInitials } from '@/utils/common'
 import { ref, computed } from 'vue'
 
 const props = defineProps({
@@ -76,16 +77,6 @@ const meetingLink = computed(() => {
 })
 
 const onlineParticipants = computed(() => props.participants.filter(p => p.status === 1))
-
-// 获取用户名首字母的工具函数
-const getInitials = name => {
-	if (!name) return '?'
-	const names = name.trim().split(' ')
-	if (names.length === 1) {
-		return names[0].charAt(0).toUpperCase()
-	}
-	return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase()
-}
 
 const getConnectionColor = quality => {
 	const colors = {
@@ -178,11 +169,9 @@ const handleMuteParticipant = async participant => {
 	try {
 		const willMute = !participant.producers?.audio?.paused
 		emit('mute-participant', participant.peerId, willMute)
-
-		if (isCurrentUser(participant)) {
-			$notify.info(`已${willMute ? '静音' : '取消静音'}`)
-		} else {
-			$notify.info(`已向 ${participant.username} 发送${willMute ? '静音' : '取消静音'}请求`)
+		// 乐观更新 UI
+		if (participant.producers?.audio) {
+			participant.producers.audio.paused = willMute
 		}
 	} catch (error) {
 		$notify.error('操作失败')
@@ -193,11 +182,9 @@ const handleDisableParticipantVideo = async participant => {
 	try {
 		const willDisable = !participant.producers?.video?.paused
 		emit('disable-participant-video', participant.peerId, willDisable)
-
-		if (isCurrentUser(participant)) {
-			$notify.info(`已${willDisable ? '关闭' : '开启'}摄像头`)
-		} else {
-			$notify.info(`已向 ${participant.username} 发送${willDisable ? '关闭' : '开启'}摄像头请求`)
+		// 乐观更新 UI
+		if (participant.producers?.video) {
+			participant.producers.video.paused = willDisable
 		}
 	} catch (error) {
 		$notify.error('操作失败')

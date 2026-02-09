@@ -128,6 +128,8 @@
 										:meeting-id="meetingInfo.roomId"
 										:local-audio-enabled="audioEnabled"
 										:local-video-enabled="videoEnabled"
+										@toggle-audio="handleToggleAudio"
+										@toggle-video="handleToggleVideo"
 										@mute-participant="handleMuteParticipant"
 										@remove-participant="handleRemoveParticipant"
 										@disable-video="handleDisableParticipantVideo"
@@ -1658,40 +1660,37 @@ const getParticipantMediaState = participant => {
 }
 
 // ==================== 参与者管理 ====================
-const handleMuteParticipant = async participantId => {
-	if (!isHost.value) {
-		$notify.error('只有主持人可以静音他人')
-		return
+const handleToggleAudio = async participantId => {
+	if (participantId === peerId.value) {
+		await toggleAudio()
+	} else {
+		await handleMuteParticipant(participantId)
 	}
-
+}
+const handleToggleVideo = async participantId => {
+	if (participantId === peerId.value) {
+		await toggleVideo()
+	} else {
+		await handleDisableParticipantVideo(participantId)
+	}
+}
+/**
+ * 处理禁用参与者音频（主持人操作）
+ */
+const handleMuteParticipant = async (participantId, muted) => {
 	try {
-		const participant = participants.value.find(p => p.peerId === participantId)
-		const currentlyMuted = participant?.producers?.audio?.paused
-
-		await muteParticipant(participantId, !currentlyMuted)
-
-		$notify.success(`已${!currentlyMuted ? '静音' : '取消静音'} ${participant?.username}`)
+		await muteParticipant(participantId, muted)
 	} catch (error) {
 		console.error('Mute participant failed:', error)
 		$notify.error(error.message || '操作失败')
 	}
 }
 /**
- * 处理禁用参与者视频（主持人专用）
+ * 处理禁用参与者视频（主持人操作）
  */
-const handleDisableParticipantVideo = async participantId => {
-	if (!isHost.value) {
-		$notify.error('只有主持人可以关闭他人摄像头')
-		return
-	}
-
+const handleDisableParticipantVideo = async (participantId, disabled) => {
 	try {
-		const participant = participants.value.find(p => p.peerId === participantId)
-		const currentlyDisabled = participant?.producers?.video?.paused
-
-		await disableParticipantVideo(participantId, !currentlyDisabled)
-
-		$notify.success(`已${!currentlyDisabled ? '关闭' : '开启'} ${participant?.username} 的摄像头`)
+		await disableParticipantVideo(participantId, disabled)
 	} catch (error) {
 		console.error('Disable video failed:', error)
 		$notify.error(error.message || '操作失败')

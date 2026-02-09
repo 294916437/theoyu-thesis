@@ -626,8 +626,8 @@ export class SignalingHandler {
 	}
 
 	// 主持人静音参与者（暂时性关闭，非永久控制）
-	private async handleMuteParticipant(socket: Socket, data: { isHost: boolean; roomId: string; targetPeerId: string; muted: boolean }, callback: Function): Promise<void> {
-		const { isHost, roomId, targetPeerId, muted } = data
+	private async handleMuteParticipant(socket: Socket, data: { roomId: string; targetPeerId: string; muted: boolean }, callback: Function): Promise<void> {
+		const { roomId, targetPeerId, muted } = data
 
 		const session = this.sessionManager.getSession(socket.id)
 		if (!session) {
@@ -639,10 +639,7 @@ export class SignalingHandler {
 			throw new Error("Room not found")
 		}
 
-		// 验证是否为主持人
-		if (!isHost) {
-			throw new Error("Only host can mute participants")
-		}
+		// TODO:服务端验证是否为主持人
 
 		// 找到目标参与者
 		const targetPeer = room.getPeer(targetPeerId)
@@ -664,31 +661,24 @@ export class SignalingHandler {
 			await audioProducer.resume()
 		}
 
-		// 通知目标参与者（临时通知，不强制）
-		this.io.to(targetPeer.socket.id).emit("hostMuteRequest", {
-			muted,
+		// 广播状态变化
+		this.io.to(roomId).emit("producerStateChanged", {
+			producerId: audioProducer.id,
+			peerId: targetPeerId,
+			kind: "audio",
+			paused: muted,
+			reason: "host_forced",
 			hostId: session.userId,
 			hostName: session.username,
 		})
 
-		// 广播状态变化
-		this.io.to(roomId).emit("producerPaused", {
-			producerId: audioProducer.id,
-			peerId: targetPeerId,
-			paused: muted,
-		})
-
-		callback({ success: true })
+		callback({ success: true, paused: muted })
 		this.logger.info(`Host ${session.userId} ${muted ? "muted" : "unmuted"} peer ${targetPeerId}`)
 	}
 
 	// 主持人关闭参与者视频（临时性）
-	private async handleDisableParticipantVideo(
-		socket: Socket,
-		data: { isHost: boolean; roomId: string; targetPeerId: string; disabled: boolean },
-		callback: Function,
-	): Promise<void> {
-		const { isHost, roomId, targetPeerId, disabled } = data
+	private async handleDisableParticipantVideo(socket: Socket, data: { roomId: string; targetPeerId: string; disabled: boolean }, callback: Function): Promise<void> {
+		const { roomId, targetPeerId, disabled } = data
 
 		const session = this.sessionManager.getSession(socket.id)
 		if (!session) {
@@ -700,10 +690,7 @@ export class SignalingHandler {
 			throw new Error("Room not found")
 		}
 
-		// 验证是否为主持人
-		if (!isHost) {
-			throw new Error("Only host can disable video")
-		}
+		// TODO:服务端验证是否为主持人
 
 		// 找到目标参与者
 		const targetPeer = room.getPeer(targetPeerId)
@@ -725,21 +712,18 @@ export class SignalingHandler {
 			await videoProducer.resume()
 		}
 
-		// 通知目标参与者
-		this.io.to(targetPeer.socket.id).emit("hostVideoRequest", {
-			disabled,
+		// 广播状态变化
+		this.io.to(roomId).emit("producerStateChanged", {
+			producerId: videoProducer.id,
+			peerId: targetPeerId,
+			kind: "video",
+			paused: disabled,
+			reason: "host_forced",
 			hostId: session.userId,
 			hostName: session.username,
 		})
 
-		// 广播状态变化
-		this.io.to(roomId).emit("producerPaused", {
-			producerId: videoProducer.id,
-			peerId: targetPeerId,
-			paused: disabled,
-		})
-
-		callback({ success: true })
+		callback({ success: true, disabled: disabled })
 		this.logger.info(`Host ${session.userId} ${disabled ? "disabled" : "enabled"} video for peer ${targetPeerId}`)
 	}
 
@@ -773,12 +757,19 @@ export class SignalingHandler {
 		}
 
 		// 广播状态
-		socket.to(roomId).emit(enabled ? "producerResumed" : "producerPaused", {
+		this.io.to(roomId).emit("producerStateChanged", {
 			producerId: audioProducer.id,
 			peerId: peer.id,
+			kind: "audio",
+			paused: !enabled,
+			reason: "self_control",
 		})
 
-		callback({ success: true })
+		callback({
+			success: true,
+			enabled: enabled,
+			producerId: audioProducer.id,
+		})
 		this.logger.info(`Peer ${peer.id} ${enabled ? "enabled" : "disabled"} audio`)
 	}
 	// 参与者自主控制视频
@@ -811,12 +802,19 @@ export class SignalingHandler {
 		}
 
 		// 广播状态
-		socket.to(roomId).emit(enabled ? "producerResumed" : "producerPaused", {
+		this.io.to(roomId).emit("producerStateChanged", {
 			producerId: videoProducer.id,
 			peerId: peer.id,
+			kind: "video",
+			paused: !enabled,
+			reason: "self_control",
 		})
 
-		callback({ success: true })
+		callback({
+			success: true,
+			enabled: enabled,
+			producerId: videoProducer.id,
+		})
 		this.logger.info(`Peer ${peer.id} ${enabled ? "enabled" : "disabled"} video`)
 	}
 

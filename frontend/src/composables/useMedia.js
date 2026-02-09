@@ -347,14 +347,12 @@ export function useMedia() {
 			mediasoupClient.producers.delete('video')
 
 			// 9. 创建新 Producer
-			// [关键修复] 移除 encodings，禁用 Simulcast，解决单帧卡死问题
 			const effectProducer = await mediasoupClient.produce(effectVideoTrack, {
 				kind: 'video',
 				appData: {
 					source: 'effect',
 					effectType: effectType.value,
 				},
-				// encodings: [] // 不要传这个！
 			})
 
 			effectVideoTrack.onended = () => {
@@ -620,23 +618,7 @@ export function useMedia() {
 	/**
 	 * 处理主持人控制请求（新增监听）
 	 */
-	function setupHostControlListeners() {
-		// 收到主持人静音请求（提示性）
-		socketClient.on('hostMuteRequest', async data => {
-			$notify.warning(`主持人 ${data.hostName} 请求您${data.muted ? '静音' : '取消静音'}`, {
-				timeout: 5000,
-			})
-			// 不强制执行，用户可以选择忽略
-		})
-
-		// 收到主持人关闭视频请求（提示性）
-		socketClient.on('hostVideoRequest', async data => {
-			$notify.warning(`主持人 ${data.hostName} 请求您${data.disabled ? '关闭摄像头' : '开启摄像头'}`, {
-				timeout: 5000,
-			})
-			// 不强制执行，用户可以选择忽略
-		})
-	}
+	function setupHostControlListeners() {}
 
 	// 获取远程参与者列表
 	const remoteParticipants = computed(() => participants.value.filter(p => p.peerId !== peerId.value))
@@ -769,7 +751,6 @@ export function useMedia() {
 			}
 			// 9. 监听事件
 			setupSocketListeners()
-			setupHostControlListeners()
 			// 10. 监听特效相关状态变化
 			watch([effectType, selectedBackground], async ([newType, newBg], [oldType, oldBg]) => {
 				if (!localStream.value) return
@@ -1102,18 +1083,6 @@ export function useMedia() {
 			}
 		})
 
-		// 生产者暂停
-		socketClient.on('producerPaused', data => {
-			console.log('Producer paused', data)
-			updateProducerState(data.peerId, data.producerId, true)
-		})
-
-		// 生产者恢复
-		socketClient.on('producerResumed', data => {
-			console.log('Producer resumed', data)
-			updateProducerState(data.peerId, data.producerId, false)
-		})
-
 		// 消费者关闭
 		socketClient.on('consumerClosed', data => {
 			console.log('Consumer closed', data)
@@ -1127,27 +1096,94 @@ export function useMedia() {
 				}
 			}
 		})
+		// 添加统一状态变化监听
+		socketClient.on('producerStateChanged', data => {
+			const { peerId: remotePeerId, producerId, kind, paused, reason, hostId, hostName } = data
+
+			// 1. 更新参与者的 producers 状态
+			updateProducerState(peerId, producerId, paused)
+
+			// 2. 如果是本地用户被主持人控制
+			if (remotePeerId === peerId.value && reason === 'host_forced') {
+				const action = kind === 'audio' ? (paused ? '关闭了您的麦克风' : '开启了您的麦克风') : paused ? '关闭了您的摄像头' : '开启了您的摄像头'
+
+				$notify.warning(`主持人 ${hostName} ${action}`, {
+					timeout: 5000,
+				})
+			}
+
+			// 3. 强制触发响应式更新
+			participants.value = [...participants.value]
+		})
 	}
 
 	/**
-	 * 更新生产者状态
+	 * 更新生产者状态（完整修复版）
 	 */
 	function updateProducerState(remotePeerId, producerId, paused) {
 		const participant = participants.value.find(p => p.peerId === remotePeerId)
-		if (participant && participant.consumers[producerId]) {
-			const consumer = participant.consumers[producerId]
-			if (paused) {
-				consumer.pause()
-			} else {
-				consumer.resume()
-			}
 
-			// 更新生产者列表状态
-			const producer = participant.producers.find(p => p.id === producerId)
-			if (producer) {
-				producer.paused = paused
+		if (!participant) {
+			console.warn(`[Media] Participant ${remotePeerId} not found`)
+			return
+		}
+
+		let targetKind = null
+
+		// 先从 producers 记录中找到对应的 kind
+		if (participant.producers) {
+			for (const [kind, producer] of Object.entries(participant.producers)) {
+				if (producer && producer.id === producerId) {
+					targetKind = kind
+					// 更新 producer 状态
+					participant.producers[kind].paused = paused
+					console.log(`[Media] Updated ${kind} producer state to paused=${paused}`)
+					break
+				}
 			}
 		}
+
+		// 通过 producerId 匹配 consumer
+		if (participant.consumers && targetKind) {
+			// 遍历所有 consumer，找到匹配的 producerId
+			for (const [consumerId, consumer] of Object.entries(participant.consumers)) {
+				if (consumer.producerId === producerId) {
+					try {
+						if (paused) {
+							consumer.pause()
+							console.log(`[Media] Consumer paused: ${consumerId}`)
+						} else {
+							consumer.resume()
+							console.log(`[Media] Consumer resumed: ${consumerId}`)
+						}
+
+						// 同步本地轨道状态（如果是本地用户）
+						if (participant.peerId === peerId.value) {
+							const track = consumer.track
+							if (track && track.enabled !== !paused) {
+								track.enabled = !paused
+								console.log(`[Media] Synced local track state: ${targetKind} enabled=${!paused}`)
+							}
+						}
+					} catch (error) {
+						console.error(`[Media] Failed to update consumer ${consumerId}:`, error)
+					}
+					break
+				}
+			}
+		}
+
+		// 如果是本地用户被主持人控制，同步本地状态
+		if (participant.peerId === peerId.value) {
+			if (targetKind === 'audio') {
+				audioEnabled.value = !paused
+			} else if (targetKind === 'video') {
+				videoEnabled.value = !paused
+			}
+		}
+
+		// 强制触发响应式更新
+		participants.value = [...participants.value]
 	}
 
 	/**
@@ -1157,20 +1193,28 @@ export function useMedia() {
 		try {
 			const willEnable = !audioEnabled.value
 
-			await socketClient.emit('toggleAudio', {
+			// 1. 通知服务器（等待响应）
+			const response = await socketClient.emit('toggleAudio', {
 				roomId: roomId.value,
 				enabled: willEnable,
 			})
 
-			// 本地轨道控制
-			localStream.value?.getAudioTracks().forEach(track => {
-				track.enabled = willEnable
-			})
+			// 根据服务器返回的状态更新
+			if (response.success) {
+				// 2. 本地轨道同步
+				localStream.value?.getAudioTracks().forEach(track => {
+					track.enabled = response.enabled
+				})
 
-			audioEnabled.value = willEnable
-			console.log('Audio toggled to:', willEnable)
+				// 3. 更新状态
+				audioEnabled.value = response.enabled
+
+				console.log('Audio toggled to:', response.enabled)
+			}
 		} catch (error) {
 			console.error('Failed to toggle audio', error)
+			// 失败时回滚状态
+			audioEnabled.value = !audioEnabled.value
 			$notify.error('切换音频失败')
 			throw error
 		}
@@ -1179,25 +1223,27 @@ export function useMedia() {
 	/**
 	 * 切换视频
 	 */
-
 	async function toggleVideo() {
 		try {
 			const willEnable = !videoEnabled.value
 
-			await socketClient.emit('toggleVideo', {
+			const response = await socketClient.emit('toggleVideo', {
 				roomId: roomId.value,
 				enabled: willEnable,
 			})
 
-			// 本地轨道控制
-			localStream.value?.getVideoTracks().forEach(track => {
-				track.enabled = willEnable
-			})
+			if (response.success) {
+				localStream.value?.getVideoTracks().forEach(track => {
+					track.enabled = response.enabled
+				})
 
-			videoEnabled.value = willEnable
-			console.log('Video toggled to:', willEnable)
+				videoEnabled.value = response.enabled
+
+				console.log('Video toggled to:', response.enabled)
+			}
 		} catch (error) {
 			console.error('Failed to toggle video', error)
+			videoEnabled.value = !videoEnabled.value
 			$notify.error('切换视频失败')
 			throw error
 		}

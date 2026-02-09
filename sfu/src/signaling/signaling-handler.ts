@@ -89,8 +89,8 @@ export class SignalingHandler {
 		socket.on("pauseConsumer", (data, callback) => this.withErrorHandling(socket, "pauseConsumer", data, callback, this.handlePauseConsumer))
 
 		// 音视频控制相关
-		socket.on("muteParticipant", (data, callback) => this.withErrorHandling(socket, "muteParticipant", data, callback, this.handleMuteParticipant))
-		socket.on("disableParticipantVideo", (data, callback) => this.withErrorHandling(socket, "disableParticipantVideo", data, callback, this.handleDisableParticipantVideo))
+		socket.on("hostToggleAudio", (data, callback) => this.withErrorHandling(socket, "hostToggleAudio", data, callback, this.handleHostToggleAudio))
+		socket.on("hostToggleVideo", (data, callback) => this.withErrorHandling(socket, "hostToggleVideo", data, callback, this.handleHostToggleVideo))
 		socket.on("toggleAudio", (data, callback) => this.withErrorHandling(socket, "toggleAudio", data, callback, this.handleToggleAudio))
 		socket.on("toggleVideo", (data, callback) => this.withErrorHandling(socket, "toggleVideo", data, callback, this.handleToggleVideo))
 
@@ -625,9 +625,9 @@ export class SignalingHandler {
 		this.logger.info(`Consumer ${consumerId} preferred layers set: spatial=${spatialLayer}, temporal=${temporalLayer}`)
 	}
 
-	// 主持人静音参与者（暂时性关闭，非永久控制）
-	private async handleMuteParticipant(socket: Socket, data: { roomId: string; targetPeerId: string; muted: boolean }, callback: Function): Promise<void> {
-		const { roomId, targetPeerId, muted } = data
+	// 主持人静音参与者（暂时性关闭）
+	private async handleHostToggleAudio(socket: Socket, data: { roomId: string; targetPeerId: string; enabled: boolean }, callback: Function): Promise<void> {
+		const { roomId, targetPeerId, enabled } = data
 
 		const session = this.sessionManager.getSession(socket.id)
 		if (!session) {
@@ -654,11 +654,11 @@ export class SignalingHandler {
 			throw new Error("Target has no audio producer")
 		}
 
-		// 执行静音/取消静音
-		if (muted) {
-			await audioProducer.pause()
-		} else {
+		// 主持人控制
+		if (enabled) {
 			await audioProducer.resume()
+		} else {
+			await audioProducer.pause()
 		}
 
 		// 广播状态变化
@@ -666,19 +666,17 @@ export class SignalingHandler {
 			producerId: audioProducer.id,
 			peerId: targetPeerId,
 			kind: "audio",
-			paused: muted,
+			paused: !enabled,
 			reason: "host_forced",
-			hostId: session.userId,
-			hostName: session.username,
 		})
 
-		callback({ success: true, paused: muted })
-		this.logger.info(`Host ${session.userId} ${muted ? "muted" : "unmuted"} peer ${targetPeerId}`)
+		callback({ success: true, paused: enabled, producerId: audioProducer.id })
+		this.logger.info(`Host ${session.userId} ${enabled ? "enabled" : "disabled"} peer ${targetPeerId}`)
 	}
 
 	// 主持人关闭参与者视频（临时性）
-	private async handleDisableParticipantVideo(socket: Socket, data: { roomId: string; targetPeerId: string; disabled: boolean }, callback: Function): Promise<void> {
-		const { roomId, targetPeerId, disabled } = data
+	private async handleHostToggleVideo(socket: Socket, data: { roomId: string; targetPeerId: string; enabled: boolean }, callback: Function): Promise<void> {
+		const { roomId, targetPeerId, enabled } = data
 
 		const session = this.sessionManager.getSession(socket.id)
 		if (!session) {
@@ -705,11 +703,11 @@ export class SignalingHandler {
 			throw new Error("Target has no video producer")
 		}
 
-		// 执行关闭/开启
-		if (disabled) {
-			await videoProducer.pause()
-		} else {
+		// 主持人控制
+		if (enabled) {
 			await videoProducer.resume()
+		} else {
+			await videoProducer.pause()
 		}
 
 		// 广播状态变化
@@ -717,14 +715,12 @@ export class SignalingHandler {
 			producerId: videoProducer.id,
 			peerId: targetPeerId,
 			kind: "video",
-			paused: disabled,
+			paused: !enabled,
 			reason: "host_forced",
-			hostId: session.userId,
-			hostName: session.username,
 		})
 
-		callback({ success: true, disabled: disabled })
-		this.logger.info(`Host ${session.userId} ${disabled ? "disabled" : "enabled"} video for peer ${targetPeerId}`)
+		callback({ success: true, enabled: enabled, producerId: videoProducer.id })
+		this.logger.info(`Host ${session.userId} ${enabled ? "enabled" : "disabled"} video for peer ${targetPeerId}`)
 	}
 
 	// 参与者自主控制音频

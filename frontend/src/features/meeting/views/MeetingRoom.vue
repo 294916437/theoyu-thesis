@@ -130,9 +130,8 @@
 										:local-video-enabled="videoEnabled"
 										@toggle-audio="toggleAudio"
 										@toggle-video="toggleVideo"
-										@mute-participant="handleMuteParticipant"
-										@remove-participant="handleRemoveParticipant"
-										@disable-video="handleDisableParticipantVideo"
+										@host-toggle-audio="handleHostToggleAudio"
+										@host-toggle-video="handleHostToggleVideo"
 										@pin-participant="handlePinParticipant"
 										@spotlight-participant="handleSpotlightParticipant"
 									/>
@@ -938,8 +937,8 @@ const {
 	changeAudioDevice,
 	changeVideoDevice,
 	uploadCustomBackground,
-	muteParticipant,
-	disableParticipantVideo,
+	hostToggleAudio,
+	hostToggleVideo,
 } = useMedia()
 // 处理背景替换文件上传处理
 
@@ -1622,23 +1621,13 @@ const confirmLeaveMeeting = async () => {
 // 判断当前用户是否为主持人
 const isHost = computed(() => currentUserId.value === meetingInfo.value.hostId)
 
-// 获取参与者的音视频状态
-const getParticipantMediaState = participant => {
-	return {
-		audioEnabled: !participant.producers?.audio?.paused,
-		videoEnabled: !participant.producers?.video?.paused,
-		isForceMuted: participant.producers?.audio?.appData?.forceMuted || false,
-		isForceVideoDisabled: participant.producers?.video?.appData?.forceDisabled || false,
-	}
-}
-
 // ==================== 参与者管理 ====================
 /**
  * 处理禁用参与者音频（主持人操作）
  */
-const handleMuteParticipant = async (participantId, muted) => {
+const handleHostToggleAudio = async (participantId, enabled) => {
 	try {
-		await muteParticipant(participantId, muted)
+		await hostToggleAudio(participantId, enabled)
 	} catch (error) {
 		console.error('Mute participant failed:', error)
 		$notify.error(error.message || '操作失败')
@@ -1647,26 +1636,13 @@ const handleMuteParticipant = async (participantId, muted) => {
 /**
  * 处理禁用参与者视频（主持人操作）
  */
-const handleDisableParticipantVideo = async (participantId, disabled) => {
+const handleHostToggleVideo = async (participantId, enabled) => {
 	try {
-		await disableParticipantVideo(participantId, disabled)
+		await hostToggleVideo(participantId, enabled)
 	} catch (error) {
 		console.error('Disable video failed:', error)
 		$notify.error(error.message || '操作失败')
 	}
-}
-
-/**
- * 移除参与者（保留原逻辑，仅主持人）
- */
-const handleRemoveParticipant = async participantId => {
-	if (!isHost.value) {
-		$notify.error('只有主持人可以移除参与者')
-		return
-	}
-
-	console.log('Remove participant', participantId)
-	// TODO: 调用后端 API 踢出参与者
 }
 
 const handlePinParticipant = participantId => {

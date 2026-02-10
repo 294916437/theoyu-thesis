@@ -1,9 +1,11 @@
+/* eslint-disable no-undef */
 import { ref, computed, watch } from 'vue'
 import { socketClient } from '@/utils/SocketClient'
 import { MediasoupClient } from '@/utils/MediasoupClient'
 import init, { MeetProcessor, init_panic_hook } from '@/libs/meet-effect/meet_background_effect.js'
 import wasmUrl from '@/libs/meet-effect/meet_background_effect_bg.wasm?url'
 import { $notify } from '@/plugins/notification'
+import router from '@/router'
 
 const MASK_WIDTH = 256
 const MASK_HEIGHT = 144
@@ -654,7 +656,28 @@ export function useMedia() {
 	/**
 	 * 主持人：踢出参与者
 	 */
-	async function removeParticipant(targetPeerId) {}
+	async function removeParticipant(targetPeerId) {
+		try {
+			const response = await socketClient.emit('removeParticipant', {
+				roomId: roomId.value,
+				targetPeerId,
+			})
+
+			if (response.success) {
+				console.log(`[Host] Removed participant ${targetPeerId}`)
+
+				// 从本地列表中移除
+				const index = participants.value.findIndex(p => p.peerId === targetPeerId)
+				if (index !== -1) {
+					participants.value.splice(index, 1)
+				}
+			}
+		} catch (error) {
+			console.error('[Host] Failed to remove participant:', error)
+			$notify.error('移除参与者失败')
+			throw error
+		}
+	}
 
 	// 获取远程参与者列表
 	const remoteParticipants = computed(() => participants.value.filter(p => p.peerId !== peerId.value))
@@ -1045,6 +1068,20 @@ export function useMedia() {
 
 				participants.value.splice(index, 1)
 			}
+		})
+		// 监听被踢出事件
+		socketClient.on('removedFromRoom', async data => {
+			$notify.error('您已被主持人移出会议', {
+				timeout: 3000,
+			})
+
+			// 自动离开会议
+			await leaveMeeting({ reason: 'removed_by_host' })
+
+			// 跳转到首页
+			setTimeout(() => {
+				router.push('/meeting-ended')
+			}, 3000)
 		})
 
 		// 新生产者
@@ -1727,16 +1764,18 @@ export function useMedia() {
 	/**
 	 * 离开会议
 	 */
-	async function leaveMeeting() {
+	async function leaveMeeting(options = {}) {
+		const { reason = 'self_leave' } = options
 		try {
 			// 1. 先同步停止背景特效
 			await stopEffectStream()
 
-			// 2. 通知服务器离开
-			if (socketClient.connected.value && roomId.value) {
+			// 2. 通知服务器离开(只有非强制离开才需要主动通知)
+			if (reason !== 'removed_by_host' && socketClient.connected.value) {
 				try {
 					await socketClient.emit('leaveRoom', {
 						roomId: roomId.value,
+						reason,
 					})
 				} catch (error) {
 					console.error('Error notifying server:', error)
@@ -1814,7 +1853,7 @@ export function useMedia() {
 				recv: { score: 10, quality: 'excellent' },
 			}
 
-			console.log('Left meeting successfully')
+			console.log(`Left meeting successfully (reason: ${reason})`)
 		} catch (error) {
 			console.error('Failed to leave meeting', error)
 			throw error

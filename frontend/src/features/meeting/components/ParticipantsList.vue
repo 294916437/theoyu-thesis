@@ -158,13 +158,14 @@ const handleHostToggleVideo = async participant => {
 	}
 }
 
-const handleRemoveParticipant = participant => {
+const handleRemoveParticipant = async participant => {
 	if (!canControlOtherParticipant(participant)) {
 		$notify.warning('您没有权限移除该参与者')
 		return
 	}
+
 	try {
-		removeParticipant(participant.peerId)
+		await removeParticipant(participant.peerId)
 	} catch (error) {
 		console.error('Remove participant failed:', error)
 		$notify.error('操作失败')

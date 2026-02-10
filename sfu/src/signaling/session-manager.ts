@@ -2,7 +2,7 @@ import { Socket } from "socket.io"
 import { Logger } from "../utils/logger"
 import { GrpcClient } from "../utils/grpc-client"
 
-interface Session {
+export interface Session {
 	userId: string
 	username: string
 	roomId: string
@@ -25,7 +25,7 @@ export class SessionManager {
 			userId: string
 			username: string
 			token: string
-		}
+		},
 	): Promise<Session> {
 		const { roomId, userId, username, token } = data
 

@@ -4,7 +4,7 @@ import { Peer } from "../core/peer"
 import { GrpcClient } from "../utils/grpc-client"
 import { Logger } from "../utils/logger"
 import { ConnectionManager } from "./connection-manager"
-import { SessionManager } from "./session-manager"
+import { SessionManager, Session } from "./session-manager"
 import { TransportManager } from "./transport-manager"
 import { MonitoringService } from "./monitoring-service"
 import config from "../config/config"
@@ -71,6 +71,7 @@ export class SignalingHandler {
 		// 房间相关
 		socket.on("joinRoom", (data, callback) => this.withErrorHandling(socket, "joinRoom", data, callback, this.handleJoinRoom))
 		socket.on("leaveRoom", (data, callback) => this.withErrorHandling(socket, "leaveRoom", data, callback, this.handleLeaveRoom))
+		socket.on("removeParticipant", (data, callback) => this.withErrorHandling(socket, "removeParticipant", data, callback, this.handleRemoveParticipant))
 
 		// 媒体协商相关
 		socket.on("getRouterRtpCapabilities", (data, callback) => this.withErrorHandling(socket, "getRouterRtpCapabilities", data, callback, this.handleGetRouterRtpCapabilities))
@@ -851,35 +852,135 @@ export class SignalingHandler {
 		callback({ stats })
 	}
 
-	private async handleLeaveRoom(socket: Socket, data: { roomId: string }, callback: Function): Promise<void> {
-		const session = this.sessionManager.getSession(socket.id)
-		if (!session) {
+	private async handleLeaveRoom(
+		socket: Socket,
+		data: {
+			roomId?: string
+			targetUserId?: string
+			reason?: string
+		},
+		callback: Function,
+	): Promise<void> {
+		// 1. 确定操作目标
+		let targetSocketId: string
+		let targetSession: Session | undefined
+
+		if (data.targetUserId) {
+			// 主持人踢人场景：找到目标用户的 session
+			targetSession = this.sessionManager.getSessionByUserId(data.targetUserId)
+			if (!targetSession) {
+				this.logger.warn(`Target user ${data.targetUserId} session not found`)
+				callback({ success: false, error: "Target user not found" })
+				return
+			}
+			targetSocketId = targetSession.socketId
+		} else {
+			// 普通离开场景：操作自己
+			targetSocketId = socket.id
+			targetSession = this.sessionManager.getSession(targetSocketId)
+		}
+
+		if (!targetSession) {
+			this.logger.warn(`Session not found for socket ${targetSocketId}`)
 			callback({ success: false })
 			return
 		}
 
-		const { roomId, userId } = session
+		const { roomId, userId } = targetSession
 		const room = this.roomManager.getRoom(roomId)
 		const peer = room?.getPeer(userId)
 
 		if (room && peer) {
+			const reason = data.reason || "self_leave"
+
+			// 广播离开事件
 			socket.to(roomId).emit("peerLeft", {
 				peerId: peer.id,
 				userId: peer.userId,
 				username: peer.username,
+				reason,
 			})
 
+			// 如果是被踢出，给目标用户发送特殊事件
+			if (reason === "removed_by_host") {
+				this.io.to(targetSocketId).emit("removedFromRoom", {
+					roomId,
+					reason: "Host removed you from the meeting",
+				})
+			}
+
+			// 通知业务系统
 			await this.grpcClient.notifyParticipantLeft(roomId, peer.userId, peer.username)
 
+			// 清理房间资源
 			this.roomManager.removePeerFromRoom(roomId, peer.id)
-			socket.leave(roomId)
+
+			// 获取目标用户的 socket 实例
+			const targetSocket = this.io.sockets.sockets.get(targetSocketId)
+			if (targetSocket) {
+				targetSocket.leave(roomId)
+
+				// 如果是被踢出，主动断开连接
+				if (reason === "removed_by_host") {
+					setTimeout(() => {
+						targetSocket.disconnect(true)
+					}, 500)
+				}
+			}
 
 			this.monitoring.recordRoomLeave(roomId)
-			this.logger.info(`Peer ${peer.id} left room ${roomId}`)
+			this.logger.info(`Peer ${peer.id} left room ${roomId} (reason: ${reason})`)
 		}
 
-		this.sessionManager.destroySession(socket.id)
+		this.sessionManager.destroySession(targetSocketId)
 		callback({ success: true })
+	}
+
+	private async handleRemoveParticipant(socket: Socket, data: { roomId: string; targetPeerId: string }, callback: Function): Promise<void> {
+		const { roomId, targetPeerId } = data
+
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
+		}
+
+		// 1. 验证主持人权限
+		// TODO: 从业务系统验证是否为主持人
+
+		const room = this.roomManager.getRoom(roomId)
+		if (!room) {
+			throw new Error("Room not found")
+		}
+
+		// 2. 找到目标参与者
+		const targetPeer = room.getPeer(targetPeerId)
+		if (!targetPeer) {
+			throw new Error("Target peer not found")
+		}
+
+		// 3. 不能移除自己
+		if (targetPeer.userId === session.userId) {
+			throw new Error("Cannot remove yourself")
+		}
+
+		this.logger.info(`Host ${session.userId} removing peer ${targetPeerId} from room ${roomId}`)
+
+		// 4. 复用 handleLeaveRoom，传入特殊参数
+		await this.handleLeaveRoom(
+			socket,
+			{
+				roomId,
+				targetUserId: targetPeer.userId,
+				reason: "removed_by_host",
+			},
+			callback,
+		)
+
+		// 5. 通知操作者
+		callback({
+			success: true,
+			message: `Participant ${targetPeer.username} has been removed`,
+		})
 	}
 
 	private async handleDisconnect(socket: Socket, reason: string): Promise<void> {

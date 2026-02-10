@@ -614,6 +614,47 @@ export function useMedia() {
 			throw error
 		}
 	}
+	/**
+	 * 主持人：全体静音（排除主持人自己）
+	 */
+	async function muteAll() {
+		try {
+			const response = await socketClient.emit('hostMuteAll', {
+				roomId: roomId.value,
+			})
+
+			if (response.success) {
+				console.log(`[Host] Muted ${response.mutedCount} participants`)
+			}
+		} catch (error) {
+			console.error('[Host] Failed to mute all:', error)
+			$notify.error('全体静音失败')
+			throw error
+		}
+	}
+
+	/**
+	 * 主持人：关闭全体视频（排除主持人自己）
+	 */
+	async function disableAllVideo() {
+		try {
+			const response = await socketClient.emit('hostDisableAllVideo', {
+				roomId: roomId.value,
+			})
+
+			if (response.success) {
+				console.log(`[Host] Disabled video for ${response.disabledCount} participants`)
+			}
+		} catch (error) {
+			console.error('[Host] Failed to disable all video:', error)
+			$notify.error('关闭全体摄像头失败')
+			throw error
+		}
+	}
+	/**
+	 * 主持人：踢出参与者
+	 */
+	async function removeParticipant(targetPeerId) {}
 
 	// 获取远程参与者列表
 	const remoteParticipants = computed(() => participants.value.filter(p => p.peerId !== peerId.value))
@@ -951,18 +992,18 @@ export function useMedia() {
 	 * 设置 Socket 事件监听
 	 */
 	function setupSocketListeners() {
-		// 首先注册心跳监听
-		socketClient.on('ping', data => {
-			console.log('Received ping from server', data)
-			// 立即响应 pong
-			socketClient.socket.emit('pong', { timestamp: data.timestamp })
-			console.log('Pong sent to server')
-		})
+		// 注册心跳监听(测试暂时关闭)
+		// socketClient.on('ping', data => {
+		// 	console.log('Received ping from server', data)
+		// 	// 立即响应 pong
+		// 	socketClient.socket.emit('pong', { timestamp: data.timestamp })
+		// 	console.log('Pong sent to server')
+		// })
 
-		// 监听 RTT
-		socketClient.on('rtt', data => {
-			console.log(`RTT: ${data.rtt}ms`)
-		})
+		// // 监听 RTT
+		// socketClient.on('rtt', data => {
+		// 	console.log(`RTT: ${data.rtt}ms`)
+		// })
 
 		// 新参与者加入
 		socketClient.on('newPeer', async data => {
@@ -1868,6 +1909,8 @@ export function useMedia() {
 		toggleVideo,
 		hostToggleAudio,
 		hostToggleVideo,
+		muteAll,
+		disableAllVideo,
 		startScreenShare,
 		stopScreenShare,
 		stopStatsCollection,

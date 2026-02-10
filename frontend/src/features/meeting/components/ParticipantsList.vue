@@ -2,6 +2,7 @@
 import { $notify } from '@/plugins/notification'
 import { getInitials } from '@/utils/common'
 import { ref, computed } from 'vue'
+import { useMedia } from '@/composables/useMedia'
 
 const props = defineProps({
 	participants: {
@@ -33,19 +34,7 @@ const props = defineProps({
 		default: true,
 	},
 })
-
-const emit = defineEmits([
-	'mute-all',
-	'unmute-all',
-	'disable-all-video',
-	'host-toggle-audio',
-	'host-toggle-video',
-	'remove-participant',
-	'pin-participant',
-	'spotlight-participant',
-	'toggle-audio',
-	'toggle-video',
-])
+const { hostToggleAudio, hostToggleVideo, muteAll, disableAllVideo, removeParticipant } = useMedia()
 
 // 按角色分组
 const participantsByRole = computed(() => {
@@ -151,49 +140,22 @@ const getMediaState = (participant, kind) => {
 }
 
 // ==================== 主持人操作 ====================
-
-const handleMuteAll = () => {
-	if (!props.isHost) {
-		$notify.warning('仅主持人可执行此操作')
-		return
-	}
-
-	emit('mute-all')
-	console.log('Mute all participants')
-	$notify.success('已请求全体静音')
-}
-
-const handleUnmuteAll = () => {
-	if (!props.isHost) {
-		$notify.warning('仅主持人可执行此操作')
-		return
-	}
-
-	emit('unmute-all')
-	console.log('Unmute all participants')
-	$notify.success('已解除全体静音')
-}
-
-const handleDisableAllVideo = () => {
-	if (!props.isHost) {
-		$notify.warning('仅主持人可执行此操作')
-		return
-	}
-
-	emit('disable-all-video')
-	console.log('Disable all video')
-	$notify.success('已请求关闭全体摄像头')
-}
-
 const handleHostToggleAudio = async participant => {
-	console.log('主持人控制音频', participant.peerId, participant.producers?.audio?.paused)
-
-	emit('host-toggle-audio', participant.peerId, participant.producers?.audio?.paused)
+	try {
+		await hostToggleAudio(participant.peerId, participant.producers?.audio?.paused)
+	} catch (error) {
+		console.error('Toggle audio failed:', error)
+		$notify.error('操作失败')
+	}
 }
 
 const handleHostToggleVideo = async participant => {
-	console.log('主持人控制视频', participant.peerId, participant.producers?.video?.paused)
-	emit('host-toggle-video', participant.peerId, participant.producers?.video?.paused)
+	try {
+		await hostToggleVideo(participant.peerId, participant.producers?.video?.paused)
+	} catch (error) {
+		console.error('Toggle video failed:', error)
+		$notify.error('操作失败')
+	}
 }
 
 const handleRemoveParticipant = participant => {
@@ -201,8 +163,42 @@ const handleRemoveParticipant = participant => {
 		$notify.warning('您没有权限移除该参与者')
 		return
 	}
+	try {
+		removeParticipant(participant.peerId)
+	} catch (error) {
+		console.error('Remove participant failed:', error)
+		$notify.error('操作失败')
+	}
+}
+/**
+ * 全体静音
+ */
+const handleMuteAll = async () => {
+	if (!props.isHost) {
+		$notify.warning('仅主持人可执行此操作')
+		return
+	}
 
-	emit('remove-participant', participant.peerId)
+	try {
+		await muteAll()
+	} catch (error) {
+		console.error('Mute all failed:', error)
+	}
+}
+/**
+ * 关闭全体视频
+ */
+const handleDisableAllVideo = async () => {
+	if (!props.isHost) {
+		$notify.warning('仅主持人可执行此操作')
+		return
+	}
+
+	try {
+		await disableAllVideo()
+	} catch (error) {
+		console.error('Disable all video failed:', error)
+	}
 }
 </script>
 
@@ -224,7 +220,7 @@ const handleRemoveParticipant = participant => {
 					<span>邀请参与者</span>
 				</v-tooltip>
 
-				<!-- 主持人批量操作 -->
+				<!-- 主持人针对全体的操作(不包括主持人自己 ) -->
 				<v-menu v-if="isHost">
 					<template #activator="{ props }">
 						<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text" color="primary"></v-btn>
@@ -236,13 +232,6 @@ const handleRemoveParticipant = participant => {
 								<v-icon color="warning">mdi-microphone-off</v-icon>
 							</template>
 							<v-list-item-title>全体静音</v-list-item-title>
-						</v-list-item>
-
-						<v-list-item @click="handleUnmuteAll">
-							<template #prepend>
-								<v-icon color="success">mdi-microphone</v-icon>
-							</template>
-							<v-list-item-title>解除全体静音</v-list-item-title>
 						</v-list-item>
 
 						<v-divider class="my-1"></v-divider>
@@ -347,11 +336,11 @@ const handleRemoveParticipant = participant => {
 							<v-icon v-if="participant.handRaised" size="small" color="warning" class="ml-2"> mdi-hand-back-right </v-icon>
 						</div>
 						<div class="participant-status">
-							<v-icon size="small" :color="participant.audioEnabled ? 'success' : 'error'">
-								{{ participant.audioEnabled ? 'mdi-microphone' : 'mdi-microphone-off' }}
+							<v-icon size="small" :color="getMediaState(participant, 'audio').enabled ? 'success' : 'error'">
+								{{ getMediaState(participant, 'audio').enabled ? 'mdi-microphone' : 'mdi-microphone-off' }}
 							</v-icon>
-							<v-icon size="small" :color="participant.videoEnabled ? 'success' : 'error'" class="ml-1">
-								{{ participant.videoEnabled ? 'mdi-video' : 'mdi-video-off' }}
+							<v-icon size="small" :color="getMediaState(participant, 'video').enabled ? 'success' : 'error'" class="ml-1">
+								{{ getMediaState(participant, 'video').enabled ? 'mdi-video' : 'mdi-video-off' }}
 							</v-icon>
 							<v-icon v-if="participant.connectionQuality" size="small" :color="getConnectionColor(participant.connectionQuality)" class="ml-2">
 								{{ getConnectionIcon(participant.connectionQuality) }}
@@ -388,21 +377,6 @@ const handleRemoveParticipant = participant => {
 
 								<v-divider class="my-1"></v-divider>
 							</template>
-
-							<!-- 通用操作 -->
-							<v-list-item @click="emit('pin-participant', participant.peerId)">
-								<template #prepend>
-									<v-icon color="info">mdi-pin</v-icon>
-								</template>
-								<v-list-item-title>固定视频</v-list-item-title>
-							</v-list-item>
-
-							<v-list-item @click="emit('spotlight-participant', participant.peerId)">
-								<template #prepend>
-									<v-icon color="secondary">mdi-spotlight-beam</v-icon>
-								</template>
-								<v-list-item-title>聚焦参与者</v-list-item-title>
-							</v-list-item>
 
 							<!-- 移除参与者 -->
 							<template v-if="canControlOtherParticipant(participant)">

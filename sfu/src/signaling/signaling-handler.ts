@@ -93,6 +93,8 @@ export class SignalingHandler {
 		socket.on("hostToggleVideo", (data, callback) => this.withErrorHandling(socket, "hostToggleVideo", data, callback, this.handleHostToggleVideo))
 		socket.on("toggleAudio", (data, callback) => this.withErrorHandling(socket, "toggleAudio", data, callback, this.handleToggleAudio))
 		socket.on("toggleVideo", (data, callback) => this.withErrorHandling(socket, "toggleVideo", data, callback, this.handleToggleVideo))
+		socket.on("hostMuteAll", (data, callback) => this.withErrorHandling(socket, "hostMuteAll", data, callback, this.handleHostMuteAll))
+		socket.on("hostDisableAllVideo", (data, callback) => this.withErrorHandling(socket, "hostDisableAllVideo", data, callback, this.handleHostDisableAllVideo))
 
 		// Simulcast/SVC 支持
 		socket.on("setPreferredLayers", (data, callback) => this.withErrorHandling(socket, "setPreferredLayers", data, callback, this.handleSetPreferredLayers))
@@ -100,15 +102,15 @@ export class SignalingHandler {
 		// 统计和监控
 		socket.on("getStats", (data, callback) => this.withErrorHandling(socket, "getStats", data, callback, this.handleGetStats))
 
-		// 心跳响应处理
-		socket.on("ping", (data: { timestamp: number }) => {
-			// 更新活动时间
-			this.sessionManager.updateActivity(socket.id)
-			this.connectionManager.updateActivity(socket.id)
+		// 心跳响应处理(测试暂时关闭)
+		// socket.on("ping", (data: { timestamp: number }) => {
+		// 	// 更新活动时间
+		// 	this.sessionManager.updateActivity(socket.id)
+		// 	this.connectionManager.updateActivity(socket.id)
 
-			// 立即响应 pong
-			socket.emit("pong", { timestamp: data.timestamp })
-		})
+		// 	// 立即响应 pong
+		// 	socket.emit("pong", { timestamp: data.timestamp })
+		// })
 	}
 
 	// 错误处理包装器
@@ -813,6 +815,10 @@ export class SignalingHandler {
 		})
 		this.logger.info(`Peer ${peer.id} ${enabled ? "enabled" : "disabled"} video`)
 	}
+	// 主持人一键静音所有参与者（暂时性）
+	private async handleHostMuteAll(socket: Socket, data: { roomId: string }, callback: Function): Promise<void> {}
+	// 主持人一键关闭所有参与者视频（暂时性）
+	private async handleHostDisableAllVideo(socket: Socket, data: { roomId: string }, callback: Function): Promise<void> {}
 
 	private async handleGetStats(socket: Socket, data: { roomId: string; producerId?: string; consumerId?: string }, callback: Function): Promise<void> {
 		const { roomId, producerId, consumerId } = data
@@ -845,10 +851,10 @@ export class SignalingHandler {
 		callback({ stats })
 	}
 
-	private async handleLeaveRoom(socket: Socket, data: any, callback: Function): Promise<void> {
+	private async handleLeaveRoom(socket: Socket, data: { roomId: string }, callback: Function): Promise<void> {
 		const session = this.sessionManager.getSession(socket.id)
 		if (!session) {
-			callback({ success: true })
+			callback({ success: false })
 			return
 		}
 

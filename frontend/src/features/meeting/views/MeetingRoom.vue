@@ -128,12 +128,6 @@
 										:meeting-id="meetingInfo.roomId"
 										:local-audio-enabled="audioEnabled"
 										:local-video-enabled="videoEnabled"
-										@toggle-audio="toggleAudio"
-										@toggle-video="toggleVideo"
-										@host-toggle-audio="handleHostToggleAudio"
-										@host-toggle-video="handleHostToggleVideo"
-										@pin-participant="handlePinParticipant"
-										@spotlight-participant="handleSpotlightParticipant"
 									/>
 								</v-tabs-window-item>
 
@@ -1620,30 +1614,6 @@ const confirmLeaveMeeting = async () => {
 }
 // 判断当前用户是否为主持人
 const isHost = computed(() => currentUserId.value === meetingInfo.value.hostId)
-
-// ==================== 参与者管理 ====================
-/**
- * 处理禁用参与者音频（主持人操作）
- */
-const handleHostToggleAudio = async (participantId, enabled) => {
-	try {
-		await hostToggleAudio(participantId, enabled)
-	} catch (error) {
-		console.error('Mute participant failed:', error)
-		$notify.error(error.message || '操作失败')
-	}
-}
-/**
- * 处理禁用参与者视频（主持人操作）
- */
-const handleHostToggleVideo = async (participantId, enabled) => {
-	try {
-		await hostToggleVideo(participantId, enabled)
-	} catch (error) {
-		console.error('Disable video failed:', error)
-		$notify.error(error.message || '操作失败')
-	}
-}
 
 const handlePinParticipant = participantId => {
 	console.log('Pin participant', participantId)

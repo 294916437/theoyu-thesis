@@ -1197,8 +1197,6 @@ export function useMedia() {
 			for (const [kind, producer] of Object.entries(participant.producers)) {
 				if (producer && producer.id === producerId) {
 					targetKind = kind
-
-					// ========== 关键修复：区分本地和远程 ==========
 					if (isLocalUser) {
 						// 本地用户：创建一个包装对象，不直接修改 Producer 实例
 						participant.producers[kind] = {

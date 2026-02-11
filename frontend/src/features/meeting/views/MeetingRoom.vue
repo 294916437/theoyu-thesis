@@ -138,6 +138,10 @@
 
 								<!-- 聊天面板 -->
 								<v-tabs-window-item value="chat" class="fill-height">
+									<div v-if="!chatMessages.length && loadingMore" class="d-flex align-center justify-center fill-height">
+										<v-progress-circular indeterminate size="48" color="primary"></v-progress-circular>
+										<span class="ml-4">加载聊天记录...</span>
+									</div>
 									<div class="chat-panel">
 										<!-- 聊天标题栏 -->
 										<div class="chat-header">
@@ -1067,6 +1071,10 @@ const { arrivedState } = useScroll(messageContainer, {
 
 // 自动滚动到底部
 const scrollToBottom = async (smooth = false) => {
+	if (!container) {
+		console.warn('[Chat] Message container not available, skipping scroll')
+		return
+	}
 	// 等待 DOM 完全更新
 	await nextTick()
 
@@ -1076,18 +1084,16 @@ const scrollToBottom = async (smooth = false) => {
 	const container = messageContainer.value
 
 	// 强制滚动到最底部
-	const scrollOptions = {
+	container.scrollTo({
 		top: container.scrollHeight,
 		behavior: smooth ? 'smooth' : 'auto',
-	}
-
-	container.scrollTo(scrollOptions)
-
-	console.log('[Chat] Scrolled to bottom:', {
-		scrollTop: container.scrollTop,
-		scrollHeight: container.scrollHeight,
-		clientHeight: container.clientHeight,
 	})
+
+	// console.log('[Chat] Scrolled to bottom:', {
+	// 	scrollTop: container.scrollTop,
+	// 	scrollHeight: container.scrollHeight,
+	// 	clientHeight: container.clientHeight,
+	// })
 }
 
 // 按日期分组消息
@@ -1299,7 +1305,6 @@ const initRoomMessageService = async () => {
 		await RoomMessageService.connect(import.meta.env.VITE_WS_ROOM_MESSAGE_SERVER, currentUserId.value, meetingInfo.value.roomId)
 
 		roomMessageConnected.value = true
-		console.log('房间消息服务连接成功')
 
 		// 2. 监听房间消息
 		RoomMessageService.on('room-message', data => {
@@ -1308,7 +1313,9 @@ const initRoomMessageService = async () => {
 			chatMessages.value.push(message)
 
 			// 如果不在聊天标签页，增加未读计数
-			if (sidebarTab.value !== 'chat') {
+			if (sidebarTab.value === 'chat' && messageContainer.value) {
+				nextTick(() => scrollToBottom(true))
+			} else {
 				unreadMessages.value++
 			}
 		})
@@ -1318,8 +1325,9 @@ const initRoomMessageService = async () => {
 			roomMessageError.value = error
 		})
 
-		// 4. 加载历史消息
-		await loadMessageHistory(1)
+		// 4. 暂时不加载历史消息，等切换到聊天时再加载
+		// await loadMessageHistory(1)
+		hasMoreMessages.value = true
 	} catch (error) {
 		console.error('初始化房间消息服务失败:', error)
 		roomMessageError.value = error
@@ -1505,12 +1513,15 @@ watch(sidebarTab, async (newTab, oldTab) => {
 		// 重置未读消息
 		unreadMessages.value = 0
 
-		// 等待标签内容渲染完成
-		await nextTick()
-		await new Promise(resolve => setTimeout(resolve, 200))
-
-		// 滚动到底部
-		scrollToBottom(true)
+		// 首次切换到聊天时加载历史
+		if (chatMessages.value.length === 0 && hasMoreMessages.value) {
+			await loadMessageHistory(1)
+		} else {
+			// 已有消息，直接滚动
+			await nextTick()
+			await new Promise(resolve => setTimeout(resolve, 200))
+			scrollToBottom(true)
+		}
 	}
 })
 // 设备切换
@@ -1570,10 +1581,6 @@ const toggleSidebarChat = async () => {
 	showSidebar.value = true
 	sidebarTab.value = 'chat'
 	unreadMessages.value = 0
-	// 切换后滚动到底部
-	await nextTick()
-	await new Promise(resolve => setTimeout(resolve, 150)) // 等待标签切换动画
-	scrollToBottom(true) // 使用平滑滚动
 }
 const toggleBackgroundPanel = () => {
 	showSidebar.value = true

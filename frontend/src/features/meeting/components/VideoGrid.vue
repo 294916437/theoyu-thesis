@@ -201,6 +201,8 @@ const screenShareVideo = ref(null)
 const videoRefs = ref(new Map())
 const thumbnailRefs = ref(new Map())
 const pinnedParticipantId = ref(null)
+// 使用 WeakMap 缓存流对象，避免重复创建
+const streamObjectCache = new WeakMap()
 
 // ==================== 计算属性 ====================
 
@@ -209,16 +211,19 @@ const formattedParticipants = computed(() => {
 	return props.participants
 		.filter(p => !p.isLocal)
 		.map(p => {
-			// 合并音视频流
-			let combinedStream = null
+			// 优先从缓存获取已存在的流对象
+			let combinedStream = streamObjectCache.get(p)
 
-			if (p.streams) {
+			// 检查流是否需要更新
+			const needsUpdate = !combinedStream || !combinedStream.getTracks().length || combinedStream.getTracks().some(t => t.readyState !== 'live')
+
+			if (needsUpdate && p.streams) {
+				// 创建新流
 				combinedStream = new MediaStream()
 
 				// 添加音频轨道
-				if (p.streams.audio && p.streams.audio.getTracks) {
-					const audioTracks = p.streams.audio.getAudioTracks()
-					audioTracks.forEach(track => {
+				if (p.streams.audio) {
+					p.streams.audio.getAudioTracks().forEach(track => {
 						if (track.readyState === 'live') {
 							combinedStream.addTrack(track)
 						}
@@ -226,17 +231,19 @@ const formattedParticipants = computed(() => {
 				}
 
 				// 添加视频轨道
-				if (p.streams.video && p.streams.video.getTracks) {
-					const videoTracks = p.streams.video.getVideoTracks()
-					videoTracks.forEach(track => {
+				if (p.streams.video) {
+					p.streams.video.getVideoTracks().forEach(track => {
 						if (track.readyState === 'live') {
 							combinedStream.addTrack(track)
 						}
 					})
 				}
+
+				// 缓存新流
+				streamObjectCache.set(p, combinedStream)
 			}
 
-			// 综合判断音视频状态
+			// 状态判断逻辑保持不变
 			let audioEnabled = false
 			let videoEnabled = false
 
@@ -244,46 +251,37 @@ const formattedParticipants = computed(() => {
 				const audioTracks = combinedStream.getAudioTracks()
 				const videoTracks = combinedStream.getVideoTracks()
 
-				// 1. 轨道存在且 live
 				const hasAudioTrack = audioTracks.some(t => t.readyState === 'live')
 				const hasVideoTrack = videoTracks.some(t => t.readyState === 'live')
 
-				// 2. producer 未被暂停（服务器端状态）
 				const audioProducerActive = !p.producers?.audio?.paused
 				const videoProducerActive = !p.producers?.video?.paused
 
-				// 3. 轨道本身已启用
 				const audioTrackEnabled = audioTracks.some(t => t.enabled)
 				const videoTrackEnabled = videoTracks.some(t => t.enabled)
 
-				// 三个条件都满足才显示
 				audioEnabled = hasAudioTrack && audioProducerActive && audioTrackEnabled
 				videoEnabled = hasVideoTrack && videoProducerActive && videoTrackEnabled
 			}
-
-			const isScreenSharing = p.producers?.video?.appData?.source === 'screen'
 
 			return {
 				id: p.peerId,
 				peerId: p.peerId,
 				name: p.username,
-				stream: combinedStream,
+				stream: combinedStream, // 使用缓存的流对象
 				audioEnabled,
 				videoEnabled,
-				isScreenSharing,
+				isScreenSharing: p.producers?.video?.appData?.source === 'screen',
 				isSpeaking: false,
 				isLocal: false,
 				connectionQuality: 'good',
 			}
 		})
 		.filter(p => {
-			// 1. 必须有 stream
 			if (!p.stream || p.stream.getTracks().length === 0) {
 				return false
 			}
-			// 2. 至少音频或视频其中一个是启用的
-			const shouldRender = p.audioEnabled || p.videoEnabled
-			return shouldRender
+			return p.audioEnabled || p.videoEnabled
 		})
 })
 
@@ -302,11 +300,6 @@ const allParticipantsWithLocal = computed(() => {
 	// 只包含远程参与者（已通过 formattedParticipants 过滤）
 	return [local, ...formattedParticipants.value].filter(p => p.stream)
 })
-const hasValidVideoTrack = participant => {
-	if (!participant.stream) return false
-	const videoTracks = participant.stream.getVideoTracks()
-	return videoTracks.length > 0 && videoTracks.some(t => t.readyState === 'live' && t.enabled)
-}
 
 // 布局类名
 const gridLayoutClass = computed(() => {
@@ -426,11 +419,15 @@ function setVideoRef(el, peerId) {
 			const newStreamId = participant.stream.id
 			const cachedStreamId = streamCache.value.get(peerId)
 
-			// ========== 只在流 ID 变化时才更新 srcObject ==========
-			if (cachedStreamId !== newStreamId) {
-				console.log(`Setting stream for ${peerId}:`, {
+			// 只在流 ID 真正变化且流对象不同时才更新
+			const currentStream = el.srcObject
+			const isSameStream = currentStream && currentStream.id === newStreamId
+
+			if (!isSameStream && cachedStreamId !== newStreamId) {
+				console.log(`Updating stream for ${peerId}:`, {
 					oldStreamId: cachedStreamId,
 					newStreamId: newStreamId,
+					reason: 'Stream object changed',
 				})
 
 				// 先暂停旧视频
@@ -443,20 +440,17 @@ function setVideoRef(el, peerId) {
 				el.srcObject = participant.stream
 				streamCache.value.set(peerId, newStreamId)
 
-				// 延迟播放，确保流已准备好
+				// 延迟播放
 				nextTick(() => {
 					el.play().catch(err => {
-						// 忽略 AbortError，其他错误才报警
 						if (err.name !== 'AbortError') {
 							console.error(`Failed to play video for ${peerId}:`, err)
 						}
 					})
 				})
 			} else {
-				console.log(`Stream ${newStreamId} already set for ${peerId}, skipping`)
+				console.log(`Stream ${newStreamId} already set for ${peerId}, skipping (same object)`)
 			}
-		} else {
-			console.warn(`No stream found for peer ${peerId}`)
 		}
 	} else {
 		videoRefs.value.delete(peerId)
@@ -527,10 +521,11 @@ const handleParticipantsUpdate = useDebounceFn(newParticipants => {
 		if (videoEl && participant.stream) {
 			const currentStreamId = videoEl.srcObject?.id
 			const newStreamId = participant.stream.id
+			const currentStreamObj = videoEl.srcObject
 
-			// 只有当流 ID 改变时才更新
-			if (currentStreamId !== newStreamId) {
-				console.log(`Updating stream for ${participant.name}:`, {
+			// 只有当流对象真正不同时才更新
+			if (currentStreamObj !== participant.stream && currentStreamId !== newStreamId) {
+				console.log(`Updating stream for ${participant.name} (handleUpdate):`, {
 					oldStreamId: currentStreamId,
 					newStreamId: newStreamId,
 				})
@@ -547,7 +542,7 @@ const handleParticipantsUpdate = useDebounceFn(newParticipants => {
 			}
 		}
 	})
-}, 100) // 100ms 防抖
+}, 150) // 防抖延迟
 
 // 监听参与者流变化
 watch(() => formattedParticipants.value, handleParticipantsUpdate, { deep: true })

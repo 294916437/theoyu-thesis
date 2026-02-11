@@ -659,7 +659,6 @@ export function useMedia() {
 	async function removeParticipant(targetPeerId) {
 		try {
 			const response = await socketClient.emit('removeParticipant', {
-				roomId: roomId.value,
 				targetPeerId,
 			})
 
@@ -701,11 +700,11 @@ export function useMedia() {
 	async function joinMeeting(meetingId, userIdParam, usernameParam, token) {
 		try {
 			connectionState.value = 'connecting'
-			console.log('Joining meeting', meetingId, userIdParam)
 
 			// 保存用户信息
 			userId.value = userIdParam
 			username.value = usernameParam
+			roomId.value = meetingId
 
 			// 1. 连接 Socket.io
 			await socketClient.connect(import.meta.env.VITE_SFU_URL || 'http://localhost:3000', {
@@ -714,15 +713,14 @@ export function useMedia() {
 
 			// 2. 加入房间
 			const joinResponse = await socketClient.emit('joinRoom', {
-				roomId: meetingId,
+				roomId: roomId.value,
 				userId: userIdParam,
 				username: usernameParam,
 				token,
 			})
 
-			roomId.value = meetingId
 			peerId.value = joinResponse.peerId
-			console.log('Joined room', joinResponse)
+			console.log(`Joined room ${roomId.value}`, joinResponse)
 
 			// 3. 设置现有参与者（包括自己）
 			participants.value = [
@@ -1080,7 +1078,7 @@ export function useMedia() {
 
 			// 跳转到首页
 			setTimeout(() => {
-				router.push('/meeting-ended')
+				router.push('/')
 			}, 3000)
 		})
 
@@ -1194,7 +1192,6 @@ export function useMedia() {
 		let targetKind = null
 
 		// 1. 更新 producers 记录
-		console.log('1. 更新 producers 记录')
 		if (participant.producers) {
 			for (const [kind, producer] of Object.entries(participant.producers)) {
 				if (producer && producer.id === producerId) {
@@ -1211,7 +1208,6 @@ export function useMedia() {
 		}
 
 		// 2. 同步 Consumer 状态
-		console.log('2. 同步 Consumer 状态')
 		if (participant.consumers && targetKind) {
 			for (const [consumerId, consumer] of Object.entries(participant.consumers)) {
 				if (consumer.producerId === producerId) {
@@ -1247,7 +1243,6 @@ export function useMedia() {
 		}
 
 		// 3. 如果是本地用户被主持人控制
-		console.log('3. 如果是本地用户被主持人控制')
 		if (participant.peerId === peerId.value) {
 			const action = targetKind === 'audio' ? (paused ? '关闭了您的麦克风' : '开启了您的麦克风') : paused ? '关闭了您的摄像头' : '开启了您的摄像头'
 
@@ -1944,6 +1939,7 @@ export function useMedia() {
 		// 方法
 		joinMeeting,
 		leaveMeeting,
+		removeParticipant,
 		toggleAudio,
 		toggleVideo,
 		hostToggleAudio,

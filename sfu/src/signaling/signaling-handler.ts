@@ -855,7 +855,6 @@ export class SignalingHandler {
 	private async handleLeaveRoom(
 		socket: Socket,
 		data: {
-			roomId?: string
 			targetUserId?: string
 			reason?: string
 		},
@@ -936,8 +935,8 @@ export class SignalingHandler {
 		callback({ success: true })
 	}
 
-	private async handleRemoveParticipant(socket: Socket, data: { roomId: string; targetPeerId: string }, callback: Function): Promise<void> {
-		const { roomId, targetPeerId } = data
+	private async handleRemoveParticipant(socket: Socket, data: { targetPeerId: string }, callback: Function): Promise<void> {
+		const { targetPeerId } = data
 
 		const session = this.sessionManager.getSession(socket.id)
 		if (!session) {
@@ -947,30 +946,11 @@ export class SignalingHandler {
 		// 1. 验证主持人权限
 		// TODO: 从业务系统验证是否为主持人
 
-		const room = this.roomManager.getRoom(roomId)
-		if (!room) {
-			throw new Error("Room not found")
-		}
-
-		// 2. 找到目标参与者
-		const targetPeer = room.getPeer(targetPeerId)
-		if (!targetPeer) {
-			throw new Error("Target peer not found")
-		}
-
-		// 3. 不能移除自己
-		if (targetPeer.userId === session.userId) {
-			throw new Error("Cannot remove yourself")
-		}
-
-		this.logger.info(`Host ${session.userId} removing peer ${targetPeerId} from room ${roomId}`)
-
-		// 4. 复用 handleLeaveRoom，传入特殊参数
+		// 复用 handleLeaveRoom，传入特殊参数
 		await this.handleLeaveRoom(
 			socket,
 			{
-				roomId,
-				targetUserId: targetPeer.userId,
+				targetUserId: targetPeerId,
 				reason: "removed_by_host",
 			},
 			callback,
@@ -979,7 +959,7 @@ export class SignalingHandler {
 		// 5. 通知操作者
 		callback({
 			success: true,
-			message: `Participant ${targetPeer.username} has been removed`,
+			message: `Participant ${targetPeerId} has been removed`,
 		})
 	}
 

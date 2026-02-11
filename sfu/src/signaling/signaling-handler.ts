@@ -817,9 +817,135 @@ export class SignalingHandler {
 		this.logger.info(`Peer ${peer.id} ${enabled ? "enabled" : "disabled"} video`)
 	}
 	// 主持人一键静音所有参与者（暂时性）
-	private async handleHostMuteAll(socket: Socket, data: { roomId: string }, callback: Function): Promise<void> {}
+	private async handleHostMuteAll(socket: Socket, data: { roomId: string }, callback: Function): Promise<void> {
+		const { roomId } = data
+
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
+		}
+
+		const room = this.roomManager.getRoom(roomId)
+		if (!room) {
+			throw new Error("Room not found")
+		}
+
+		// TODO: 服务端验证是否为主持人
+
+		// 获取房间内所有参与者（排除主持人自己）
+		const allPeers = room.getPeersExcept(session.userId)
+
+		let mutedCount = 0
+		const failedPeers: string[] = []
+
+		// 遍历所有参与者，静音他们的音频
+		for (const targetPeer of allPeers) {
+			// 找到目标的 audio producer
+			const audioProducer = Array.from(targetPeer.producers.values()).find((p) => p.kind === "audio")
+
+			if (!audioProducer) {
+				// 该参与者没有音频流，跳过
+				continue
+			}
+
+			try {
+				// 强制暂停音频
+				await audioProducer.pause()
+
+				// 广播状态变化到所有人（包括被控制者本人）
+				this.io.to(roomId).emit("producerStateChanged", {
+					producerId: audioProducer.id,
+					peerId: targetPeer.id,
+					kind: "audio",
+					paused: true,
+					reason: "host_forced",
+				})
+
+				mutedCount++
+				this.logger.info(`Host ${session.userId} muted peer ${targetPeer.id}`)
+			} catch (error: any) {
+				this.logger.error(`Failed to mute peer ${targetPeer.id}:`, error)
+				failedPeers.push(targetPeer.id)
+			}
+		}
+
+		// 返回操作结果
+		callback({
+			success: true,
+			mutedCount,
+			totalCount: allPeers.length,
+			failedPeers: failedPeers.length > 0 ? failedPeers : undefined,
+		})
+
+		this.logger.info(`Host ${session.userId} muted ${mutedCount}/${allPeers.length} participants`)
+	}
+
 	// 主持人一键关闭所有参与者视频（暂时性）
-	private async handleHostDisableAllVideo(socket: Socket, data: { roomId: string }, callback: Function): Promise<void> {}
+	private async handleHostDisableAllVideo(socket: Socket, data: { roomId: string }, callback: Function): Promise<void> {
+		const { roomId } = data
+
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
+		}
+
+		const room = this.roomManager.getRoom(roomId)
+		if (!room) {
+			throw new Error("Room not found")
+		}
+
+		// TODO: 服务端验证是否为主持人
+
+		// 获取房间内所有参与者（排除主持人自己）
+		const allPeers = room.getPeersExcept(session.userId)
+
+		let disabledCount = 0
+		const failedPeers: string[] = []
+
+		// 遍历所有参与者，关闭他们的视频
+		for (const targetPeer of allPeers) {
+			// 只处理普通成员（role === 1），跳过其他主持人
+			// 注: 如果需要角色判断，可从 session 或 peer.appData 获取
+
+			// 找到目标的 video producer
+			const videoProducer = Array.from(targetPeer.producers.values()).find((p) => p.kind === "video")
+
+			if (!videoProducer) {
+				// 该参与者没有视频流，跳过
+				continue
+			}
+
+			try {
+				// 强制暂停视频
+				await videoProducer.pause()
+
+				// 广播状态变化到所有人（包括被控制者本人）
+				this.io.to(roomId).emit("producerStateChanged", {
+					producerId: videoProducer.id,
+					peerId: targetPeer.id,
+					kind: "video",
+					paused: true,
+					reason: "host_forced",
+				})
+
+				disabledCount++
+				this.logger.info(`Host ${session.userId} disabled video for peer ${targetPeer.id}`)
+			} catch (error: any) {
+				this.logger.error(`Failed to disable video for peer ${targetPeer.id}:`, error)
+				failedPeers.push(targetPeer.id)
+			}
+		}
+
+		// 返回操作结果
+		callback({
+			success: true,
+			disabledCount,
+			totalCount: allPeers.length,
+			failedPeers: failedPeers.length > 0 ? failedPeers : undefined,
+		})
+
+		this.logger.info(`Host ${session.userId} disabled video for ${disabledCount}/${allPeers.length} participants`)
+	}
 
 	private async handleGetStats(socket: Socket, data: { roomId: string; producerId?: string; consumerId?: string }, callback: Function): Promise<void> {
 		const { roomId, producerId, consumerId } = data

@@ -1,5 +1,5 @@
 /* eslint-disable no-undef */
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { socketClient } from '@/utils/SocketClient'
 import { MediasoupClient } from '@/utils/MediasoupClient'
 import init, { MeetProcessor, init_panic_hook } from '@/libs/meet-effect/meet_background_effect.js'
@@ -1189,6 +1189,7 @@ export function useMedia() {
 			return
 		}
 
+		const isLocalUser = participant.peerId === peerId.value
 		let targetKind = null
 
 		// 1. 更新 producers 记录
@@ -1196,36 +1197,43 @@ export function useMedia() {
 			for (const [kind, producer] of Object.entries(participant.producers)) {
 				if (producer && producer.id === producerId) {
 					targetKind = kind
-					// 区分本地和远程。本地 Producer 是实例，paused 往往是只读的，且本地状态由 audioEnabled/videoEnabled 变量控制
-					// 对于本地 producer，我们不直接修改实例属性
-					if (reason !== 'host_forced') {
-						participant.producers[kind].paused = paused
+
+					// ========== 关键修复：区分本地和远程 ==========
+					if (isLocalUser) {
+						// 本地用户：创建一个包装对象，不直接修改 Producer 实例
+						participant.producers[kind] = {
+							...producer,
+							paused: paused,
+						}
+					} else {
+						// 远程用户：直接修改普通对象
+						producer.paused = paused
 					}
-					console.log(`[Media] Updated ${kind} producer state to paused=${paused}`)
+
+					console.log(`[Media] Updated ${kind} producer state to paused=${paused} (isLocal: ${isLocalUser})`)
 					break
 				}
 			}
 		}
 
-		// 2. 同步 Consumer 状态
-		if (participant.consumers && targetKind) {
+		// 2. 同步 Consumer 状态（仅远程参与者）
+		if (!isLocalUser && participant.consumers && targetKind) {
 			for (const [consumerId, consumer] of Object.entries(participant.consumers)) {
 				if (consumer.producerId === producerId) {
 					try {
-						// 2.1 暂停/恢复 Consumer
+						// 暂停/恢复 Consumer
 						if (paused) {
 							consumer.pause()
 						} else {
 							consumer.resume()
 						}
 
-						// 2.2 同步 Consumer 轨道的 enabled 状态
+						// 同步轨道状态
 						if (consumer.track) {
 							consumer.track.enabled = !paused
-							console.log(`[Media] Consumer track ${targetKind} enabled set to:`, !paused)
 						}
 
-						// 2.3 同步到 participant.streams 中的流
+						// 同步流中的轨道
 						if (participant.streams && participant.streams[targetKind]) {
 							const stream = participant.streams[targetKind]
 							stream.getTracks().forEach(track => {
@@ -1243,29 +1251,25 @@ export function useMedia() {
 		}
 
 		// 3. 如果是本地用户被主持人控制
-		if (participant.peerId === peerId.value) {
-			const action = targetKind === 'audio' ? (paused ? '关闭了您的麦克风' : '开启了您的麦克风') : paused ? '关闭了您的摄像头' : '开启了您的摄像头'
+		if (isLocalUser) {
+			// 当且仅当 reason 是 host_control 时才显示通知，避免误报其他原因导致的状态变化
+			if (reason === 'host_control') {
+				$notify.warning(`主持人${paused ? '关闭了' : '开启了'}您的${targetKind === 'audio' ? '麦克风' : '摄像头'}`, { timeout: 3000 })
+			}
 
-			$notify.warning(`主持人${action}`, {
-				timeout: 3000,
-			})
-
-			// 3.1 更新状态变量
+			// 更新状态变量
 			if (targetKind === 'audio') {
 				audioEnabled.value = !paused
 			} else if (targetKind === 'video') {
 				videoEnabled.value = !paused
 			}
 
-			// 3.2 获取当前正在使用的 Producer
+			// 获取当前 Producer 并控制轨道
 			const currentProducer = mediasoupClient.producers.get(targetKind)
-
 			if (currentProducer && currentProducer.track) {
-				// 修改 Producer 的轨道状态
 				currentProducer.track.enabled = !paused
-				console.log(`[Media] Producer track ${targetKind} enabled set to:`, !paused)
 
-				// 3.3 同步到 localStream
+				// 同步到 localStream
 				if (localStream.value) {
 					const tracks = targetKind === 'audio' ? localStream.value.getAudioTracks() : localStream.value.getVideoTracks()
 
@@ -1273,30 +1277,14 @@ export function useMedia() {
 						track.enabled = !paused
 					})
 				}
-
-				// 3.4 同步到 participants 中的本地流
-				if (participant.streams && participant.streams[targetKind]) {
-					const stream = participant.streams[targetKind]
-					stream.getTracks().forEach(track => {
-						if (track.kind === targetKind) {
-							track.enabled = !paused
-						}
-					})
-				}
-
-				// 3.5 如果是视频且有特效流，也需要同步
-				if (targetKind === 'video' && effectStream.value) {
-					effectStream.value.getVideoTracks().forEach(track => {
-						track.enabled = !paused
-					})
-				}
-			} else {
-				console.warn(`[Media] No active ${targetKind} producer found for local user`)
 			}
 		}
 
-		// 4. 强制触发响应式更新
-		participants.value = [...participants.value]
+		// 4. 使用 nextTick 优化响应式更新
+		nextTick(() => {
+			// 触发最小化的响应式更新
+			participants.value = [...participants.value]
+		})
 	}
 
 	/**

@@ -2,7 +2,6 @@
 import { $notify } from '@/plugins/notification'
 import { getInitials } from '@/utils/common'
 import { ref, computed } from 'vue'
-import { useMedia } from '@/composables/useMedia'
 
 const props = defineProps({
 	participants: {
@@ -34,8 +33,7 @@ const props = defineProps({
 		default: true,
 	},
 })
-const { hostToggleAudio, hostToggleVideo, muteAll, disableAllVideo, removeParticipant } = useMedia()
-
+const emit = defineEmits(['host-toggle-audio', 'host-toggle-video', 'mute-all', 'disable-all-video', 'remove-participant'])
 // 按角色分组
 const participantsByRole = computed(() => {
 	const members = props.participants.filter(p => p.role === 1 && p.status === 1)
@@ -142,7 +140,19 @@ const getMediaState = (participant, kind) => {
 // ==================== 主持人操作 ====================
 const handleHostToggleAudio = async participant => {
 	try {
-		await hostToggleAudio(participant.peerId, participant.producers?.audio?.paused)
+		// 获取当前状态
+		const currentEnabled = getMediaState(participant, 'audio').enabled
+
+		// 主持人只能关闭（enabled = true → 目标 false）
+		if (!currentEnabled) {
+			$notify.warning('该参与者已静音')
+			return
+		}
+
+		// 发送关闭指令
+		emit('host-toggle-audio', participant.peerId, false)
+
+		console.log(`Host muted participant ${participant.peerId}`)
 	} catch (error) {
 		console.error('Toggle audio failed:', error)
 		$notify.error('操作失败')
@@ -151,7 +161,19 @@ const handleHostToggleAudio = async participant => {
 
 const handleHostToggleVideo = async participant => {
 	try {
-		await hostToggleVideo(participant.peerId, participant.producers?.video?.paused)
+		// 获取当前状态
+		const currentEnabled = getMediaState(participant, 'video').enabled
+
+		// 主持人只能关闭（enabled = true → 目标 false）
+		if (!currentEnabled) {
+			$notify.warning('该参与者摄像头已关闭')
+			return
+		}
+
+		// 发送关闭指令
+		emit('host-toggle-video', participant.peerId, false)
+
+		console.log(`Host disabled video for participant ${participant.peerId}`)
 	} catch (error) {
 		console.error('Toggle video failed:', error)
 		$notify.error('操作失败')
@@ -165,7 +187,7 @@ const handleRemoveParticipant = async participant => {
 	}
 
 	try {
-		await removeParticipant(participant.peerId)
+		emit('remove-participant', participant.peerId)
 	} catch (error) {
 		console.error('Remove participant failed:', error)
 		$notify.error('操作失败')
@@ -181,7 +203,7 @@ const handleMuteAll = async () => {
 	}
 
 	try {
-		await muteAll()
+		emit('mute-all')
 	} catch (error) {
 		console.error('Mute all failed:', error)
 	}
@@ -196,7 +218,7 @@ const handleDisableAllVideo = async () => {
 	}
 
 	try {
-		await disableAllVideo()
+		emit('disable-all-video')
 	} catch (error) {
 		console.error('Disable all video failed:', error)
 	}
@@ -277,7 +299,7 @@ const handleDisableAllVideo = async () => {
 						</span>
 					</v-avatar>
 
-					<!-- 参与者信息 -->
+					<!-- 参与者状态 -->
 					<div class="participant-info">
 						<div class="participant-name">
 							<span class="font-weight-medium">
@@ -327,7 +349,7 @@ const handleDisableAllVideo = async () => {
 						</span>
 					</v-avatar>
 
-					<!-- 参与者信息 -->
+					<!-- 参与者状态 -->
 					<div class="participant-info">
 						<div class="participant-name">
 							<span class="font-weight-medium">
@@ -358,22 +380,18 @@ const handleDisableAllVideo = async () => {
 						<v-list density="compact" class="menu-list">
 							<!-- 主持人对其他参与者的控制 -->
 							<template v-if="canControlOtherParticipant(participant)">
-								<v-list-item @click="handleHostToggleAudio(participant)">
+								<v-list-item v-if="getMediaState(participant, 'audio').enabled" @click="handleHostToggleAudio(participant)">
 									<template #prepend>
 										<v-icon color="warning">mdi-microphone-off</v-icon>
 									</template>
-									<v-list-item-title>
-										{{ participant.producers?.audio?.paused ? '取消静音' : '静音' }}
-									</v-list-item-title>
+									<v-list-item-title> 静音 </v-list-item-title>
 								</v-list-item>
 
-								<v-list-item @click="handleHostToggleVideo(participant)">
+								<v-list-item v-if="getMediaState(participant, 'video').enabled" @click="handleHostToggleVideo(participant)">
 									<template #prepend>
 										<v-icon color="warning">mdi-video-off</v-icon>
 									</template>
-									<v-list-item-title>
-										{{ participant.producers?.video?.paused ? '开启摄像头' : '关闭摄像头' }}
-									</v-list-item-title>
+									<v-list-item-title> 关闭摄像头 </v-list-item-title>
 								</v-list-item>
 
 								<v-divider class="my-1"></v-divider>

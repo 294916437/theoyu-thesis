@@ -128,6 +128,11 @@
 										:meeting-id="meetingInfo.roomId"
 										:local-audio-enabled="audioEnabled"
 										:local-video-enabled="videoEnabled"
+										@host-toggle-audio="hostToggleAudio"
+										@host-toggle-video="hostToggleVideo"
+										@mute-all="muteAll"
+										@disable-all-video="disableAllVideo"
+										@remove-participant="removeParticipant"
 									/>
 								</v-tabs-window-item>
 
@@ -933,6 +938,9 @@ const {
 	uploadCustomBackground,
 	hostToggleAudio,
 	hostToggleVideo,
+	muteAll,
+	disableAllVideo,
+	removeParticipant,
 } = useMedia()
 // 处理背景替换文件上传处理
 

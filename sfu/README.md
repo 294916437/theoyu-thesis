@@ -83,12 +83,12 @@ sfu/
 │   │   └── config.ts             # 统一配置管理
 │   ├── core/                     # 核心业务模块
 │   │   ├── peer.ts               # Peer 实体类
-│   │   └── room-manager.ts       # 房间管理器
-│   ├── mediasoup/                # Mediasoup 封装
-│   │   ├── mediasoup-manager.ts  # Worker/Router 管理
 │   │   └── room.ts               # 房间实体类
-│   ├── signaling/                # 信令处理模块
-│   │   └── signaling-handler.ts  # Socket.io 事件处理
+│   │   └── room-manager.ts       # 房间管理器
+│   │   ├── mediasoup-manager.ts  # Worker/Router 管理
+│   ├── features/                 # 服务模块
+│   │   └── socket-handler.ts     # Socket.io 事件处理
+│   │   └── grpc-server.ts        # grpc 服务端方法
 │   └── utils/                    # 工具模块
 │       ├── grpc-client.ts        # gRPC 客户端封装
 │       ├── nacos-client.ts       # Nacos 客户端封装
@@ -117,6 +117,7 @@ sfu/
 - **端口需求**:
   - 3000 (HTTP/WebSocket)
   - 40000-49999 (RTP/UDP/TCP)
+  - 50051-50052 (gRPC)
 
 ### 安装依赖
 
@@ -155,7 +156,9 @@ RTC_MAX_PORT=49999                  # RTP 端口范围结束
 
 # gRPC 配置
 GRPC_HOST=localhost                 # Spring Cloud 服务地址
-GRPC_PORT=50051                     # gRPC 服务端口
+GRPC_PORT=50051                     # 远程的 gRPC 服务端口
+GRPC_SERVER_PORT=50052              # 自身作为 gRPC 服务端口
+
 
 # Nacos 配置
 NACOS_SERVER=127.0.0.1:8848         # Nacos 服务器地址
@@ -213,6 +216,8 @@ npm run start
 
 ### 3. gRPC 集成功能
 
+#### 作为客户端，调用远程服务端的方法
+
 | 功能       | gRPC 方法                 | 说明                       |
 | ---------- | ------------------------- | -------------------------- |
 | 房间验证   | `ValidateRoomAccess`      | 验证用户是否有权限进入房间 |
@@ -220,6 +225,13 @@ npm run start
 | 加入通知   | `NotifyParticipantJoined` | 通知业务层用户加入事件     |
 | 离开通知   | `NotifyParticipantLeft`   | 通知业务层用户离开事件     |
 | 统计上报   | `ReportMediaStats`        | 上报媒体质量统计数据       |
+
+#### 作为服务端，供其他客户端调用的方法
+
+| 功能     | gRPC 方法        | 说明 |
+| -------- | ---------------- | ---- |
+| 开始录制 | `startRecording` |      |
+| 停止录制 | `stopRecording`  |      |
 
 ---
 
@@ -366,39 +378,6 @@ curl http://localhost:3000/api/stats
 
 ---
 
-## 🔐 安全建议
-
-### 生产环境配置
-
-1. **启用 HTTPS/WSS**
-
-```javascript
-// 使用 SSL 证书
-const options = {
-	key: fs.readFileSync("key.pem"),
-	cert: fs.readFileSync("cert.pem"),
-};
-const server = https.createServer(options, app);
-```
-
-2. **限制 CORS**
-
-```env
-CORS_ORIGIN=https://your-domain.com
-```
-
-3. **启用 Token 验证**
-
-- 所有 `joinRoom` 请求必须携带有效 JWT Token
-- gRPC 验证确保业务层权限检查
-
-4. **网络隔离**
-
-- 将 gRPC 服务置于内网
-- 使用防火墙限制 RTP 端口访问
-
----
-
 ## 📊 性能优化
 
 ### Worker 数量配置
@@ -435,7 +414,7 @@ RTC_MAX_PORT=49999
 | 房间权限   | ❌         | ✅           |
 | 业务逻辑   | ❌         | ✅           |
 | 数据持久化 | ❌         | ✅           |
-| 会议录制   | ❌         | ✅           |
+| 会议录制   | ✅         | ❌           |
 
 ### 通信流程
 
@@ -452,16 +431,22 @@ RTC_MAX_PORT=49999
 
 ## 📝 开发指南
 
-### 添加新的信令事件
+### 添加新的socket接口
 
-1. 在 `signaling-handler.ts` 中添加事件监听
+1. 在 `socket-handler.ts` 中添加事件监听
 2. 实现业务逻辑
 3. 必要时调用 gRPC 同步到 Spring Cloud
 
-### 扩展 gRPC 服务
+### 扩展 gRPC 客户端服务
 
 1. 修改 `proto/sfu-service.proto`
 2. 在 `grpc-client.ts` 中添加方法
+3. 重启服务加载新定义
+
+### 扩展 gRPC 服务端接口
+
+1. 修改 `proto/sfu-service.proto`
+2. 在 `grpc-server.ts` 中添加方法
 3. 重启服务加载新定义
 
 ---

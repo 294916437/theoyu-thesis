@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package sfu;
 
-// ==================== 消息定义（按依赖顺序） ====================
-
 // 1. 基础配置消息（被其他消息引用，需要先定义）
 message RoomConfig {
   int32 max_participants = 1;
@@ -63,6 +61,51 @@ message AckResponse {
   string message = 2;
 }
 
+// 会议录制请求
+message StartRecordingRequest {
+  string room_id = 1;
+  string recording_id = 2;
+  RecordingConfig config = 3;
+}
+
+message RecordingConfig {
+  int32 video_width = 1;
+  int32 video_height = 2;
+  int32 video_bitrate = 3;
+  int32 video_framerate = 4;
+  string video_codec = 5;
+  int32 audio_bitrate = 6;
+  string audio_codec = 7;
+}
+
+message StartRecordingResponse {
+  bool success = 1;
+  string message = 2;
+  string recording_id = 3;
+}
+
+message StopRecordingRequest {
+  string room_id = 1;
+  string recording_id = 2;
+}
+
+message StopRecordingResponse {
+  bool success = 1;
+  string message = 2;
+  string file_url = 3;
+}
+
+message RecordingStatusRequest {
+  string room_id = 1;
+  string recording_id = 2;
+}
+
+message RecordingStatusResponse {
+  bool is_recording = 1;
+  int64 duration_seconds = 2;
+  int64 file_size_bytes = 3;
+}
+
 // ==================== 服务定义 ====================
 
 service SFUService {
@@ -83,4 +126,9 @@ service SFUService {
   
   // 上报媒体统计信息
   rpc ReportMediaStats(MediaStatsRequest) returns (AckResponse);
+
+  // 录制接口
+  rpc StartRecording(StartRecordingRequest) returns (StartRecordingResponse);
+  rpc StopRecording(StopRecordingRequest) returns (StopRecordingResponse);
+  rpc GetRecordingStatus(RecordingStatusRequest) returns (RecordingStatusResponse);
 }

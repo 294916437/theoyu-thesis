@@ -3,12 +3,13 @@ import { createServer } from "http"
 import { Server } from "socket.io"
 import cors from "cors"
 import config from "./config/config"
-import { MediasoupManager } from "./mediasoup/mediasoup-manager"
-import { SignalingHandler } from "./signaling/signaling-handler"
+import { MediasoupManager } from "./core/mediasoup-manager"
+import { SignalingHandler } from "./features/socket-handler"
 import { NacosClient } from "./utils/nacos-client"
 import { GrpcClient } from "./utils/grpc-client"
 import { Logger } from "./utils/logger"
 import { RoomManager } from "./core/room-manager"
+import { GrpcServer } from "./features/grpc-server"
 import { GlobalErrorHandler } from "./utils/error-handler"
 
 const logger = new Logger("SFU-Server")
@@ -82,8 +83,13 @@ async function startServer() {
 			logger.warn("gRPC client initialization failed, continuing without gRPC", error)
 		}
 
-		// 初始化信令处理器
-		logger.info("Initializing Signaling Handler...")
+		// 初始化 gRPC 服务器
+		logger.info("Initializing gRPC server...")
+		const grpcServer = GrpcServer.getInstance()
+		await grpcServer.init()
+
+		// 初始化Socket接口
+		logger.info("Initializing Socket Handler...")
 		const signalingHandler = new SignalingHandler(io)
 
 		signalingHandler["monitoring"].startPeriodicLogging(60000)
@@ -104,6 +110,7 @@ async function startServer() {
 			logger.info(`SFU Server is running on ${config.server.host}:${config.server.port}`)
 			logger.info(`WebSocket endpoint: ws://localhost:${config.server.port}`)
 			logger.info(`Environment: ${process.env.NODE_ENV || "development"}`)
+			logger.info(`gRPC server endpoint: ${config.grpc.host}:${config.grpc.serverPort}`)
 			logger.info(`Metrics: http://localhost:${config.server.port}/metrics`)
 		})
 

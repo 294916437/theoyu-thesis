@@ -35,6 +35,7 @@ export interface ServerConfig {
 export interface GrpcConfig {
 	host: string
 	port: number
+	serverPort: number
 	serviceName: string
 }
 
@@ -45,8 +46,23 @@ export interface NacosConfig {
 	ip: string
 	port: number
 }
+export interface MinioConfig {
+	endPoint: string
+	port: number
+	useSSL: boolean
+	accessKey: string
+	secretKey: string
+}
 
 export class Config {
+	public readonly minio: MinioConfig = {
+		endPoint: process.env.MINIO_ENDPOINT || "127.0.0.1",
+		port: parseInt(process.env.MINIO_PORT || "9000", 10),
+		useSSL: process.env.MINIO_USE_SSL === "true",
+		accessKey: process.env.MINIO_ACCESS_KEY || "test",
+		secretKey: process.env.MINIO_SECRET_KEY || "test123456",
+	}
+
 	public readonly server: ServerConfig = {
 		port: parseInt(process.env.PORT || "3000", 10),
 		host: process.env.HOST || "0.0.0.0",
@@ -59,6 +75,7 @@ export class Config {
 	public readonly grpc: GrpcConfig = {
 		host: process.env.GRPC_HOST || "localhost",
 		port: parseInt(process.env.GRPC_PORT || "50051", 10),
+		serverPort: parseInt(process.env.GRPC_SERVER_PORT || "50052", 10),
 		serviceName: process.env.GRPC_SERVICE_NAME || "video-conference-service",
 	}
 
@@ -74,19 +91,7 @@ export class Config {
 		numWorkers: parseInt(process.env.MEDIASOUP_WORKERS || "4", 10),
 		workerSettings: {
 			logLevel: (process.env.MEDIASOUP_LOG_LEVEL as any) || "warn",
-			logTags: [
-				"info",
-				"ice",
-				"dtls",
-				"rtp",
-				"srtp",
-				"rtcp",
-				"rtx",
-				"bwe",
-				"score",
-				"simulcast",
-				"svc",
-			],
+			logTags: ["info", "ice", "dtls", "rtp", "srtp", "rtcp", "rtx", "bwe", "score", "simulcast", "svc"],
 			rtcMinPort: parseInt(process.env.RTC_MIN_PORT || "40000", 10),
 			rtcMaxPort: parseInt(process.env.RTC_MAX_PORT || "49999", 10),
 		},

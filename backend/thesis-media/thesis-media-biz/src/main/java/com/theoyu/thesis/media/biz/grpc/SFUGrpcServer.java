@@ -38,13 +38,13 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
- * SFU gRPC 服务实现
+ * gRPC 服务端实现
  *
  * @author theoyu
  */
 @Slf4j
 @GrpcService
-public class SfuGrpcService extends SFUServiceGrpc.SFUServiceImplBase {
+public class GrpcServer extends SFUServiceGrpc.SFUServiceImplBase {
 
     @Resource
     private RoomPOMapper roomPOMapper;

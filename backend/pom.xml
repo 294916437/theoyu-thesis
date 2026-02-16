@@ -228,10 +228,16 @@
                 <artifactId>nacos-config-spring-boot-starter</artifactId>
                 <version>${nacos-config.version}</version>
             </dependency>
-            <!-- gRPC 框架 -->
+            <!-- gRPC 服务端框架 -->
             <dependency>
                 <groupId>net.devh</groupId>
                 <artifactId>grpc-server-spring-boot-starter</artifactId>
+                <version>${grpc.version}</version>
+            </dependency>
+            <!-- gRPC Client 依赖 -->
+            <dependency>
+                <groupId>net.devh</groupId>
+                <artifactId>grpc-client-spring-boot-starter</artifactId>
                 <version>${grpc.version}</version>
             </dependency>
             <!-- Protocol Buffers Java -->
@@ -241,7 +247,7 @@
                 <version>${protobuf.version}</version>
             </dependency>
 
-            <!-- gRPC Stub (客户端存根) -->
+            <!-- gRPC Stub  -->
             <dependency>
                 <groupId>io.grpc</groupId>
                 <artifactId>grpc-stub</artifactId>
@@ -377,13 +383,14 @@
                         <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}</protocArtifact>
                         <pluginId>grpc-java</pluginId>
                         <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc-java.version}:exe:${os.detected.classifier}</pluginArtifact>
+                        <!-- 将生成代码输出到 sources 目录，便于 IDEA 识别 -->
+                        <!-- <outputDirectory>${project.build.sourceDirectory}</outputDirectory> --> 
+                        <!-- 或者保持默认，但需要 IDEA 标记 target/generated-sources/protobuf/grpc-java 为源码根目录 -->
                     </configuration>
                     <executions>
                         <execution>
                             <goals>
-                                <!-- 编译 proto 文件 -->
                                 <goal>compile</goal>
-                                <!-- 编译 gRPC 服务定义 -->
                                 <goal>compile-custom</goal>
                             </goals>
                         </execution>

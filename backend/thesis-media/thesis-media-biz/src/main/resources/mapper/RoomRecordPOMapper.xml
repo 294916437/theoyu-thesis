@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.theoyu.thesis.media.biz.model.mapper.RoomRecordPOMapper">
+  <resultMap id="BaseResultMap" type="com.theoyu.thesis.media.biz.model.entity.RoomRecordPO">
+    <id column="room_id" jdbcType="BIGINT" property="roomId" />
+    <id column="host_id" jdbcType="BIGINT" property="hostId" />
+    <result column="file_url" jdbcType="VARCHAR" property="fileUrl" />
+    <result column="file_size" jdbcType="INTEGER" property="fileSize" />
+    <result column="duration" jdbcType="INTEGER" property="duration" />
+    <result column="format" jdbcType="VARCHAR" property="format" />
+    <result column="status" jdbcType="TINYINT" property="status" />
+    <result column="start_time" jdbcType="TIMESTAMP" property="startTime" />
+    <result column="end_time" jdbcType="TIMESTAMP" property="endTime" />
+    <result column="created_at" jdbcType="TIMESTAMP" property="createdAt" />
+    <result column="updated_at" jdbcType="TIMESTAMP" property="updatedAt" />
+  </resultMap>
+  <sql id="Base_Column_List">
+    room_id, host_id, file_url, file_size, duration, format, `status`, start_time, end_time, 
+    created_at, updated_at
+  </sql>
+  <select id="selectByPrimaryKey" parameterType="map" resultMap="BaseResultMap">
+    select 
+    <include refid="Base_Column_List" />
+    from t_room_record
+    where room_id = #{roomId,jdbcType=BIGINT}
+      and host_id = #{hostId,jdbcType=BIGINT}
+  </select>
+  <delete id="deleteByPrimaryKey" parameterType="map">
+    delete from t_room_record
+    where room_id = #{roomId,jdbcType=BIGINT}
+      and host_id = #{hostId,jdbcType=BIGINT}
+  </delete>
+  <insert id="insert" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomRecordPO">
+    insert into t_room_record (room_id, host_id, file_url, 
+      file_size, duration, format, 
+      `status`, start_time, end_time, 
+      created_at, updated_at)
+    values (#{roomId,jdbcType=BIGINT}, #{hostId,jdbcType=BIGINT}, #{fileUrl,jdbcType=VARCHAR}, 
+      #{fileSize,jdbcType=INTEGER}, #{duration,jdbcType=INTEGER}, #{format,jdbcType=VARCHAR}, 
+      #{status,jdbcType=TINYINT}, #{startTime,jdbcType=TIMESTAMP}, #{endTime,jdbcType=TIMESTAMP}, 
+      #{createdAt,jdbcType=TIMESTAMP}, #{updatedAt,jdbcType=TIMESTAMP})
+  </insert>
+  <insert id="insertSelective" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomRecordPO">
+    insert into t_room_record
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="roomId != null">
+        room_id,
+      </if>
+      <if test="hostId != null">
+        host_id,
+      </if>
+      <if test="fileUrl != null">
+        file_url,
+      </if>
+      <if test="fileSize != null">
+        file_size,
+      </if>
+      <if test="duration != null">
+        duration,
+      </if>
+      <if test="format != null">
+        format,
+      </if>
+      <if test="status != null">
+        `status`,
+      </if>
+      <if test="startTime != null">
+        start_time,
+      </if>
+      <if test="endTime != null">
+        end_time,
+      </if>
+      <if test="createdAt != null">
+        created_at,
+      </if>
+      <if test="updatedAt != null">
+        updated_at,
+      </if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="roomId != null">
+        #{roomId,jdbcType=BIGINT},
+      </if>
+      <if test="hostId != null">
+        #{hostId,jdbcType=BIGINT},
+      </if>
+      <if test="fileUrl != null">
+        #{fileUrl,jdbcType=VARCHAR},
+      </if>
+      <if test="fileSize != null">
+        #{fileSize,jdbcType=INTEGER},
+      </if>
+      <if test="duration != null">
+        #{duration,jdbcType=INTEGER},
+      </if>
+      <if test="format != null">
+        #{format,jdbcType=VARCHAR},
+      </if>
+      <if test="status != null">
+        #{status,jdbcType=TINYINT},
+      </if>
+      <if test="startTime != null">
+        #{startTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="endTime != null">
+        #{endTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="createdAt != null">
+        #{createdAt,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatedAt != null">
+        #{updatedAt,jdbcType=TIMESTAMP},
+      </if>
+    </trim>
+  </insert>
+  <update id="updateByPrimaryKeySelective" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomRecordPO">
+    update t_room_record
+    <set>
+      <if test="fileUrl != null">
+        file_url = #{fileUrl,jdbcType=VARCHAR},
+      </if>
+      <if test="fileSize != null">
+        file_size = #{fileSize,jdbcType=INTEGER},
+      </if>
+      <if test="duration != null">
+        duration = #{duration,jdbcType=INTEGER},
+      </if>
+      <if test="format != null">
+        format = #{format,jdbcType=VARCHAR},
+      </if>
+      <if test="status != null">
+        `status` = #{status,jdbcType=TINYINT},
+      </if>
+      <if test="startTime != null">
+        start_time = #{startTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="endTime != null">
+        end_time = #{endTime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="createdAt != null">
+        created_at = #{createdAt,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatedAt != null">
+        updated_at = #{updatedAt,jdbcType=TIMESTAMP},
+      </if>
+    </set>
+    where room_id = #{roomId,jdbcType=BIGINT}
+      and host_id = #{hostId,jdbcType=BIGINT}
+  </update>
+  <update id="updateByPrimaryKey" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomRecordPO">
+    update t_room_record
+    set file_url = #{fileUrl,jdbcType=VARCHAR},
+      file_size = #{fileSize,jdbcType=INTEGER},
+      duration = #{duration,jdbcType=INTEGER},
+      format = #{format,jdbcType=VARCHAR},
+      `status` = #{status,jdbcType=TINYINT},
+      start_time = #{startTime,jdbcType=TIMESTAMP},
+      end_time = #{endTime,jdbcType=TIMESTAMP},
+      created_at = #{createdAt,jdbcType=TIMESTAMP},
+      updated_at = #{updatedAt,jdbcType=TIMESTAMP}
+    where room_id = #{roomId,jdbcType=BIGINT}
+      and host_id = #{hostId,jdbcType=BIGINT}
+  </update>
+</mapper>

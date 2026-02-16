@@ -27,7 +27,7 @@ export class GrpcServer {
 	}
 
 	public async init(): Promise<void> {
-		const PROTO_PATH = path.join(__dirname, "../../proto/sfu-service.proto")
+		const PROTO_PATH = path.join(__dirname, "../../proto/sfu-control.proto")
 
 		const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 			keepCase: true,
@@ -38,7 +38,7 @@ export class GrpcServer {
 		})
 
 		const protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any
-		const sfuService = protoDescriptor.sfu.SFUService
+		const sfuService = protoDescriptor.sfu.control.SFUControlService
 
 		this.server.addService(sfuService.service, {
 			StartRecording: this.handleStartRecording.bind(this),

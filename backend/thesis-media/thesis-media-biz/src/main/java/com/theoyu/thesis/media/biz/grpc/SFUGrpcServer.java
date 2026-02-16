@@ -7,7 +7,7 @@ import com.theoyu.framework.common.utils.JsonUtils;
 import com.theoyu.framework.common.utils.MapUtils;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
-import com.theoyu.thesis.media.biz.grpc.proto.*;
+import com.theoyu.thesis.media.biz.grpc.proto.callback.*;
 import com.theoyu.thesis.media.biz.model.dto.ParticipantEventDTO;
 import com.theoyu.thesis.media.biz.model.entity.RoomMessagePO;
 import com.theoyu.thesis.media.biz.model.entity.RoomPO;
@@ -44,7 +44,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @GrpcService
-public class GrpcServer extends SFUServiceGrpc.SFUServiceImplBase {
+public class SFUGrpcServer extends SFUCallbackServiceGrpc.SFUCallbackServiceImplBase {
 
     @Resource
     private RoomPOMapper roomPOMapper;

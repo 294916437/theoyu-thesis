@@ -6,6 +6,7 @@ mybatis:
 
 
 grpc:
+  # 作为grpc服务端的配置
   server:
     port: 50051
     # 启用反射服务（开发环境）
@@ -17,7 +18,23 @@ grpc:
     # 启用 keep-alive
     permit-keep-alive-without-calls: true
     permit-keep-alive-time: 300s
+  # gRPC Client 配置
+  client:
+    # 配置 Node.js SFU 服务端
+    sfu-node-service:
+      address: 'static://localhost:50052'
+      negotiation-type: plaintext
+      max-inbound-message-size: 10485760
+      # 启用 keep-alive
+      enable-keep-alive: true
+      keep-alive-time: 300s
+      keep-alive-timeout: 20s
+      # 重试配置
+      retry: true
+      max-attempts: 3
+
 
 sfu:
   server:
     url: ws://localhost:3000
+

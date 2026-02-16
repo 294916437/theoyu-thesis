@@ -10,7 +10,7 @@ import com.theoyu.framework.common.utils.JsonUtils;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
 import com.theoyu.thesis.media.biz.enums.ResponseCodeEnum;
-import com.theoyu.thesis.media.biz.grpc.SfuGrpcService;
+import com.theoyu.thesis.media.biz.grpc.SFUGrpcServer;
 import com.theoyu.thesis.media.biz.model.dto.RoomCreatedEventDTO;
 import com.theoyu.thesis.media.biz.model.entity.RoomPO;
 import com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO;
@@ -230,7 +230,7 @@ public class RoomServiceImpl implements RoomService {
     /**
      * 加入会议（预验证阶段）
      * 此方法不会执行持久化操作。真正的参与者记录将在用户成功连接到 SFU 服务器后，
-     * 由 SFU 通过 gRPC 调用 {@link SfuGrpcService#notifyParticipantJoined} 时创建。
+     * 由 SFU 通过 gRPC 调用 {@link SFUGrpcServer#notifyParticipantJoined} 时创建。
      * 这样可以避免"幽灵参与者"问题（用户调用 API 但未实际连接）。
      * 
      * @param reqVO 加入会议请求

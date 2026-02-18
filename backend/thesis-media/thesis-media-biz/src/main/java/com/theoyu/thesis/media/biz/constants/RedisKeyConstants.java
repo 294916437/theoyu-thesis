@@ -81,6 +81,28 @@ public class RedisKeyConstants {
      */
     public static final String USER_UPCOMING_ROOMS_KEY = "user:upcoming:rooms:%d";
 
+    /**
+     * 录制状态 Hash
+     * 存储: hostId, status, startTime, format
+     * Key: room:recording:status:{roomId}
+     */
+    public static final String ROOM_RECORDING_STATUS_KEY = "room:recording:status:%d";
+
+    /**
+     * 录制进行中互斥锁 String (SETNX)
+     * 用于防止重复启动录制
+     * Key: room:recording:active:{roomId}
+     */
+    public static final String ROOM_RECORDING_ACTIVE_KEY = "room:recording:active:%d";
+
+    /**
+     * 房间历史录制列表 List
+     * Key: room:records:{roomId}
+     */
+    public static final String ROOM_RECORDS_LIST_KEY = "room:records:%d";
+
+
+
 
     // ==================== SFU 节点相关 ====================
 
@@ -154,5 +176,20 @@ public class RedisKeyConstants {
      * SFU 节点信息过期时间：5分钟
      */
     public static final long SFU_NODE_EXPIRE_TIME = 5 * 60;
+    /**
+     * 录制状态缓存过期时间：24小时
+     */
+    public static final long ROOM_RECORDING_STATUS_EXPIRE_TIME = 24 * 60 * 60L;
+
+    /**
+     * 录制互斥锁过期时间：12小时（防止死锁）
+     */
+    public static final long ROOM_RECORDING_ACTIVE_EXPIRE_TIME = 12 * 60 * 60L;
+
+    /**
+     * 历史录制列表缓存过期时间：7天
+     */
+    public static final long ROOM_RECORDS_LIST_EXPIRE_TIME = 7 * 24 * 60 * 60L;
+
 
 }

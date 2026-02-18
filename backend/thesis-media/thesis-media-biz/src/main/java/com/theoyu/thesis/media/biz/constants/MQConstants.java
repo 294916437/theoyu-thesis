@@ -18,6 +18,10 @@ public interface MQConstants {
      */
     public static final String ROOM_MESSAGE_TOPIC = "room-message";
     /**
+     * 房间录制Topic
+     */
+    public static final String ROOM_RECORD_TOPIC = "room-record";
+    /**
      * 参与者事件主题
      */
     public static final String TOPIC_PARTICIPANT_EVENT = "participant-event";
@@ -29,7 +33,12 @@ public interface MQConstants {
      */
     public static final String ROOM_MESSAGE_TAG = "send";
 
+    // ==================== 录制相关 ====================
+    public static final String TAG_RECORDING_STARTED = "started";
 
+    public static final String TAG_RECORDING_COMPLETED = "completed";
+
+    public static final String TAG_RECORDING_FAILED = "failed";
 
     /**
      * 参与者加入事件 Tag

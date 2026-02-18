@@ -29,24 +29,24 @@ public class SFUGrpcClient {
      * 启动录制
      *
      * @param roomId 房间ID
-     * @param recordingId 录制ID
+     * @param hostId 主持人ID
      * @param config 录制配置
      * @return 录制响应
      */
-    public StartRecordingResponse startRecording(String roomId, String recordingId, RecordingConfig config) {
-        log.info("[gRPC-Client] 调用 Node.js 启动录制 - roomId: {}, recordingId: {}", roomId, recordingId);
+    public StartRecordingResponse startRecording(String roomId, String hostId, RecordingConfig config) {
+        log.info("[gRPC-Client] 调用 Node.js 启动录制 - roomId: {}, hostId: {}", roomId, hostId);
 
         try {
             StartRecordingRequest request = StartRecordingRequest.newBuilder()
                     .setRoomId(roomId)
-                    .setRecordingId(recordingId)
+                    .setHostId(hostId)
                     .setConfig(config)
                     .build();
 
             StartRecordingResponse response = blockingStub.startRecording(request);
 
-            log.info("[gRPC-Client] 启动录制成功 - success: {}, recordingId: {}",
-                    response.getSuccess(), response.getRecordingId());
+            log.info("[gRPC-Client] 启动录制成功 - success: {}, hostId: {}",
+                    response.getSuccess(), response.getHostId());
             return response;
 
         } catch (StatusRuntimeException e) {
@@ -60,16 +60,16 @@ public class SFUGrpcClient {
      * 停止录制
      *
      * @param roomId 房间ID
-     * @param recordingId 录制ID
+     * @param hostId 录制ID
      * @return 停止录制响应
      */
-    public StopRecordingResponse stopRecording(String roomId, String recordingId) {
-        log.info("[gRPC-Client] 调用 Node.js 停止录制 - roomId: {}, recordingId: {}", roomId, recordingId);
+    public StopRecordingResponse stopRecording(String roomId, String hostId) {
+        log.info("[gRPC-Client] 调用 Node.js 停止录制 - roomId: {}, hostId: {}", roomId, hostId);
 
         try {
             StopRecordingRequest request = StopRecordingRequest.newBuilder()
                     .setRoomId(roomId)
-                    .setRecordingId(recordingId)
+                    .setHostId(hostId)
                     .build();
 
             StopRecordingResponse response = blockingStub.stopRecording(request);
@@ -89,16 +89,16 @@ public class SFUGrpcClient {
      * 获取录制状态
      *
      * @param roomId 房间ID
-     * @param recordingId 录制ID
+     * @param hostId 录制ID
      * @return 录制状态响应
      */
-    public RecordingStatusResponse getRecordingStatus(String roomId, String recordingId) {
-        log.info("[gRPC-Client] 查询录制状态 - roomId: {}, recordingId: {}", roomId, recordingId);
+    public RecordingStatusResponse getRecordingStatus(String roomId, String hostId) {
+        log.info("[gRPC-Client] 查询录制状态 - roomId: {}, hostId: {}", roomId, hostId);
 
         try {
             RecordingStatusRequest request = RecordingStatusRequest.newBuilder()
                     .setRoomId(roomId)
-                    .setRecordingId(recordingId)
+                    .setHostId(hostId)
                     .build();
 
             RecordingStatusResponse response = blockingStub.getRecordingStatus(request);

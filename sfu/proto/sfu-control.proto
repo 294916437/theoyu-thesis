@@ -16,19 +16,19 @@ message RecordingConfig {
 
 message StartRecordingRequest {
   string room_id = 1;
-  string recording_id = 2;
+  string host_id = 2;
   RecordingConfig config = 3;
 }
 
 message StartRecordingResponse {
   bool success = 1;
   string message = 2;
-  string recording_id = 3;
+  string host_id = 3;
 }
 
 message StopRecordingRequest {
   string room_id = 1;
-  string recording_id = 2;
+  string host_id = 2;
 }
 
 message StopRecordingResponse {
@@ -39,7 +39,7 @@ message StopRecordingResponse {
 
 message RecordingStatusRequest {
   string room_id = 1;
-  string recording_id = 2;
+  string host_id = 2;
 }
 
 message RecordingStatusResponse {

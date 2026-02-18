@@ -13,6 +13,7 @@ interface RecordingConfig {
 	videoCodec: string
 	audioBitrate: number
 	audioCodec: string
+	format: string
 }
 
 interface RecordingSession {
@@ -48,7 +49,10 @@ export class RecordingManager {
 		return RecordingManager.instance
 	}
 
-	public async startRecording(roomId: string, recordingId: string, router: mediasoupTypes.Router, producers: mediasoupTypes.Producer[], config: RecordingConfig): Promise<void> {
+	public async startRecording(roomId: string, hostId: string, router: mediasoupTypes.Router, producers: mediasoupTypes.Producer[], config: RecordingConfig): Promise<void> {
+		// 联合主键
+		const recordingId = `${roomId}_${hostId}`
+
 		if (this.sessions.has(recordingId)) {
 			throw new Error(`Recording ${recordingId} already exists`)
 		}
@@ -122,7 +126,7 @@ export class RecordingManager {
 		fs.writeFileSync(sdpPath, sdpLines.join("\n"))
 
 		// 输出文件路径
-		const outputPath = path.join(this.recordingsDir, `${recordingId}.mp4`)
+		const outputPath = path.join(this.recordingsDir, `${recordingId}.${config.format}`)
 
 		// 启动 FFmpeg
 		const ffmpegProcess = this.spawnFFmpeg(sdpPath, outputPath, config)
@@ -159,13 +163,14 @@ export class RecordingManager {
 	}
 
 	private spawnFFmpeg(sdpPath: string, outputPath: string, config: RecordingConfig): ChildProcess {
+		const isWebm = config.format === "webm"
 		const args = [
 			"-protocol_whitelist",
 			"file,rtp,udp",
 			"-i",
 			sdpPath,
 			"-c:v",
-			"libx264",
+			isWebm ? "libvpx" : "libx264", // WebM 使用 VP8/VP9, MP4 使用 H.264
 			"-preset",
 			"ultrafast",
 			"-b:v",
@@ -175,14 +180,16 @@ export class RecordingManager {
 			"-r",
 			config.videoFramerate.toString(),
 			"-c:a",
-			"aac",
+			isWebm ? "libvorbis" : "aac", // WebM 使用 Vorbis/Opus, MP4 使用 AAC
 			"-b:a",
 			`${config.audioBitrate}k`,
-			"-movflags",
-			"+faststart",
-			"-y",
-			outputPath,
 		]
+
+		if (!isWebm) {
+			args.push("-movflags", "+faststart")
+		}
+
+		args.push("-y", outputPath)
 
 		this.logger.info(`Spawning FFmpeg with args: ${args.join(" ")}`)
 
@@ -226,8 +233,9 @@ export class RecordingManager {
 			session.transport.close()
 
 			// 上传到 MinIO
-			const fileName = `${session.roomId}/${recordingId}.mp4`
-			const bucketName = "recordings"
+			const format = session.config.format
+			const fileName = `${session.roomId}/${recordingId}.${format}`
+			const bucketName = "room-record"
 
 			if (fs.existsSync(session.outputPath)) {
 				await this.minioClient.uploadFile(bucketName, fileName, session.outputPath)
@@ -236,7 +244,7 @@ export class RecordingManager {
 
 				// 删除本地文件
 				fs.unlinkSync(session.outputPath)
-				const sdpPath = session.outputPath.replace(".mp4", ".sdp")
+				const sdpPath = session.outputPath.replace(`.${format}`, ".sdp")
 				if (fs.existsSync(sdpPath)) {
 					fs.unlinkSync(sdpPath)
 				}

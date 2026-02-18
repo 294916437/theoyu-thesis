@@ -12,6 +12,7 @@ message RecordingConfig {
   string video_codec = 5;
   int32 audio_bitrate = 6;
   string audio_codec = 7;
+  string format = 8;
 }
 
 message StartRecordingRequest {

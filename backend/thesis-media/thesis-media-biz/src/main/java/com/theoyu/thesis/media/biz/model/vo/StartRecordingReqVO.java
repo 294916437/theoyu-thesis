@@ -11,7 +11,6 @@ public class StartRecordingReqVO {
 
     @NotNull(message = "主持人ID不能为空")
     private Long hostId;
-
     /**
      * 录制格式，默认 webm
      */

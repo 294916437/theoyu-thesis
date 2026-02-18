@@ -1,6 +1,6 @@
 import * as grpc from "@grpc/grpc-js"
 import * as protoLoader from "@grpc/proto-loader"
-import path from "path"
+import path, { format } from "path"
 import { Logger } from "../utils/logger"
 import config from "../config/config"
 import { RoomManager } from "../core/room-manager"
@@ -66,8 +66,6 @@ export class GrpcServer {
 		try {
 			// Proto 变更: recording_id -> host_id
 			const { room_id, host_id, config: recordingConfig } = call.request
-			// 使用 host_id 作为唯一的 recordingId (业务层保证 room+host 唯一性)
-			const recordingId = host_id
 
 			this.logger.info(`StartRecording request: room=${room_id}, host=${host_id}`)
 
@@ -106,10 +104,11 @@ export class GrpcServer {
 				videoCodec: recordingConfig?.video_codec || "h264",
 				audioBitrate: recordingConfig?.audio_bitrate || 128,
 				audioCodec: recordingConfig?.audio_codec || "aac",
+				format: recordingConfig?.format || "mp4",
 			}
 
 			// 传递 recordingId (即 host_id) 给 Manager
-			await this.recordingManager.startRecording(room_id, recordingId, router, producers, config)
+			await this.recordingManager.startRecording(room_id, host_id, router, producers, config)
 
 			callback(null, {
 				success: true,
@@ -128,39 +127,34 @@ export class GrpcServer {
 
 	private async handleStopRecording(call: grpc.ServerUnaryCall<any, any>, callback: grpc.sendUnaryData<any>): Promise<void> {
 		try {
-			// Proto 变更: 参数包含 room_id 和 host_id
 			const { room_id, host_id } = call.request
-			const recordingId = host_id // 映射 host_id 为 recordingId
+			// 联合主键
+			const recordingId = `${room_id}_${host_id}`
 
 			this.logger.info(`StopRecording request: room=${room_id}, host=${host_id}`)
 
-			await this.recordingManager.stopRecording(recordingId)
-
-			// Manager 已处理上传，此处仅返回路径逻辑需根据 RecordingManager 返回值适配
-			// 假设 RecordingManager.stopRecording 返回本地路径，实际 url 可能是在上传后生成
-			// 这里简单返回文件名，具体 url 由 Java 端拼接或 Manager 改进返回
-			const fileName = `${room_id}/${host_id}.mp4`
+			const outputPath = await this.recordingManager.stopRecording(recordingId)
 
 			callback(null, {
 				success: true,
 				message: "Recording stopped successfully",
-				file_url: fileName,
+				file_url: outputPath,
 			})
 		} catch (error: any) {
 			this.logger.error("StopRecording error", error)
 			callback(null, {
 				success: false,
 				message: error.message,
-				file_url: "",
+				file_url: null,
 			})
 		}
 	}
 
 	private async handleGetRecordingStatus(call: grpc.ServerUnaryCall<any, any>, callback: grpc.sendUnaryData<any>): Promise<void> {
 		try {
-			// Proto 变更: 参数包含 room_id 和 host_id
 			const { room_id, host_id } = call.request
-			const recordingId = host_id
+			// 联合主键
+			const recordingId = `${room_id}_${host_id}`
 
 			const status = this.recordingManager.getRecordingStatus(recordingId)
 

@@ -75,16 +75,17 @@ public class MediaServiceImpl implements MediaService {
 
         LocalDateTime now = LocalDateTime.now();
 
-        // 3. 组装 gRPC 配置
+        // 3. 组装 gRPC 的录制配置参数
+        // TODO:根据quality动态调整参数
         RecordingConfig config = RecordingConfig.newBuilder()
-                // 此处需确保 reqVO 中的参数值符合 proto 定义，例如 "webm"/"mp4"
-                // 若 reqVO 为空则使用默认值
-                .setVideoWidth(1280) // 示例默认值，实际应从 reqVO.quality 转换
+                .setVideoWidth(1280)
                 .setVideoHeight(720)
+                .setFormat(reqVO.getFormat())
                 .build();
 
         StartRecordingResponse grpcResponse;
         try {
+            // 通过 grpc 调用SFU端的开始会议录制的核心逻辑
             grpcResponse = sfuGrpcClient.startRecording(String.valueOf(roomId), String.valueOf(hostId), config);
             if (!grpcResponse.getSuccess()) {
                 // 如果 grpc 明确返回失败，释放锁
@@ -173,6 +174,7 @@ public class MediaServiceImpl implements MediaService {
         long currentDuration = 0;
         long currentFileSize = 0;
         try {
+            // 通过 grpc 调用SFU端的停止会议录制的核心逻辑
             RecordingStatusResponse statusRes = sfuGrpcClient.getRecordingStatus(String.valueOf(roomId), String.valueOf(hostId));
             if (statusRes != null) {
                 currentDuration = statusRes.getDurationSeconds();
@@ -185,6 +187,7 @@ public class MediaServiceImpl implements MediaService {
         // 3. 调用 gRPC 停止录制
         StopRecordingResponse grpcResponse;
         try {
+            //
             grpcResponse = sfuGrpcClient.stopRecording(String.valueOf(roomId), String.valueOf(hostId));
             if (!grpcResponse.getSuccess()) {
                 throw new BusinessException(ResponseCodeEnum.RECORDING_STOP_FAILED);

@@ -38,6 +38,7 @@ export class GrpcServer {
 		})
 
 		const protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any
+		// 根据 proto package 定义: sfu.control
 		const sfuService = protoDescriptor.sfu.control.SFUControlService
 
 		this.server.addService(sfuService.service, {
@@ -63,16 +64,19 @@ export class GrpcServer {
 
 	private async handleStartRecording(call: grpc.ServerUnaryCall<any, any>, callback: grpc.sendUnaryData<any>): Promise<void> {
 		try {
-			const { room_id, recording_id, config: recordingConfig } = call.request
+			// Proto 变更: recording_id -> host_id
+			const { room_id, host_id, config: recordingConfig } = call.request
+			// 使用 host_id 作为唯一的 recordingId (业务层保证 room+host 唯一性)
+			const recordingId = host_id
 
-			this.logger.info(`StartRecording request: ${room_id}, ${recording_id}`)
+			this.logger.info(`StartRecording request: room=${room_id}, host=${host_id}`)
 
 			const router = this.mediasoupManager.getRouter(room_id)
 			if (!router) {
 				callback(null, {
 					success: false,
 					message: `Room ${room_id} not found`,
-					recording_id: recording_id,
+					host_id: host_id,
 				})
 				return
 			}
@@ -85,7 +89,7 @@ export class GrpcServer {
 				callback(null, {
 					success: false,
 					message: `No active media streams in room ${room_id}`,
-					recording_id: recording_id,
+					host_id: host_id,
 				})
 				return
 			}
@@ -95,44 +99,52 @@ export class GrpcServer {
 			this.logger.info(`Found ${producers.length} producers in room ${room_id}:`, JSON.stringify(producersInfo, null, 2))
 
 			const config = {
-				videoWidth: recordingConfig.video_width || 1920,
-				videoHeight: recordingConfig.video_height || 1080,
-				videoBitrate: recordingConfig.video_bitrate || 3000,
-				videoFramerate: recordingConfig.video_framerate || 30,
-				videoCodec: recordingConfig.video_codec || "h264",
-				audioBitrate: recordingConfig.audio_bitrate || 128,
-				audioCodec: recordingConfig.audio_codec || "aac",
+				videoWidth: recordingConfig?.video_width || 1280,
+				videoHeight: recordingConfig?.video_height || 720,
+				videoBitrate: recordingConfig?.video_bitrate || 3000,
+				videoFramerate: recordingConfig?.video_framerate || 30,
+				videoCodec: recordingConfig?.video_codec || "h264",
+				audioBitrate: recordingConfig?.audio_bitrate || 128,
+				audioCodec: recordingConfig?.audio_codec || "aac",
 			}
 
-			await this.recordingManager.startRecording(room_id, recording_id, router, producers, config)
+			// 传递 recordingId (即 host_id) 给 Manager
+			await this.recordingManager.startRecording(room_id, recordingId, router, producers, config)
 
 			callback(null, {
 				success: true,
 				message: "Recording started successfully",
-				recording_id: recording_id,
+				host_id: host_id,
 			})
 		} catch (error: any) {
 			this.logger.error("StartRecording error", error)
 			callback(null, {
 				success: false,
 				message: error.message,
-				recording_id: call.request.recording_id,
+				host_id: call.request.host_id,
 			})
 		}
 	}
 
 	private async handleStopRecording(call: grpc.ServerUnaryCall<any, any>, callback: grpc.sendUnaryData<any>): Promise<void> {
 		try {
-			const { recording_id } = call.request
+			// Proto 变更: 参数包含 room_id 和 host_id
+			const { room_id, host_id } = call.request
+			const recordingId = host_id // 映射 host_id 为 recordingId
 
-			this.logger.info(`StopRecording request: ${recording_id}`)
+			this.logger.info(`StopRecording request: room=${room_id}, host=${host_id}`)
 
-			await this.recordingManager.stopRecording(recording_id)
+			await this.recordingManager.stopRecording(recordingId)
+
+			// Manager 已处理上传，此处仅返回路径逻辑需根据 RecordingManager 返回值适配
+			// 假设 RecordingManager.stopRecording 返回本地路径，实际 url 可能是在上传后生成
+			// 这里简单返回文件名，具体 url 由 Java 端拼接或 Manager 改进返回
+			const fileName = `${room_id}/${host_id}.mp4`
 
 			callback(null, {
 				success: true,
 				message: "Recording stopped successfully",
-				file_url: `recordings/${recording_id}.mp4`,
+				file_url: fileName,
 			})
 		} catch (error: any) {
 			this.logger.error("StopRecording error", error)
@@ -146,9 +158,11 @@ export class GrpcServer {
 
 	private async handleGetRecordingStatus(call: grpc.ServerUnaryCall<any, any>, callback: grpc.sendUnaryData<any>): Promise<void> {
 		try {
-			const { recording_id } = call.request
+			// Proto 变更: 参数包含 room_id 和 host_id
+			const { room_id, host_id } = call.request
+			const recordingId = host_id
 
-			const status = this.recordingManager.getRecordingStatus(recording_id)
+			const status = this.recordingManager.getRecordingStatus(recordingId)
 
 			if (!status) {
 				callback(null, {
@@ -175,7 +189,7 @@ export class GrpcServer {
 	}
 
 	public async close(): Promise<void> {
-		return new Promise((resolve) => {
+		return new Promise<void>((resolve) => {
 			this.server.tryShutdown(() => {
 				this.logger.info("gRPC server closed")
 				resolve()

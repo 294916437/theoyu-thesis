@@ -161,4 +161,48 @@
     where room_id = #{roomId,jdbcType=BIGINT}
       and host_id = #{hostId,jdbcType=BIGINT}
   </update>
+  <!-- 查询房间内进行中的录制 -->
+  <select id="selectActiveByRoomId" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from t_room_record
+    where room_id = #{roomId,jdbcType=BIGINT}
+    and `status` = 0
+    limit 1
+  </select>
+
+  <!-- 更新录制完成信息 -->
+  <update id="updateCompletedInfo" parameterType="com.theoyu.thesis.media.biz.model.entity.RoomRecordPO">
+    update t_room_record
+    set file_url = #{fileUrl,jdbcType=VARCHAR},
+    file_size = #{fileSize,jdbcType=INTEGER},
+    duration = #{duration,jdbcType=INTEGER},
+    `status` = #{status,jdbcType=TINYINT},
+    end_time = #{endTime,jdbcType=TIMESTAMP},
+    updated_at = NOW()
+    where room_id = #{roomId,jdbcType=BIGINT}
+    and host_id = #{hostId,jdbcType=BIGINT}
+  </update>
+
+  <!-- 查询房间历史录制列表 -->
+  <select id="selectListByRoomId" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from t_room_record
+    where room_id = #{roomId,jdbcType=BIGINT}
+    and `status` = 2
+    order by created_at desc
+  </select>
+
+  <!-- 查询指定主持人在指定房间的录制记录 -->
+  <select id="selectByRoomIdAndHostId" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from t_room_record
+    where room_id = #{roomId,jdbcType=BIGINT}
+    and host_id = #{hostId,jdbcType=BIGINT}
+  </select>
+
+
+  
 </mapper>

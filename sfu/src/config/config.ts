@@ -52,6 +52,7 @@ export interface MinioConfig {
 	useSSL: boolean
 	accessKey: string
 	secretKey: string
+	bucketName: string
 }
 
 export class Config {
@@ -61,6 +62,7 @@ export class Config {
 		useSSL: process.env.MINIO_USE_SSL === "true",
 		accessKey: process.env.MINIO_ACCESS_KEY || "test",
 		secretKey: process.env.MINIO_SECRET_KEY || "test123456",
+		bucketName: process.env.MINIO_BUCKET_NAME || "thesis",
 	}
 
 	public readonly server: ServerConfig = {

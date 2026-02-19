@@ -1,6 +1,6 @@
 import * as grpc from "@grpc/grpc-js"
 import * as protoLoader from "@grpc/proto-loader"
-import path, { format } from "path"
+import path from "path"
 import { Logger } from "../utils/logger"
 import config from "../config/config"
 import { RoomManager } from "../core/room-manager"
@@ -133,12 +133,12 @@ export class GrpcServer {
 
 			this.logger.info(`StopRecording request: room=${room_id}, host=${host_id}`)
 
-			const outputPath = await this.recordingManager.stopRecording(recordingId)
+			const fileUrl = await this.recordingManager.stopRecording(recordingId)
 
 			callback(null, {
 				success: true,
 				message: "Recording stopped successfully",
-				file_url: outputPath,
+				file_url: fileUrl,
 			})
 		} catch (error: any) {
 			this.logger.error("StopRecording error", error)

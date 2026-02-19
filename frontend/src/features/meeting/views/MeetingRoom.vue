@@ -39,7 +39,6 @@
 					<span class="font-weight-medium">{{ participantCount }} 人</span>
 				</v-chip>
 				<!-- 视频特效应用 -->
-				<!-- 修改顶部工具栏的背景特效按钮 -->
 				<v-tooltip location="bottom">
 					<template #activator="{ props }">
 						<v-btn
@@ -539,20 +538,30 @@
 											</span>
 										</v-tooltip>
 
-										<!-- 录制 -->
+										<!-- 会议录制 -->
 										<v-tooltip location="top">
 											<template #activator="{ props }">
 												<v-btn
 													v-bind="props"
-													:icon="isRecording ? 'mdi-record-rec' : 'mdi-record-circle-outline'"
+													:icon="isRecording ? 'mdi-stop-circle' : 'mdi-record-circle-outline'"
 													:color="isRecording ? 'error' : 'surface'"
 													:variant="isRecording ? 'flat' : 'elevated'"
+													:loading="recordingLoading"
 													size="large"
 													class="control-btn"
 													@click="toggleRecording"
-												></v-btn>
+												>
+													<!-- 录制中：红点脉冲动画 -->
+													<v-badge v-if="isRecording" dot color="error" location="top end">
+														<v-icon>mdi-stop-circle</v-icon>
+													</v-badge>
+													<v-icon v-else>mdi-record-circle-outline</v-icon>
+												</v-btn>
 											</template>
-											<span>{{ isRecording ? '停止录制' : '开始录制' }}</span>
+											<div>
+												<div>{{ isRecording ? '停止录制' : '开始录制' }}</div>
+												<div v-if="isRecording" class="text-caption">{{ recordingFormattedDuration }} · {{ recordingFormattedFileSize }}</div>
+											</div>
 										</v-tooltip>
 
 										<!-- 更多选项 -->
@@ -830,6 +839,27 @@
 				@close="closePreview"
 			/>
 
+			<!-- 录制开始 Dialog -->
+			<RecordingStartDialog
+				v-model="showRecordingStartDialog"
+				:loading="recordingLoading"
+				:format="recordingFormat"
+				@confirm="
+					fmt => {
+						recordingFormat = fmt
+						handleStartRecording()
+					}
+				"
+			/>
+
+			<!-- 录制完成 Dialog -->
+			<RecordingResultDialog
+				v-model="showRecordingResultDialog"
+				:result="recordingResult"
+				@download="handleDownloadFromPreview"
+				@preview="url => openPreview(url, '会议录制')"
+			/>
+
 			<!-- 加载覆盖层 -->
 			<LoadingOverlay :visible="isLoading" :message="loadingMessage" :progress="loadingProgress" />
 		</v-main>
@@ -855,6 +885,9 @@ import VideoGrid from '../components/VideoGrid.vue'
 import ParticipantsList from '../components/ParticipantsList.vue'
 import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
 import FilePreview from '@/components/common/FilePreview.vue'
+import RecordingStartDialog from '../components/RecordingStartDialog.vue'
+import RecordingResultDialog from '../components/RecordingResultDialog.vue'
+import { useRecording } from '@/composables/useRecording'
 import { useFilePreview } from '@/composables/useFilePreview'
 import { useParticipants } from '@/composables/useParticipants'
 import { useMediaDevices } from '@/composables/useMediaDevices'
@@ -1373,8 +1406,24 @@ const handleDownloadFromPreview = async ({ url, name }) => {
 	}
 }
 
-// ==================== 会议控制 ====================
-const isRecording = ref(false)
+// ==================== 会议录制功能 ====================
+const {
+	isRecording,
+	recordingFormat,
+	recordingLoading,
+	formattedDuration: recordingFormattedDuration,
+	formattedFileSize: recordingFormattedFileSize,
+	recordingResult,
+	showStartDialog: showRecordingStartDialog,
+	showResultDialog: showRecordingResultDialog,
+	toggleRecording,
+	handleStartRecording,
+} = useRecording(
+	roomId,
+	computed(() => meetingInfo.value.hostId),
+)
+
+// ==================== 会议控制功能 ====================
 const handRaised = ref(false)
 const { isFullscreen, toggle: toggleFullscreen } = useFullscreen()
 
@@ -1592,12 +1641,6 @@ const toggleVideoLayout = () => {
 	const currentIndex = layouts.indexOf(videoLayout.value)
 	videoLayout.value = layouts[(currentIndex + 1) % layouts.length]
 	$notify.success(`已切换到${videoLayout.value}布局`)
-}
-
-const toggleRecording = () => {
-	isRecording.value = !isRecording.value
-	$notify.info(isRecording.value ? '开始录制' : '停止录制')
-	// TODO: 实现录制功能
 }
 
 const toggleHandRaise = () => {

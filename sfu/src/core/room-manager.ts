@@ -54,12 +54,12 @@ export class RoomManager {
 	}
 
 	// 获取房间内 Producers 的详细信息（用于日志和调试）
-	public getRoomProducersInfo(roomId: string): Array<any> {
+	public getRoomProducersInfo(roomId: string): Array<mediasoupTypes.Producer> {
 		const room = this.rooms.get(roomId)
 		if (!room) {
 			return []
 		}
-		return room.getProducersInfo()
+		return room.getAllProducers()
 	}
 
 	public removeRoom(roomId: string): void {

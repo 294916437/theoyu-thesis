@@ -1,7 +1,7 @@
 import axios from '@/utils/axios'
 
 // 会议录制接口前缀
-const API_PREFIX = '/media/record'
+const API_PREFIX = '/media/media/record'
 
 /**
  * 开始录制

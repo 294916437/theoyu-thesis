@@ -1,9 +1,6 @@
 <template>
 	<v-dialog v-model="model" max-width="440" transition="dialog-bottom-transition" persistent>
 		<v-card class="recording-start-dialog" rounded="xl" elevation="8">
-			<!-- 顶部装饰条 -->
-			<div class="dialog-accent-bar"></div>
-
 			<v-card-title class="d-flex align-center pa-5 pb-3">
 				<div class="record-icon-wrapper mr-3">
 					<v-icon icon="mdi-record-circle" color="error" size="28"></v-icon>
@@ -102,12 +99,6 @@ const formats = [
 <style scoped>
 .recording-start-dialog {
 	overflow: hidden;
-}
-
-/* 顶部红色装饰条 */
-.dialog-accent-bar {
-	height: 4px;
-	background: linear-gradient(90deg, rgb(var(--v-theme-error)), rgba(var(--v-theme-error), 0.4));
 }
 
 /* 录制图标背景 */

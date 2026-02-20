@@ -697,11 +697,11 @@ export function useMedia() {
 	/**
 	 * 加入房间
 	 */
-	async function joinMeeting(meetingId, userIdParam, usernameParam, token) {
+	async function joinMeeting(meetingId, userIdParam, usernameParam, token, options = {}) {
+		const { withMedia = true, existingStream = null } = options
 		try {
 			connectionState.value = 'connecting'
 
-			// 保存用户信息
 			userId.value = userIdParam
 			username.value = usernameParam
 			roomId.value = meetingId
@@ -720,9 +720,8 @@ export function useMedia() {
 			})
 
 			peerId.value = joinResponse.peerId
-			console.log(`Joined room ${roomId.value}`, joinResponse)
 
-			// 3. 设置现有参与者（包括自己）
+			// 3. 设置参与者
 			participants.value = [
 				{
 					peerId: joinResponse.peerId,
@@ -763,14 +762,31 @@ export function useMedia() {
 			}
 
 			// 7. 获取本地媒体流
-			await getLocalStream()
+			// 优先使用预授权的 stream，避免重复申请权限
+			if (withMedia) {
+				if (existingStream) {
+					// 直接复用 MediaConsentDialog 已获取的流
+					localStream.value = existingStream
+					const localPeer = participants.value.find(p => p.peerId === peerId.value)
+					if (localPeer) {
+						localPeer.streams.local = existingStream
+					}
+					console.log('[Media] Reusing existing stream from consent dialog:', existingStream.id)
+				} else {
+					await getLocalStream()
+				}
+			} else {
+				// 仅收听模式：不获取摄像头/麦克风，但仍需发送空音视频（或跳过发布）
+				console.log('[Media] Listen-only mode: skipping local media')
+				audioEnabled.value = false
+				videoEnabled.value = false
+			}
 
-			// 8. 发布本地媒体流
-			if (localStream.value) {
+			// 8. 发布本地媒体流（仅 withMedia 时）
+			if (withMedia && localStream.value) {
 				const audioTrack = localStream.value.getAudioTracks()[0]
 				const videoTrack = localStream.value.getVideoTracks()[0]
 
-				// 添加发布重试逻辑
 				const publishWithTimeout = async (track, kind, timeout = 15000) => {
 					return Promise.race([
 						mediasoupClient.produce(track, { kind }),
@@ -779,84 +795,78 @@ export function useMedia() {
 				}
 
 				try {
-					// 串行发布，确保 transport 连接已建立
 					if (audioTrack) {
-						console.log('Publishing audio track...')
 						const audioProducer = await publishWithTimeout(audioTrack, 'audio')
 						updateLocalProducer('audio', audioProducer)
-						console.log('Audio published successfully')
 					}
-
 					if (videoTrack) {
-						console.log('Publishing video track...')
 						const videoProducer = await publishWithTimeout(videoTrack, 'video')
 						updateLocalProducer('video', videoProducer)
-						console.log('Video published successfully')
 					}
 				} catch (error) {
 					console.error('Failed to publish media streams:', error)
-
-					// 如果是超时错误，给出更明确的提示
 					if (error.message.includes('timeout')) {
 						$notify.error('媒体流发布超时，请检查网络或防火墙设置')
 					} else {
 						$notify.error('发布媒体流失败，但仍可以接收其他人的视频')
 					}
-
-					// 不抛出错误，允许用户继续观看
 				}
 			}
+
 			// 9. 监听事件
 			setupSocketListeners()
-			// 10. 监听特效相关状态变化
-			watch([effectType, selectedBackground], async ([newType, newBg], [oldType, oldBg]) => {
-				if (!localStream.value) return
 
-				try {
-					// 情况1: 关闭所有效果
-					if (newType === 'none') {
-						// 停止特效
-						await stopEffectStream()
+			// 10. 监听特效相关状态变化（仅 withMedia 时有意义）
+			if (withMedia) {
+				watch([effectType, selectedBackground], async ([newType, newBg], [oldType, oldBg]) => {
+					if (!localStream.value) return
 
-						// 重新获取原始摄像头轨道
-						const stream = await navigator.mediaDevices.getUserMedia({
-							video: {
-								width: { ideal: 1280, max: 1920 },
-								height: { ideal: 720, max: 1080 },
-								frameRate: { ideal: 30, max: 60 },
-							},
-						})
-
-						const newVideoTrack = stream.getVideoTracks()[0]
-						await replaceVideoTrack(newVideoTrack)
-
-						console.log('[BackgroundEffect] Original camera restored')
-						return
-					}
-
-					// 情况2: 仅背景图片变化（replace -> replace）
-					if (newType === 'replace' && oldType === 'replace' && newBg !== oldBg) {
-						// 只需重新加载背景，无需重建流
-						await loadBackgroundImage(newBg)
-						return
-					}
-
-					// 情况3: 效果类型变化或首次启用
-					if (newType !== oldType || (newType === 'replace' && !oldBg)) {
-						// 先停止旧效果（如果有）
-						if (effectProducerActive.value) {
+					try {
+						// 情况1: 关闭所有效果
+						if (newType === 'none') {
+							// 停止特效
 							await stopEffectStream()
-							await new Promise(resolve => setTimeout(resolve, 200))
+
+							// 重新获取原始摄像头轨道
+							const stream = await navigator.mediaDevices.getUserMedia({
+								video: {
+									width: { ideal: 1280, max: 1920 },
+									height: { ideal: 720, max: 1080 },
+									frameRate: { ideal: 30, max: 60 },
+								},
+							})
+
+							const newVideoTrack = stream.getVideoTracks()[0]
+							await replaceVideoTrack(newVideoTrack)
+
+							console.log('[BackgroundEffect] Original camera restored')
+							return
 						}
 
-						// 启动新效果
-						await startEffectStream()
+						// 情况2: 仅背景图片变化（replace -> replace）
+						if (newType === 'replace' && oldType === 'replace' && newBg !== oldBg) {
+							// 只需重新加载背景，无需重建流
+							await loadBackgroundImage(newBg)
+							return
+						}
+
+						// 情况3: 效果类型变化或首次启用
+						if (newType !== oldType || (newType === 'replace' && !oldBg)) {
+							// 先停止旧效果（如果有）
+							if (effectProducerActive.value) {
+								await stopEffectStream()
+								await new Promise(resolve => setTimeout(resolve, 200))
+							}
+
+							// 启动新效果
+							await startEffectStream()
+						}
+					} catch (error) {
+						console.error('[BackgroundEffect] Failed to switch effect:', error)
+						effectType.value = 'none'
 					}
-				} catch (error) {
-					console.error('[BackgroundEffect] Failed to switch effect:', error)
-					effectType.value = 'none'
-				}
-			})
+				})
+			}
 
 			// 11. 订阅现有参与者的媒体流
 			for (const peer of joinResponse.peers) {

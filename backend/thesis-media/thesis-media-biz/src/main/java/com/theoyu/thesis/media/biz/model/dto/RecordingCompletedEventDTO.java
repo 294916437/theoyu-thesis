@@ -35,9 +35,5 @@ public class RecordingCompletedEventDTO {
      */
     private Integer duration;
 
-    private LocalDateTime startTime;
-
     private LocalDateTime endTime;
-
-    private LocalDateTime timestamp;
 }

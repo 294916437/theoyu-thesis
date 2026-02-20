@@ -129,7 +129,6 @@ public class MediaServiceImpl implements MediaService {
                         .hostId(hostId)
                         .format(reqVO.getFormat())
                         .startTime(now)
-                        .timestamp(LocalDateTime.now())
                         .build();
 
                 rocketMQTemplate.syncSend(
@@ -174,7 +173,7 @@ public class MediaServiceImpl implements MediaService {
         long currentDuration = 0;
         long currentFileSize = 0;
         try {
-            // 通过 grpc 调用SFU端的停止会议录制的核心逻辑
+
             RecordingStatusResponse statusRes = sfuGrpcClient.getRecordingStatus(String.valueOf(roomId), String.valueOf(hostId));
             if (statusRes != null) {
                 currentDuration = statusRes.getDurationSeconds();
@@ -187,7 +186,7 @@ public class MediaServiceImpl implements MediaService {
         // 3. 调用 gRPC 停止录制
         StopRecordingResponse grpcResponse;
         try {
-            //
+            // 通过 grpc 调用SFU端的停止会议录制的核心逻辑
             grpcResponse = sfuGrpcClient.stopRecording(String.valueOf(roomId), String.valueOf(hostId));
             if (!grpcResponse.getSuccess()) {
                 throw new BusinessException(ResponseCodeEnum.RECORDING_STOP_FAILED);
@@ -239,7 +238,6 @@ public class MediaServiceImpl implements MediaService {
                         .fileSize(finalFileSize)
                         .duration((int) finalDuration)
                         .endTime(now)
-                        .timestamp(LocalDateTime.now())
                         .build();
 
                 rocketMQTemplate.syncSend(

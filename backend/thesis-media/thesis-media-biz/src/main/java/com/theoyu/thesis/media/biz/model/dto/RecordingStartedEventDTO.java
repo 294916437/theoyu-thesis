@@ -29,6 +29,4 @@ public class RecordingStartedEventDTO {
     private String format;
 
     private LocalDateTime startTime;
-
-    private LocalDateTime timestamp;
 }

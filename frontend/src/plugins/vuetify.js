@@ -50,7 +50,7 @@ const lightTheme = {
 		divider: '#E0E0E0',
 
 		// 覆盖层
-		overlay: 'rgba(19, 40, 67, 0.5)',
+		overlay: 'rgba(0, 0, 0, 0.95)',
 	},
 	variables: {
 		// 边框半径
@@ -115,7 +115,7 @@ const darkTheme = {
 		divider: '#2E5280',
 
 		// 覆盖层
-		overlay: 'rgba(0, 0, 0, 0.7)',
+		overlay: 'rgba(0, 0, 0, 0.95)',
 	},
 	variables: {
 		'border-radius-root': '8px',

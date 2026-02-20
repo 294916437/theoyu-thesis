@@ -25,7 +25,7 @@ interface RecordingUploadResult {
 interface RecordingSession {
 	recordingId: string
 	roomId: string
-	transport: mediasoupTypes.PlainTransport
+	transports: mediasoupTypes.PlainTransport[]
 	consumers: mediasoupTypes.Consumer[]
 	ffmpegProcess: ChildProcess
 	outputPath: string
@@ -59,7 +59,7 @@ export class RecordingManager {
 	}
 
 	public async startRecording(roomId: string, hostId: string, router: mediasoupTypes.Router, producers: mediasoupTypes.Producer[], recordConfig: RecordingConfig): Promise<void> {
-		const recordingId = `${roomId}_${hostId}`
+		const recordingId = `${roomId}-${hostId}`
 
 		if (this.sessions.has(recordingId)) {
 			throw new Error(`Recording ${recordingId} already exists`)
@@ -67,16 +67,8 @@ export class RecordingManager {
 
 		this.logger.info(`Starting recording ${recordingId} for room ${roomId}`)
 
-		// rtcpMux: true + comedia: true，避免 RTCP 端口问题
-		const transport = await router.createPlainTransport({
-			listenIp: { ip: "127.0.0.1", announcedIp: undefined },
-			rtcpMux: true,
-			comedia: true,
-		})
-
-		this.logger.info(`PlainTransport created: ${transport.tuple.localIp}:${transport.tuple.localPort}`)
-
 		const consumers: mediasoupTypes.Consumer[] = []
+		const transports: mediasoupTypes.PlainTransport[] = []
 		const sdpLines: string[] = []
 
 		sdpLines.push("v=0")
@@ -87,6 +79,16 @@ export class RecordingManager {
 
 		for (const producer of producers) {
 			try {
+				// 每个 producer 使用独立的 transport，避免端口冲突
+				const transport = await router.createPlainTransport({
+					listenIp: { ip: "127.0.0.1", announcedIp: undefined },
+					rtcpMux: true,
+					comedia: true,
+				})
+				transports.push(transport)
+
+				this.logger.info(`PlainTransport created for ${producer.kind}: ${transport.tuple.localIp}:${transport.tuple.localPort}`)
+
 				const consumer = await transport.consume({
 					producerId: producer.id,
 					rtpCapabilities: router.rtpCapabilities,
@@ -105,8 +107,9 @@ export class RecordingManager {
 				const clockRate = consumer.rtpParameters.codecs[0].clockRate
 				const ssrc = consumer.rtpParameters.encodings?.[0]?.ssrc
 
-				// 所有 media line 使用同一个 transport 的端口，不做 +mediaIndex 偏移
+				// 每个 media line 使用各自 transport 的独立端口
 				sdpLines.push(`m=${consumer.kind} ${transport.tuple.localPort} RTP/AVP ${codecPayloadType}`)
+				sdpLines.push(`c=IN IP4 127.0.0.1`)
 				sdpLines.push(`a=rtpmap:${codecPayloadType} ${codecName}/${clockRate}`)
 
 				if (consumer.kind === "audio" && codecName.toLowerCase() === "opus") {
@@ -130,12 +133,14 @@ export class RecordingManager {
 		}
 
 		if (consumers.length === 0) {
-			transport.close()
+			// 清理已创建的 transports
+			for (const t of transports) t.close()
 			throw new Error("No consumers created, cannot start recording")
 		}
 
 		const sdpPath = path.join(this.recordingsDir, `${recordingId}.sdp`)
 		fs.writeFileSync(sdpPath, sdpLines.join("\r\n"))
+		this.logger.info(`SDP file written to ${sdpPath}:\n${sdpLines.join("\n")}`)
 
 		const outputPath = path.join(this.recordingsDir, `${recordingId}.${recordConfig.format}`)
 
@@ -144,7 +149,7 @@ export class RecordingManager {
 		const session: RecordingSession = {
 			recordingId,
 			roomId,
-			transport,
+			transports, // 存储所有 transports
 			consumers,
 			ffmpegProcess,
 			outputPath,
@@ -262,13 +267,14 @@ export class RecordingManager {
 			for (const consumer of session.consumers) {
 				consumer.close()
 			}
-			// 关闭 transport
-			session.transport.close()
+			// 关闭所有 transports
+			for (const transport of session.transports) {
+				transport.close()
+			}
 
 			// 上传到 MinIO
 			const format = session.recordConfig.format
-			const fileName = `recordings/${session.roomId}/${recordingId}.${format}`
-			// 修复: 使用 config 中的 bucketName，不硬编码
+			const fileName = `recordings-${recordingId}.${format}`
 			const bucketName = config.minio.bucketName
 
 			if (!fs.existsSync(session.outputPath)) {
@@ -337,8 +343,10 @@ export class RecordingManager {
 				for (const consumer of session.consumers) {
 					consumer.close()
 				}
-				session.transport.close()
-				// 通知等待中的 stopRecording 调用（如果有）
+				// 清理所有 transports
+				for (const transport of session.transports) {
+					transport.close()
+				}
 				if (session._rejectUpload) {
 					session._rejectUpload(new Error("Server is shutting down"))
 				}

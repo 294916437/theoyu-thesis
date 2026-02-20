@@ -129,7 +129,7 @@ export class GrpcServer {
 		try {
 			const { room_id, host_id } = call.request
 			// 联合主键
-			const recordingId = `${room_id}_${host_id}`
+			const recordingId = `${room_id}-${host_id}`
 
 			this.logger.info(`StopRecording request: room=${room_id}, host=${host_id}`)
 
@@ -154,7 +154,7 @@ export class GrpcServer {
 		try {
 			const { room_id, host_id } = call.request
 			// 联合主键
-			const recordingId = `${room_id}_${host_id}`
+			const recordingId = `${room_id}-${host_id}`
 
 			const status = this.recordingManager.getRecordingStatus(recordingId)
 

@@ -90,7 +90,7 @@ export class GrpcClient {
 				throw new Error("Failed to load SFUService from proto file")
 			}
 
-			const sfuService = protoDescriptor.sfu.SFUService
+			const sfuService = protoDescriptor.sfu.callback.SFUCallbackService
 
 			this.client = new sfuService(`${config.grpc.host}:${config.grpc.port}`, grpc.credentials.createInsecure(), {
 				"grpc.keepalive_time_ms": 30000,

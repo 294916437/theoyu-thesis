@@ -859,9 +859,8 @@
 				@download="handleDownloadFromPreview"
 				@preview="url => openPreview(url, '会议录制')"
 			/>
-
-			<!-- 加载覆盖层 -->
-			<LoadingOverlay :visible="isLoading" :message="loadingMessage" :progress="loadingProgress" />
+			<!-- 初始化遮罩层 -->
+			<MeetingEntryOverlay :phase="entryPhase" :loading-message="loadingMessage" :loading-progress="loadingProgress" @confirm="handleMediaConsent" />
 		</v-main>
 	</v-app>
 </template>
@@ -883,10 +882,10 @@ import {
 } from '@vueuse/core'
 import VideoGrid from '../components/VideoGrid.vue'
 import ParticipantsList from '../components/ParticipantsList.vue'
-import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
 import FilePreview from '@/components/common/FilePreview.vue'
 import RecordingStartDialog from '../components/RecordingStartDialog.vue'
 import RecordingResultDialog from '../components/RecordingResultDialog.vue'
+import MeetingEntryOverlay from '../components/MeetingEntryOverlay.vue'
 import { useRecording } from '@/composables/useRecording'
 import { useFilePreview } from '@/composables/useFilePreview'
 import { useParticipants } from '@/composables/useParticipants'
@@ -1071,7 +1070,7 @@ const showSidebar = ref(true)
 const showSettings = ref(false)
 const sidebarTab = ref('participants')
 const videoLayout = ref('grid')
-const isLoading = ref(false)
+const entryPhase = ref('consent')
 const loadingMessage = ref('')
 const loadingProgress = ref(0)
 const controlBarCollapsed = ref(false)
@@ -1081,6 +1080,42 @@ const showLeaveConfirm = ref(false)
 const videoQuality = ref(2)
 const enableHD = ref(true)
 const enableMirror = ref(false)
+
+// 用户选择媒体权限后的处理
+const handleMediaConsent = async ({ withMedia, stream }) => {
+	entryPhase.value = 'loading'
+
+	try {
+		loadingMessage.value = '正在检测设备...'
+		await enumerateDevices()
+		loadingProgress.value = 20
+
+		loadingMessage.value = '正在加载会议信息...'
+		await loadMeetingDetail()
+		loadingProgress.value = 40
+
+		loadingMessage.value = '正在加载参与者...'
+		await loadParticipants()
+		loadingProgress.value = 60
+
+		loadingMessage.value = '正在加入会议...'
+		await joinMeeting(meetingInfo.value.roomId, currentUserId.value, currentUsername.value, authToken.value, { withMedia, existingStream: stream })
+		loadingProgress.value = 80
+		meetingStartTime.value = Date.now()
+
+		loadingMessage.value = '正在连接聊天服务...'
+		await initRoomMessageService()
+		loadingProgress.value = 100
+
+		// 短暂停留后隐藏，避免闪烁
+		await new Promise(resolve => setTimeout(resolve, 300))
+		entryPhase.value = 'hidden'
+	} catch (error) {
+		console.error('Failed to initialize meeting', error)
+		$notify.error(`加入会议失败: ${error.message}`)
+		entryPhase.value = 'hidden'
+	}
+}
 
 // ==================== 聊天功能 ====================
 const roomMessageConnected = ref(false)
@@ -1104,6 +1139,7 @@ const { arrivedState } = useScroll(messageContainer, {
 
 // 自动滚动到底部
 const scrollToBottom = async (smooth = false) => {
+	const container = messageContainer.value
 	if (!container) {
 		console.warn('[Chat] Message container not available, skipping scroll')
 		return
@@ -1113,9 +1149,6 @@ const scrollToBottom = async (smooth = false) => {
 
 	// 再等待一帧，确保布局计算完成
 	await new Promise(resolve => requestAnimationFrame(resolve))
-
-	const container = messageContainer.value
-
 	// 强制滚动到最底部
 	container.scrollTo({
 		top: container.scrollHeight,
@@ -1656,18 +1689,23 @@ const handleLeaveMeeting = () => {
 const confirmLeaveMeeting = async () => {
 	showLeaveConfirm.value = false
 
+	entryPhase.value = 'loading'
+	loadingProgress.value = 0
+	loadingMessage.value = '正在离开会议...'
+
 	try {
-		isLoading.value = true
-		loadingMessage.value = '正在离开会议...'
-
+		loadingProgress.value = 50
 		await leaveMeeting()
+		loadingProgress.value = 80
 
+		RoomMessageService.disconnect()
+		loadingProgress.value = 100
+
+		await new Promise(resolve => setTimeout(resolve, 300))
 		router.push('/')
 	} catch (error) {
 		console.error('Failed to leave meeting', error)
 		router.push('/')
-	} finally {
-		isLoading.value = false
 	}
 }
 // 判断当前用户是否为主持人
@@ -1720,8 +1758,6 @@ const handleReconnect = async () => {
 		$notify.error('重连失败')
 	}
 }
-
-// ==================== 生命周期 ====================
 const loadMeetingDetail = async () => {
 	try {
 		const { data } = await fetchMeetingInfo(meetingInfo.value.roomNo)
@@ -1732,42 +1768,7 @@ const loadMeetingDetail = async () => {
 	}
 }
 
-onMounted(async () => {
-	isLoading.value = true
-	loadingMessage.value = '正在初始化...'
-	loadingProgress.value = 0
-
-	try {
-		// 1. 枚举媒体设备
-		await enumerateDevices()
-		loadingProgress.value = 20
-
-		// 2. 加载会议详情
-		await loadMeetingDetail()
-		loadingProgress.value = 40
-
-		// 3. 加入会议房间
-		loadingMessage.value = '正在加入会议...'
-		await joinMeeting(meetingInfo.value.roomId, currentUserId.value, currentUsername.value, authToken.value)
-		loadingProgress.value = 60
-		meetingStartTime.value = Date.now()
-
-		// 4. 加载参与者列表
-		await loadParticipants()
-		loadingProgress.value = 80
-
-		// 5. 初始化房间消息服务
-		loadingMessage.value = '正在连接聊天服务...'
-		await initRoomMessageService()
-		loadingProgress.value = 100
-	} catch (error) {
-		console.error('Failed to join meeting', error)
-		$notify.error(`加入会议失败: ${error.message}`)
-	} finally {
-		isLoading.value = false
-		loadingProgress.value = 0
-	}
-})
+// ==================== 生命周期 ====================
 
 onBeforeUnmount(async () => {
 	// 离开会议

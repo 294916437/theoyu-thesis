@@ -21,13 +21,7 @@
 		<v-menu offset-y>
 			<template #activator="{ props }">
 				<v-btn icon v-bind="props" class="mr-2">
-					<v-badge
-						:content="unreadNotifications"
-						:model-value="unreadNotifications > 0"
-						color="error"
-						overlap
-						class="theme-badge"
-					>
+					<v-badge :content="unreadNotifications" :model-value="unreadNotifications > 0" color="error" overlap class="theme-badge">
 						<v-icon>mdi-bell</v-icon>
 					</v-badge>
 				</v-btn>
@@ -36,9 +30,7 @@
 			<v-card max-width="400" max-height="500" class="notification-card">
 				<v-card-title class="d-flex align-center justify-space-between">
 					<span>通知</span>
-					<v-btn v-if="notifications.length > 0" variant="text" size="small" @click="markAllAsRead">
-						全部已读
-					</v-btn>
+					<v-btn v-if="notifications.length > 0" variant="text" size="small" @click="markAllAsRead"> 全部已读 </v-btn>
 				</v-card-title>
 
 				<v-divider></v-divider>
@@ -199,7 +191,6 @@ const handleLogout = async () => {
 	const res = await logout()
 	if (res.success) {
 		userStore.logout()
-		$notify.success('退出登录成功')
 		router.push('/login')
 	}
 }
@@ -224,12 +215,7 @@ const handleLogout = async () => {
 	cursor: pointer;
 }
 .logo-text {
-	background: linear-gradient(
-		135deg,
-		rgb(var(--v-theme-secondary)) 0%,
-		rgb(var(--v-theme-primary)) 50%,
-		rgb(var(--v-theme-primary-darken-1)) 100%
-	);
+	background: linear-gradient(135deg, rgb(var(--v-theme-secondary)) 0%, rgb(var(--v-theme-primary)) 50%, rgb(var(--v-theme-primary-darken-1)) 100%);
 	/* 文字裁剪效果 */
 	-webkit-text-fill-color: transparent;
 	background-clip: text;
@@ -244,12 +230,7 @@ const handleLogout = async () => {
 }
 
 .v-theme--dark .logo-text {
-	background: linear-gradient(
-		135deg,
-		rgb(var(--v-theme-secondary)) 0%,
-		rgb(var(--v-theme-primary)) 50%,
-		rgb(var(--v-theme-primary-lighten-1)) 100%
-	);
+	background: linear-gradient(135deg, rgb(var(--v-theme-secondary)) 0%, rgb(var(--v-theme-primary)) 50%, rgb(var(--v-theme-primary-lighten-1)) 100%);
 	-webkit-background-clip: text;
 	-webkit-text-fill-color: transparent;
 	background-clip: text;

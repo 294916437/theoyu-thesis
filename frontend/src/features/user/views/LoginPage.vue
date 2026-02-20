@@ -134,8 +134,6 @@ const handleLogin = async () => {
 			console.error('获取用户信息失败:', error)
 		}
 
-		$notify.success('登录成功')
-
 		// 跳转到首页
 		setTimeout(() => {
 			router.push('/')
@@ -199,17 +197,7 @@ onUnmounted(() => {
 						</div>
 
 						<!-- 登录按钮 -->
-						<v-btn
-							block
-							size="large"
-							color="primary"
-							:loading="loading"
-							:disabled="!canSubmit"
-							class="mb-4"
-							@click="handleLogin"
-						>
-							登录
-						</v-btn>
+						<v-btn block size="large" color="primary" :loading="loading" :disabled="!canSubmit" class="mb-4" @click="handleLogin"> 登录 </v-btn>
 
 						<!-- 提示文字 -->
 						<div class="text-center text-caption text-medium-emphasis">新用户可直接登录</div>

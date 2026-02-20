@@ -1,6 +1,5 @@
 import { ref, computed } from 'vue'
-import { useIntervalFn } from '@vueuse/core'
-import { startRecording, stopRecording, getRecordingStatus } from '@/api/media'
+import { startRecording, stopRecording } from '@/api/media'
 import { $notify } from '@/plugins/notification'
 
 export function useRecording(roomId, hostId) {
@@ -8,37 +7,34 @@ export function useRecording(roomId, hostId) {
 	const isRecording = ref(false)
 	const recordingFormat = ref('mp4')
 	const recordingStartTime = ref(null)
-	const recordingDuration = ref(0) // 实时时长（秒）
-	const recordingFileSize = ref(0) // 实时文件大小（字节）
-	const recordingLoading = ref(false) // API 请求中
+	const recordingDuration = ref(0)
+	const recordingLoading = ref(false)
 
 	// Dialog 控制
-	const showStartDialog = ref(false) // 开始前的格式选择 Dialog
-	const showResultDialog = ref(false) // 完成后的结果 Dialog
+	const showStartDialog = ref(false)
+	const showResultDialog = ref(false)
 
 	// 录制结果（停止后填充）
 	const recordingResult = ref(null)
 	// {fileUrl, fileSize, duration, endTime}
 
-	// ==================== 轮询状态 ====================
-	// 每 5 秒轮询一次实时状态
-	const { pause: pausePoll, resume: resumePoll } = useIntervalFn(
-		async () => {
-			if (!isRecording.value || !roomId.value) return
-			try {
-				const { data } = await getRecordingStatus(roomId.value, hostId.value)
-				if (data.isRecording) {
-					recordingDuration.value = data.durationSeconds ?? 0
-					recordingFileSize.value = data.fileSizeBytes ?? 0
-				}
-			} catch (e) {
-				// 轮询失败静默处理，不影响主流程
-				console.warn('[useRecording] 轮询状态失败', e)
-			}
-		},
-		5000,
-		{ immediate: false }, // 不立即执行，等开始录制后再启动
-	)
+	// ==================== 本地计时器 ====================
+	let _timerInterval = null
+
+	const _startTimer = () => {
+		_stopTimer()
+		recordingDuration.value = 0
+		_timerInterval = setInterval(() => {
+			recordingDuration.value++
+		}, 1000)
+	}
+
+	const _stopTimer = () => {
+		if (_timerInterval) {
+			clearInterval(_timerInterval)
+			_timerInterval = null
+		}
+	}
 
 	// ==================== 格式化工具 ====================
 	const formattedDuration = computed(() => {
@@ -49,27 +45,6 @@ export function useRecording(roomId, hostId) {
 		if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 		return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 	})
-
-	const formattedFileSize = computed(() => {
-		const bytes = recordingFileSize.value
-		if (!bytes) return '计算中...'
-		if (bytes < 1024) return `${bytes} B`
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-		return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-	})
-
-	// ==================== 完整文件URL处理 ====================
-	/**
-	 * 处理后端返回的 fileUrl：
-	 * - 若已是完整 URL（http/https 开头）直接返回
-	 * - 若是相对路径，拼接 OSS/CDN base URL
-	 */
-	const resolveFileUrl = rawUrl => {
-		if (!rawUrl) return ''
-		if (/^https?:\/\//i.test(rawUrl)) return rawUrl
-		const base = import.meta.env.VITE_OSS_BASE_URL?.replace(/\/$/, '') || ''
-		return `${base}/${rawUrl.replace(/^\//, '')}`
-	}
 
 	// ==================== 开始录制 ====================
 	const handleStartRecording = async () => {
@@ -86,10 +61,8 @@ export function useRecording(roomId, hostId) {
 			})
 			isRecording.value = true
 			recordingStartTime.value = new Date()
-			recordingDuration.value = 0
-			recordingFileSize.value = 0
 			showStartDialog.value = false
-			resumePoll() // 启动轮询
+			_startTimer()
 			$notify.success('录制已开始')
 		} catch (e) {
 			$notify.error(e?.response?.data?.message || '启动录制失败')
@@ -103,22 +76,21 @@ export function useRecording(roomId, hostId) {
 		if (!isRecording.value) return
 		recordingLoading.value = true
 		try {
-			pausePoll() // 立即停止轮询
+			_stopTimer()
 			const { data } = await stopRecording({
 				roomId: roomId.value,
 				hostId: hostId.value,
 			})
 			isRecording.value = false
-			// 处理完整文件 URL
 			recordingResult.value = {
 				...data,
-				fileUrl: resolveFileUrl(data.fileUrl),
+				fileUrl: data.fileUrl,
 			}
 			showResultDialog.value = true
 			$notify.success('录制已完成')
 		} catch (e) {
 			$notify.error(e?.response?.data?.message || '停止录制失败')
-			resumePoll() // 停止失败则继续轮询
+			_startTimer() // 停止失败则恢复本地计时
 		} finally {
 			recordingLoading.value = false
 		}
@@ -139,9 +111,7 @@ export function useRecording(roomId, hostId) {
 		recordingFormat,
 		recordingLoading,
 		recordingDuration,
-		recordingFileSize,
 		formattedDuration,
-		formattedFileSize,
 		recordingResult,
 		// Dialog 控制
 		showStartDialog,

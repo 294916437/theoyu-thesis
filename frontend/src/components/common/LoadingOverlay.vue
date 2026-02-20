@@ -1,13 +1,7 @@
 <template>
-	<v-overlay :model-value="visible" class="loading-overlay align-center justify-center" :persistent="persistent">
+	<v-overlay :model-value="visible" class="loading-overlay align-center justify-center" :persistent="persistent" scrim="overlay" opacity="1">
 		<div class="loading-content">
-			<v-progress-circular
-				:indeterminate="!progress"
-				:model-value="progress"
-				:size="80"
-				:width="6"
-				color="primary"
-			>
+			<v-progress-circular :indeterminate="!progress" :model-value="progress" :size="80" :width="6" color="primary">
 				<span v-if="progress" class="text-h6">{{ progress }}%</span>
 			</v-progress-circular>
 
@@ -19,9 +13,7 @@
 				{{ description }}
 			</div>
 
-			<v-btn v-if="cancellable" variant="outlined" color="white" class="mt-6" @click="emit('cancel')">
-				取消
-			</v-btn>
+			<v-btn v-if="cancellable" variant="outlined" color="white" class="mt-6" @click="emit('cancel')"> 取消 </v-btn>
 		</div>
 	</v-overlay>
 </template>

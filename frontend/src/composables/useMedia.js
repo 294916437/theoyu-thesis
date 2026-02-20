@@ -698,7 +698,7 @@ export function useMedia() {
 	 * 加入房间
 	 */
 	async function joinMeeting(meetingId, userIdParam, usernameParam, token, options = {}) {
-		const { withMedia = true, existingStream = null } = options
+		const { withMedia = true } = options
 		try {
 			connectionState.value = 'connecting'
 
@@ -762,21 +762,10 @@ export function useMedia() {
 			}
 
 			// 7. 获取本地媒体流
-			// 优先使用预授权的 stream，避免重复申请权限
 			if (withMedia) {
-				if (existingStream) {
-					// 直接复用 MediaConsentDialog 已获取的流
-					localStream.value = existingStream
-					const localPeer = participants.value.find(p => p.peerId === peerId.value)
-					if (localPeer) {
-						localPeer.streams.local = existingStream
-					}
-					console.log('[Media] Reusing existing stream from consent dialog:', existingStream.id)
-				} else {
-					await getLocalStream()
-				}
+				await getLocalStream()
 			} else {
-				// 仅收听模式：不获取摄像头/麦克风，但仍需发送空音视频（或跳过发布）
+				// 仅收听模式：不获取摄像头/麦克风
 				console.log('[Media] Listen-only mode: skipping local media')
 				audioEnabled.value = false
 				videoEnabled.value = false

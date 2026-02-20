@@ -1082,7 +1082,7 @@ const enableHD = ref(true)
 const enableMirror = ref(false)
 
 // 用户选择媒体权限后的处理
-const handleMediaConsent = async ({ withMedia, stream }) => {
+const handleMediaConsent = async ({ withMedia }) => {
 	entryPhase.value = 'loading'
 
 	try {
@@ -1099,7 +1099,7 @@ const handleMediaConsent = async ({ withMedia, stream }) => {
 		loadingProgress.value = 60
 
 		loadingMessage.value = '正在加入会议...'
-		await joinMeeting(meetingInfo.value.roomId, currentUserId.value, currentUsername.value, authToken.value, { withMedia, existingStream: stream })
+		await joinMeeting(meetingInfo.value.roomId, currentUserId.value, currentUsername.value, authToken.value, { withMedia })
 		loadingProgress.value = 80
 		meetingStartTime.value = Date.now()
 

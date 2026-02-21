@@ -117,7 +117,17 @@ export class RecordingManager {
 				}
 
 				if (consumer.kind === "video") {
-					sdpLines.push(`a=fmtp:${codecPayloadType} packetization-mode=1`)
+					await consumer.requestKeyFrame()
+					// 从 rtpParameters 获取视频宽高
+					const encoding = consumer.rtpParameters.encodings?.[0] as any
+					const width = encoding?.scalabilityMode ? recordConfig.videoWidth : recordConfig.videoWidth
+					const height = recordConfig.videoHeight
+					// VP8 不需要 packetization-mode，H264 才需要
+					if (codecName.toLowerCase() === "h264") {
+						sdpLines.push(`a=fmtp:${codecPayloadType} packetization-mode=1`)
+					}
+					// 添加视频尺寸信息
+					sdpLines.push(`a=framesize:${codecPayloadType} ${width}-${height}`)
 				}
 
 				if (ssrc) {
@@ -189,7 +199,7 @@ export class RecordingManager {
 			"-i",
 			sdpPath,
 			"-c:v",
-			isWebm ? "libvpx" : "libx264",
+			isWebm ? "copy" : "libx264", // 如果源是VP8+mp4，转码为H264
 			"-preset",
 			"ultrafast",
 			"-b:v",
@@ -199,7 +209,7 @@ export class RecordingManager {
 			"-r",
 			recordConfig.videoFramerate.toString(),
 			"-c:a",
-			isWebm ? "libvorbis" : "aac",
+			isWebm ? "copy" : "aac",
 			"-b:a",
 			`${recordConfig.audioBitrate}k`,
 		]

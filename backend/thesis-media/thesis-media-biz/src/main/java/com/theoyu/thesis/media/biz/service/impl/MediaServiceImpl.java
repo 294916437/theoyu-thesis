@@ -80,6 +80,8 @@ public class MediaServiceImpl implements MediaService {
         RecordingConfig config = RecordingConfig.newBuilder()
                 .setVideoWidth(1280)
                 .setVideoHeight(720)
+                .setVideoCodec("h264")
+                .setAudioCodec("aac")
                 .setFormat(reqVO.getFormat())
                 .build();
 

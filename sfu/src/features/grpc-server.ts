@@ -64,7 +64,6 @@ export class GrpcServer {
 
 	private async handleStartRecording(call: grpc.ServerUnaryCall<any, any>, callback: grpc.sendUnaryData<any>): Promise<void> {
 		try {
-			// Proto 变更: recording_id -> host_id
 			const { room_id, host_id, config: recordingConfig } = call.request
 
 			this.logger.info(`StartRecording request: room=${room_id}, host=${host_id}`)

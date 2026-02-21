@@ -1,6 +1,8 @@
 <template>
 	<v-app>
 		<v-main class="meeting-room">
+			<!-- 初始化遮罩层 -->
+			<MeetingEntryOverlay :phase="entryPhase" :loading-message="loadingMessage" :loading-progress="loadingProgress" @confirm="handleMediaConsent" />
 			<!-- 顶部信息栏 -->
 			<v-app-bar density="compact" flat elevation="0" color="surface" class="meeting-header">
 				<v-toolbar-title class="d-flex align-center">
@@ -859,14 +861,12 @@
 				@download="handleDownloadFromPreview"
 				@preview="url => openPreview(url, '会议录制')"
 			/>
-			<!-- 初始化遮罩层 -->
-			<MeetingEntryOverlay :phase="entryPhase" :loading-message="loadingMessage" :loading-progress="loadingProgress" @confirm="handleMediaConsent" />
 		</v-main>
 	</v-app>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, mergeProps } from 'vue'
+import { ref, computed, onBeforeUnmount, watch, nextTick, mergeProps } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
 	useIntervalFn,

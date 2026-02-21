@@ -287,7 +287,6 @@ export function useMedia() {
 			const clonedTrack = currentVideoProducer.track.clone()
 
 			// 2. 创建源视频元素
-			// [关键修复] 将视频元素挂载到 DOM，防止浏览器停止解码
 			sourceVideoElement = document.createElement('video')
 			sourceVideoElement.id = 'effect-source-hidden'
 			sourceVideoElement.autoplay = true

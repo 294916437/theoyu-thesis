@@ -1012,17 +1012,16 @@ export function useMedia() {
 	 */
 	function setupSocketListeners() {
 		// 注册心跳监听(测试暂时关闭)
-		// socketClient.on('ping', data => {
-		// 	console.log('Received ping from server', data)
-		// 	// 立即响应 pong
-		// 	socketClient.socket.emit('pong', { timestamp: data.timestamp })
-		// 	console.log('Pong sent to server')
-		// })
+		socketClient.on('ping', data => {
+			console.log('Received ping from server', data)
+			// 立即响应 pong
+			socketClient.socket.emit('pong', { timestamp: data?.timestamp || Date.now() })
+		})
 
-		// // 监听 RTT
-		// socketClient.on('rtt', data => {
-		// 	console.log(`RTT: ${data.rtt}ms`)
-		// })
+		// 监听 RTT
+		socketClient.on('rtt', data => {
+			console.log(`RTT: ${data.rtt}ms`)
+		})
 
 		// 新参与者加入
 		socketClient.on('newPeer', async data => {

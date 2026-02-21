@@ -103,15 +103,14 @@ export class SignalingHandler {
 		// 统计和监控
 		socket.on("getStats", (data, callback) => this.withErrorHandling(socket, "getStats", data, callback, this.handleGetStats))
 
-		// 心跳响应处理(测试暂时关闭)
-		// socket.on("ping", (data: { timestamp: number }) => {
-		// 	// 更新活动时间
-		// 	this.sessionManager.updateActivity(socket.id)
-		// 	this.connectionManager.updateActivity(socket.id)
-
-		// 	// 立即响应 pong
-		// 	socket.emit("pong", { timestamp: data.timestamp })
-		// })
+		// 心跳响应处理
+		socket.on("ping", (data: { timestamp: number }) => {
+			// 更新活动时间
+			this.sessionManager.updateActivity(socket.id)
+			this.connectionManager.updateActivity(socket.id)
+			// 立即响应 pong
+			socket.emit("pong", { timestamp: data?.timestamp || Date.now() })
+		})
 	}
 
 	// 错误处理包装器

@@ -1,5 +1,5 @@
 /* eslint-disable no-undef */
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, markRaw } from 'vue'
 import { socketClient } from '@/utils/SocketClient'
 import { MediasoupClient } from '@/utils/MediasoupClient'
 import init, { MeetProcessor, init_panic_hook } from '@/libs/meet-effect/meet_background_effect.js'
@@ -385,6 +385,8 @@ export function useMedia() {
 					localStream.value.addTrack(effectVideoTrack)
 				}
 			}
+			// 强制触发响应式更新，确保 UI 同步
+			participants.value = [...participants.value]
 
 			return effectProducer
 		} catch (error) {
@@ -490,6 +492,9 @@ export function useMedia() {
 		// 6. 重置状态
 		effectProducerActive.value = false
 		originalCameraTrack.value = null
+
+		// 强制触发响应式更新
+		participants.value = [...participants.value]
 	}
 
 	/**
@@ -893,7 +898,7 @@ export function useMedia() {
 				},
 			})
 
-			localStream.value = stream
+			localStream.value = markRaw(stream)
 			console.log('Local stream acquired', stream.id)
 
 			// 更新本地参与者流
@@ -916,7 +921,7 @@ export function useMedia() {
 	function updateLocalProducer(kind, producer) {
 		const localPeer = participants.value.find(p => p.peerId === peerId.value)
 		if (localPeer) {
-			localPeer.producers[kind] = producer
+			localPeer.producers[kind] = markRaw(producer)
 
 			// 监听生产者质量分数
 			producer.on('score', score => {
@@ -953,7 +958,7 @@ export function useMedia() {
 
 			// 创建或更新流
 			if (!participant.streams[kind]) {
-				participant.streams[kind] = new MediaStream([consumer.track])
+				participant.streams[kind] = markRaw(new MediaStream([consumer.track]))
 				console.log(`Created new ${kind} stream for peer ${remotePeerId}`)
 			} else {
 				const existingStream = participant.streams[kind]
@@ -969,17 +974,6 @@ export function useMedia() {
 				existingStream.addTrack(consumer.track)
 				console.log(`Updated ${kind} stream for peer ${remotePeerId}`)
 			}
-			if (kind === 'effect') {
-				setTimeout(() => {
-					// 通过 socket 请求关键帧 (需要后端支持 requestKeyframe 事件，或者简单的暂停再恢复)
-					// 如果后端没有 requestKeyframe，可以忽略此步，通常 resume 已经足够
-
-					// 前端 hack: 强制 Video 元素重载
-					const newStreamId = participant.streams[kind].id
-					// 触发 VideoGrid 里的 update
-				}, 500)
-			}
-
 			// 记录到 producers（用于 UI 判断状态）
 			participant.producers[kind] = {
 				id: producerId,
@@ -987,7 +981,7 @@ export function useMedia() {
 				paused: false,
 				appData: consumer.appData || {},
 			}
-			participant.consumers[consumer.id] = consumer
+			participant.consumers[consumer.id] = markRaw(consumer)
 
 			// 监听 track 状态
 			consumer.track.onended = () => {
@@ -1375,7 +1369,7 @@ export function useMedia() {
 				audio: false,
 			})
 
-			screenStream.value = stream
+			screenStream.value = markRaw(stream)
 			const screenVideoTrack = stream.getVideoTracks()[0]
 
 			// 2. 保存并关闭原 camera producer
@@ -1430,7 +1424,7 @@ export function useMedia() {
 					})
 					videoStream.addTrack(screenVideoTrack)
 				} else {
-					localPeer.streams.video = new MediaStream([screenVideoTrack])
+					localPeer.streams.video = markRaw(new MediaStream([screenVideoTrack]))
 				}
 
 				// 同步到 localStream
@@ -1860,6 +1854,9 @@ export function useMedia() {
 			oldAudioTrack?.stop()
 			localStream.value.removeTrack(oldAudioTrack)
 			localStream.value.addTrack(audioTrack)
+
+			// 强制触发响应式更新
+			participants.value = [...participants.value]
 		} catch (error) {
 			console.error('Failed to change audio device', error)
 			$notify.error('更换音频设备失败')
@@ -1888,6 +1885,9 @@ export function useMedia() {
 			oldVideoTrack?.stop()
 			localStream.value.removeTrack(oldVideoTrack)
 			localStream.value.addTrack(videoTrack)
+
+			// 强制触发响应式更新
+			participants.value = [...participants.value]
 		} catch (error) {
 			console.error('Failed to change video device', error)
 			$notify.error('更换视频设备失败')

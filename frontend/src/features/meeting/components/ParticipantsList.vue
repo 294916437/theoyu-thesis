@@ -38,7 +38,6 @@ const emit = defineEmits(['host-toggle-audio', 'host-toggle-video', 'mute-all', 
 const participantsByRole = computed(() => {
 	const members = props.participants.filter(p => p.role === 1 && p.status === 1)
 	const hosts = props.participants.filter(p => p.role === 2 && p.status === 1)
-	console.log('Participants by role:', { hosts, members })
 	return { hosts, members }
 })
 

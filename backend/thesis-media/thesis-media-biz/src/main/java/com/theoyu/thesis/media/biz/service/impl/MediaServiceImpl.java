@@ -1,6 +1,7 @@
 package com.theoyu.thesis.media.biz.service.impl;
 
 import com.theoyu.framework.common.exception.BusinessException;
+import com.theoyu.framework.common.utils.JsonUtils;
 import com.theoyu.framework.common.utils.MapUtils;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
@@ -80,8 +81,6 @@ public class MediaServiceImpl implements MediaService {
         RecordingConfig config = RecordingConfig.newBuilder()
                 .setVideoWidth(1280)
                 .setVideoHeight(720)
-                .setVideoCodec("h264")
-                .setAudioCodec("aac")
                 .setFormat(reqVO.getFormat())
                 .build();
 
@@ -135,7 +134,7 @@ public class MediaServiceImpl implements MediaService {
 
                 rocketMQTemplate.syncSend(
                         MQConstants.ROOM_RECORD_TOPIC + ":" + MQConstants.TAG_RECORDING_STARTED,
-                        MessageBuilder.withPayload(eventDTO).build()
+                        MessageBuilder.withPayload(JsonUtils.toJsonString(eventDTO)).build()
                 );
             } catch (Exception e) {
                 log.error("[RocketMQ] 发送录制开始事件失败", e);
@@ -244,7 +243,7 @@ public class MediaServiceImpl implements MediaService {
 
                 rocketMQTemplate.syncSend(
                         MQConstants.ROOM_RECORD_TOPIC + ":" + MQConstants.TAG_RECORDING_COMPLETED,
-                        MessageBuilder.withPayload(eventDTO).build()
+                        MessageBuilder.withPayload(JsonUtils.toJsonString(eventDTO)).build()
                 );
             } catch (Exception e) {
                 log.error("[RocketMQ] 发送录制完成事件失败", e);

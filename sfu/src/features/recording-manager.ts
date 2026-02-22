@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from "child_process"
+import { spawn, ChildProcess, execSync } from "child_process"
 import * as fs from "fs"
 import * as path from "path"
 import type * as mediasoupTypes from "mediasoup/node/lib/types"
@@ -31,6 +31,7 @@ interface RecordingSession {
 	outputPath: string
 	startTime: number
 	recordConfig: RecordingConfig
+	detectedVideoCodec?: string
 	uploadCompletionPromise?: Promise<RecordingUploadResult>
 	_resolveUpload?: (result: RecordingUploadResult) => void
 	_rejectUpload?: (error: Error) => void
@@ -124,7 +125,7 @@ export class RecordingManager {
 					const height = recordConfig.videoHeight
 					// VP8 不需要 packetization-mode，H264 才需要
 					if (codecName.toLowerCase() === "h264") {
-						sdpLines.push(`a=fmtp:${codecPayloadType} packetization-mode=1`)
+						sdpLines.push(`a=fmtp:${codecPayloadType} packetization-mode=1;profile-level-id=${consumer.rtpParameters.codecs[0].parameters?.["profile-level-id"] || "42e01f"}`)
 					}
 					// 添加视频尺寸信息
 					sdpLines.push(`a=framesize:${codecPayloadType} ${width}-${height}`)
@@ -152,9 +153,35 @@ export class RecordingManager {
 		fs.writeFileSync(sdpPath, sdpLines.join("\r\n"))
 		this.logger.info(`SDP file written to ${sdpPath}:\n${sdpLines.join("\n")}`)
 
+		let detectedVideoCodec: string | undefined
+		for (const consumer of consumers) {
+			if (consumer.kind === "video") {
+				detectedVideoCodec = consumer.rtpParameters.codecs[0].mimeType.split("/")[1].toLowerCase()
+				break
+			}
+		}
+
+		this.logger.info(`Detected video codec from RTP: ${detectedVideoCodec}`)
+
 		const outputPath = path.join(this.recordingsDir, `${recordingId}.${recordConfig.format}`)
 
-		const ffmpegProcess = this.spawnFFmpeg(sdpPath, outputPath, recordConfig)
+		// 延迟启动 FFmpeg，确保 Keyframe 已发出且 RTP 端口有数据 ===
+		await new Promise((resolve) => setTimeout(resolve, 1000))
+		// 再请求一次 KeyFrame 确保万无一失
+		for (const consumer of consumers) {
+			if (consumer.kind === "video") {
+				await consumer.requestKeyFrame().catch(() => {})
+			}
+		}
+		const ffmpegProcess = this.spawnFFmpeg(sdpPath, outputPath, recordConfig, detectedVideoCodec)
+
+		// 初始化上传完成 Promise，供 stopRecording 等待
+		let resolveUpload: (result: RecordingUploadResult) => void
+		let rejectUpload: (error: Error) => void
+		const uploadCompletionPromise = new Promise<RecordingUploadResult>((resolve, reject) => {
+			resolveUpload = resolve
+			rejectUpload = reject
+		})
 
 		const session: RecordingSession = {
 			recordingId,
@@ -165,6 +192,10 @@ export class RecordingManager {
 			outputPath,
 			startTime: Date.now(),
 			recordConfig,
+			detectedVideoCodec,
+			uploadCompletionPromise,
+			_resolveUpload: resolveUpload!,
+			_rejectUpload: rejectUpload!,
 		}
 
 		this.sessions.set(recordingId, session)
@@ -191,74 +222,147 @@ export class RecordingManager {
 		this.logger.info(`Recording started: ${recordingId}`)
 	}
 
-	private spawnFFmpeg(sdpPath: string, outputPath: string, recordConfig: RecordingConfig): ChildProcess {
-		const isWebm = recordConfig.format === "webm"
+	private spawnFFmpeg(sdpPath: string, outputPath: string, recordConfig: RecordingConfig, detectedVideoCodec?: string): ChildProcess {
+		const outputFormat = recordConfig.format // "mp4" or "webm"
+		const sourceVideoCodec = (detectedVideoCodec || recordConfig.videoCodec).toLowerCase()
+
+		// 判断是否需要转码（源码流格式与容器兼容性）
+		// mp4 容器原生支持 H264/H265，不支持 VP8/VP9（需转码）
+		// webm 容器原生支持 VP8/VP9，不支持 H264（需转码）
+		const mp4NativeCodecs = ["h264", "h265", "aac", "mp3"]
+		const webmNativeCodecs = ["vp8", "vp9", "opus"]
+
+		let videoEncoder: string
+		if (outputFormat === "mp4") {
+			videoEncoder = mp4NativeCodecs.includes(sourceVideoCodec) ? "copy" : "libx264"
+		} else {
+			// webm
+			videoEncoder = webmNativeCodecs.includes(sourceVideoCodec) ? "copy" : "libvpx"
+		}
+
+		// Opus 在 mp4 中需要转为 AAC，在 webm 中可以 copy
+		const audioEncoder = outputFormat === "mp4" ? "aac" : "copy"
+
+		this.logger.info(`FFmpeg codec strategy: sourceVideo=${sourceVideoCodec}, outputFormat=${outputFormat}, videoEncoder=${videoEncoder}, audioEncoder=${audioEncoder}`)
+
 		const args = [
+			"-nostdin",
+			"-analyzeduration",
+			"10000000", // 10秒
+			"-probesize",
+			"10000000",
 			"-protocol_whitelist",
 			"file,rtp,udp",
+			// 增加 max_delay，帮助 FFmpeg 更有耐心地缓存 RTP 包以探测头部
+			"-max_delay",
+			"1000000",
 			"-i",
 			sdpPath,
+			// 明确映射所有流，防止视频流被跳过
+			"-map",
+			"0:a?",
+			"-map",
+			"0:v?",
 			"-c:v",
-			isWebm ? "copy" : "libx264", // 如果源是VP8+mp4，转码为H264
-			"-preset",
-			"ultrafast",
-			"-b:v",
-			`${recordConfig.videoBitrate}k`,
-			"-s",
-			`${recordConfig.videoWidth}x${recordConfig.videoHeight}`,
-			"-r",
-			recordConfig.videoFramerate.toString(),
-			"-c:a",
-			isWebm ? "copy" : "aac",
-			"-b:a",
-			`${recordConfig.audioBitrate}k`,
+			videoEncoder,
 		]
 
-		if (!isWebm) {
-			args.push("-movflags", "+faststart")
+		// VP8 转码到 H264 时，需要强制指定输入尺寸
+		if (videoEncoder !== "copy") {
+			args.push("-vf", `scale=${recordConfig.videoWidth}:${recordConfig.videoHeight}`)
+			args.push("-preset", "ultrafast")
+			args.push("-b:v", `${recordConfig.videoBitrate}k`)
+			args.push("-r", recordConfig.videoFramerate.toString())
+		}
+
+		args.push("-c:a", audioEncoder)
+		if (audioEncoder !== "copy") {
+			args.push("-b:a", `${recordConfig.audioBitrate}k`)
+		}
+
+		if (outputFormat === "mp4") {
+			args.push("-movflags", "+frag_keyframe+empty_moov")
 		}
 
 		args.push("-y", outputPath)
 
 		this.logger.info(`Spawning FFmpeg with args: ${args.join(" ")}`)
+		return spawn("ffmpeg", args, {
+			// detached: true 在 Windows 上为 FFmpeg 创建独立的进程组
+			// 这样后续发送 SIGINT 时不会广播到 Node.js 主进程
+			detached: true,
+			stdio: ["ignore", "pipe", "pipe"],
+		})
+	}
 
-		return spawn("ffmpeg", args)
+	private killFFmpegGracefully(session: RecordingSession, recordingId: string): void {
+		const pid = session.ffmpegProcess.pid
+		if (!pid) {
+			this.logger.warn(`FFmpeg process has no PID for ${recordingId}, using kill()`)
+			session.ffmpegProcess.kill("SIGTERM")
+			return
+		}
+
+		// Windows + Linux/Mac 统一使用 SIGINT
+		// detached: true 已确保 FFmpeg 在独立进程组中
+		// SIGINT 只会发送给 FFmpeg 自身的进程组，不影响 Node.js 主进程
+		try {
+			this.logger.info(`Sending SIGINT to FFmpeg PID ${pid} for recording ${recordingId}`)
+			process.kill(pid, "SIGINT")
+		} catch (e: any) {
+			this.logger.warn(`SIGINT failed for ${recordingId}: ${e.message}, falling back to SIGTERM`)
+			try {
+				process.kill(pid, "SIGTERM")
+			} catch (e2) {
+				// 进程可能已退出
+			}
+		}
 	}
 
 	/**
 	 * 停止录制
 	 * 发送 SIGTERM 给 FFmpeg，并等待 handleRecordingComplete 中上传 MinIO 完成后返回 URL
-	 * 超时时间 60 秒
 	 */
 	public async stopRecording(recordingId: string): Promise<string> {
 		const session = this.sessions.get(recordingId)
 		if (!session) {
-			throw new Error(`Recording ${recordingId} not found`)
+			throw new Error(`Recording session not found: ${recordingId}`)
 		}
 
 		this.logger.info(`Stopping recording ${recordingId}`)
 
-		// 在发送 SIGTERM 之前，先注册 uploadCompletionPromise
-		// 避免 FFmpeg 退出极快时，Promise 还没注册就触发了 handleRecordingComplete
-		const uploadCompletionPromise = new Promise<RecordingUploadResult>((resolve, reject) => {
-			session._resolveUpload = resolve
-			session._rejectUpload = reject
-		})
-		session.uploadCompletionPromise = uploadCompletionPromise
-
-		// 发送 SIGTERM 给 FFmpeg，触发正常退出（moov atom 会被写入）
-		if (session.ffmpegProcess && !session.ffmpegProcess.killed) {
-			session.ffmpegProcess.kill("SIGTERM")
+		const uploadPromise = session.uploadCompletionPromise
+		if (!uploadPromise) {
+			throw new Error(`No upload promise found for recording ${recordingId}`)
 		}
 
-		// 设置超时，防止死锁
-		const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Stop recording timeout after 60s: ${recordingId}`)), 60_000))
+		return new Promise<string>((resolve, reject) => {
+			const forceKillTimer = setTimeout(() => {
+				this.logger.warn(`Force killing FFmpeg for recording ${recordingId}`)
+				try {
+					if (process.platform === "win32") {
+						execSync(`taskkill /f /pid ${session.ffmpegProcess.pid}`)
+					} else {
+						session.ffmpegProcess.kill("SIGKILL")
+					}
+				} catch (e) {
+					/* 进程可能已退出 */
+				}
+			}, 30000)
 
-		// 等待上传完成或超时
-		const result = await Promise.race([uploadCompletionPromise, timeoutPromise])
+			uploadPromise
+				.then((result) => {
+					clearTimeout(forceKillTimer)
+					resolve(result.fileUrl)
+				})
+				.catch((err) => {
+					clearTimeout(forceKillTimer)
+					reject(err)
+				})
 
-		this.logger.info(`Recording stopped and uploaded: ${recordingId}, url: ${result.fileUrl}`)
-		return result.fileUrl
+			// 调用平台感知的优雅终止
+			this.killFFmpegGracefully(session, recordingId)
+		})
 	}
 
 	/**
@@ -348,8 +452,12 @@ export class RecordingManager {
 		for (const [recordingId, session] of this.sessions.entries()) {
 			try {
 				if (session.ffmpegProcess && !session.ffmpegProcess.killed) {
-					session.ffmpegProcess.kill("SIGTERM")
+					const pid = session.ffmpegProcess.pid
+					if (pid) {
+						process.kill(pid, "SIGINT")
+					}
 				}
+				// 清理所有 consumers
 				for (const consumer of session.consumers) {
 					consumer.close()
 				}

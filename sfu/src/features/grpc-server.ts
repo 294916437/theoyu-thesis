@@ -100,9 +100,9 @@ export class GrpcServer {
 				videoHeight: recordingConfig?.video_height || 720,
 				videoBitrate: recordingConfig?.video_bitrate || 3000,
 				videoFramerate: recordingConfig?.video_framerate || 30,
-				videoCodec: recordingConfig?.video_codec || "h264",
+				videoCodec: recordingConfig?.video_codec || "vp8",
 				audioBitrate: recordingConfig?.audio_bitrate || 128,
-				audioCodec: recordingConfig?.audio_codec || "aac",
+				audioCodec: recordingConfig?.audio_codec || "opus",
 				format: recordingConfig?.format || "mp4",
 			}
 

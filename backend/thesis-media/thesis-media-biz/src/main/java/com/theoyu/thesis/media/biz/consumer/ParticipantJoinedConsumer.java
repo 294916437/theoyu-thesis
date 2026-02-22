@@ -118,7 +118,6 @@ public class ParticipantJoinedConsumer extends BaseRocketMQConsumer implements R
 
     /**
      * 记录会议参会者
-     *
      * 业务说明:
      * 1. 检查参会者记录是否存在
      * 2. 如果不存在则创建新记录

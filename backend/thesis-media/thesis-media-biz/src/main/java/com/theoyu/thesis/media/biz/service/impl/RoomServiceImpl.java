@@ -574,6 +574,9 @@ public class RoomServiceImpl implements RoomService {
                     RedisKeyConstants.ROOM_ALL_PARTICIPANTS_EXPIRE_TIME,
                     TimeUnit.SECONDS);
 
+            // 6. 同步更新用户最近参加会议的 ZSet 缓存
+            updateUserRecentRoomsCache(userId, roomId, participant.getJoinedAt());
+
             log.info("[RoomService] 参与者已添加到缓存 - roomId: {}, userId: {}",
                     roomId, userId);
 
@@ -631,6 +634,39 @@ public class RoomServiceImpl implements RoomService {
 
 
     // ==================== 私有辅助方法 ====================
+
+    /**
+     * 实时更新用户最近参加会议缓存（ZSet）
+     * 在参与者加入会议时同步调用，确保缓存与 DB 实时一致
+     */
+    private void updateUserRecentRoomsCache(Long userId, Long roomId, LocalDateTime joinedAt) {
+        try {
+            String cacheKey = String.format(RedisKeyConstants.USER_RECENT_ROOMS_KEY, userId);
+
+            double score = joinedAt != null
+                    ? joinedAt.toEpochSecond(java.time.ZoneOffset.of("+8"))
+                    : System.currentTimeMillis() / 1000.0;
+
+            // 使用 ZADD，若 roomId 已存在则更新 score 为最新加入时间
+            redisTemplate.opsForZSet().add(cacheKey, roomId, score);
+
+            // 设置/刷新过期时间
+            redisTemplate.expire(cacheKey, RedisKeyConstants.USER_RECENT_ROOMS_EXPIRE_TIME, TimeUnit.SECONDS);
+
+            // 保留最新的 100 条，移除最早的
+            Long size = redisTemplate.opsForZSet().size(cacheKey);
+            if (size != null && size > 100) {
+                redisTemplate.opsForZSet().removeRange(cacheKey, 0, size - 101);
+            }
+
+            log.info("[RoomService] 用户最近会议缓存已更新 - userId: {}, roomId: {}", userId, roomId);
+
+        } catch (Exception e) {
+            log.error("[RoomService] 更新用户最近会议缓存失败 - userId: {}, roomId: {}", userId, roomId, e);
+            // 缓存更新失败不影响主流程
+        }
+    }
+
     /**
      * 解析 roomId（兼容 roomId 和 roomNo）
      */

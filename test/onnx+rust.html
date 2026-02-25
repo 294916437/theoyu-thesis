@@ -26,7 +26,6 @@
 			}
 			.container {
 				display: grid;
-				/* 自适应布局，宽度足够时三列，不足时换行 */
 				grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
 				gap: 20px;
 				max-width: 1920px;
@@ -111,6 +110,76 @@
 				color: #00d4ff;
 				border: 1px solid rgba(0, 212, 255, 0.3);
 			}
+			/* ===== 新增：录制按钮样式 ===== */
+			.record-controls {
+				margin-top: 12px;
+				display: flex;
+				gap: 10px;
+				align-items: center;
+			}
+			.btn-record {
+				flex: 1;
+				padding: 8px 16px;
+				border-radius: 8px;
+				border: none;
+				cursor: pointer;
+				font-size: 13px;
+				font-weight: 700;
+				font-family: "Segoe UI", system-ui, sans-serif;
+				transition: all 0.2s;
+			}
+			.btn-record.start {
+				background: linear-gradient(135deg, #00d4ff, #00ff88);
+				color: #0a0a0a;
+			}
+			.btn-record.start:hover {
+				opacity: 0.85;
+				transform: translateY(-1px);
+			}
+			.btn-record.stop {
+				background: linear-gradient(135deg, #f28b82, #e57373);
+				color: #fff;
+			}
+			.btn-record.stop:hover {
+				opacity: 0.85;
+				transform: translateY(-1px);
+			}
+			.btn-record:disabled {
+				opacity: 0.4;
+				cursor: not-allowed;
+				transform: none;
+			}
+			.record-indicator {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 12px;
+				font-weight: 600;
+				color: #9aa0a6;
+				font-family: "Consolas", monospace;
+				min-width: 80px;
+			}
+			.record-dot {
+				width: 8px;
+				height: 8px;
+				border-radius: 50%;
+				background: #555;
+				flex-shrink: 0;
+			}
+			.record-dot.recording {
+				background: #f28b82;
+				box-shadow: 0 0 6px rgba(242, 139, 130, 0.8);
+				animation: blink 1s step-start infinite;
+			}
+			@keyframes blink {
+				0%,
+				100% {
+					opacity: 1;
+				}
+				50% {
+					opacity: 0.2;
+				}
+			}
 		</style>
 	</head>
 	<body>
@@ -134,6 +203,15 @@
 					<div class="stat-row">
 						<span class="stat-label">Mode</span>
 						<span class="badge">Passthrough</span>
+					</div>
+				</div>
+				<!-- 新增：录制控件，挂载在 WebGL Original 流下方 -->
+				<div class="record-controls">
+					<button class="btn-record start" id="btn-start-record">⏺ 开始录制</button>
+					<button class="btn-record stop" id="btn-stop-record" disabled>⏹ 停止并下载</button>
+					<div class="record-indicator">
+						<div class="record-dot" id="record-dot"></div>
+						<span id="record-timer">00:00</span>
 					</div>
 				</div>
 			</div>
@@ -195,6 +273,7 @@
 			const MASK_WIDTH = 256
 			const MASK_HEIGHT = 144
 
+			// ...existing code...
 			class PreciseFPSTracker {
 				constructor(windowSize = 60) {
 					this.frameTimes = []
@@ -225,7 +304,6 @@
 				}
 			}
 
-			// 加载背景图片工具
 			async function loadBackground(url, width, height) {
 				return new Promise((resolve, reject) => {
 					const img = new Image()
@@ -234,7 +312,6 @@
 					img.onload = () => {
 						const canvas = new OffscreenCanvas(width, height)
 						const ctx = canvas.getContext("2d")
-						// 保持比例覆盖
 						const scale = Math.max(width / img.width, height / img.height)
 						const x = (width - img.width * scale) / 2
 						const y = (height - img.height * scale) / 2
@@ -245,7 +322,6 @@
 				})
 			}
 
-			// WebGL Setup (Original Stream)
 			function setupWebGL(canvas, video) {
 				const gl = canvas.getContext("webgl2", { alpha: false, desynchronized: true })
 				if (!gl) return null
@@ -280,10 +356,84 @@
 				gl.bindTexture(gl.TEXTURE_2D, tex)
 				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
 				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE) // GL ERROR fix
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 
 				return { gl, tex }
 			}
+
+			// ===== 新增：录制功能模块 =====
+			function setupRecorder(canvas) {
+				const btnStart = document.getElementById("btn-start-record")
+				const btnStop = document.getElementById("btn-stop-record")
+				const dot = document.getElementById("record-dot")
+				const timerEl = document.getElementById("record-timer")
+
+				let mediaRecorder = null
+				let recordedChunks = []
+				let timerInterval = null
+				let startTime = 0
+
+				// 格式优先级：webm(vp9) > webm > mp4
+				const mimeType = ["video/webm;codecs=vp9", "video/webm", "video/mp4"].find((m) => MediaRecorder.isTypeSupported(m)) || ""
+
+				function formatTime(ms) {
+					const s = Math.floor(ms / 1000)
+					const mm = String(Math.floor(s / 60)).padStart(2, "0")
+					const ss = String(s % 60).padStart(2, "0")
+					return `${mm}:${ss}`
+				}
+
+				btnStart.addEventListener("click", () => {
+					recordedChunks = []
+
+					// 从 WebGL canvas 捕获视频流，60fps
+					const stream = canvas.captureStream(60)
+					mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {})
+
+					mediaRecorder.ondataavailable = (e) => {
+						if (e.data && e.data.size > 0) recordedChunks.push(e.data)
+					}
+
+					mediaRecorder.onstop = () => {
+						// 停止后自动触发下载
+						const ext = mimeType.includes("mp4") ? "mp4" : "webm"
+						const blob = new Blob(recordedChunks, { type: mimeType || "video/webm" })
+						const url = URL.createObjectURL(blob)
+						const a = document.createElement("a")
+						a.href = url
+						a.download = `webgl-original-${Date.now()}.${ext}`
+						a.click()
+						URL.revokeObjectURL(url)
+						recordedChunks = []
+
+						// 重置 UI
+						dot.classList.remove("recording")
+						timerEl.textContent = "00:00"
+						clearInterval(timerInterval)
+						btnStart.disabled = false
+						btnStop.disabled = true
+					}
+
+					mediaRecorder.start(100) // 每 100ms 收集一次数据块
+					startTime = performance.now()
+
+					// 计时器
+					timerInterval = setInterval(() => {
+						timerEl.textContent = formatTime(performance.now() - startTime)
+					}, 500)
+
+					dot.classList.add("recording")
+					btnStart.disabled = true
+					btnStop.disabled = false
+				})
+
+				btnStop.addEventListener("click", () => {
+					if (mediaRecorder && mediaRecorder.state !== "inactive") {
+						mediaRecorder.stop()
+					}
+				})
+			}
+			// ===== 录制功能模块结束 =====
 
 			async function main() {
 				// 1. 初始化 WASM 和 Processor
@@ -304,7 +454,7 @@
 
 				// 3. 初始化 ONNX
 				const session = await ort.InferenceSession.create("./model_float32_opt.onnx", {
-					executionProviders: ["wasm"], // 或 webgl
+					executionProviders: ["wasm"],
 					graphOptimizationLevel: "all",
 				})
 
@@ -339,11 +489,14 @@
 				const float32Data = new Float32Array(MASK_WIDTH * MASK_HEIGHT * 3)
 
 				const fpsOriginal = new PreciseFPSTracker(60)
-				const fpsProcessed = new PreciseFPSTracker(30) // Blur 和 Replace 共享 FPS 计数
+				const fpsProcessed = new PreciseFPSTracker(30)
 
 				let frameCount = 0
 				let currentMask = null
 				let isInferring = false
+
+				// 初始化录制器（在 canvas 尺寸设置完毕后调用）
+				setupRecorder(canvasOriginal)
 
 				// === 渲染循环 1: 原始流 (WebGL) ===
 				function loopOriginal() {
@@ -369,7 +522,6 @@
 					offCtx.drawImage(video, 0, 0, MASK_WIDTH, MASK_HEIGHT)
 					const imgData = offCtx.getImageData(0, 0, MASK_WIDTH, MASK_HEIGHT).data
 
-					// 归一化
 					for (let i = 0, j = 0; i < imgData.length; i += 4, j += 3) {
 						float32Data[j] = imgData[i] / 255
 						float32Data[j + 1] = imgData[i + 1] / 255
@@ -380,7 +532,6 @@
 					const results = await session.run({ "input_1:0": inputTensor })
 					const maskData = results[Object.keys(results)[0]].data
 
-					// Softmax
 					const mask = new Float32Array(MASK_WIDTH * MASK_HEIGHT)
 					for (let i = 0; i < MASK_WIDTH * MASK_HEIGHT; i++) {
 						const bg = maskData[i * 2]
@@ -405,29 +556,23 @@
 
 					const tStart = performance.now()
 
-					// 1. 获取视频帧
 					ctxBlur.drawImage(video, 0, 0, WIDTH, HEIGHT)
 					const imgDataLarge = ctxBlur.getImageData(0, 0, WIDTH, HEIGHT)
 
-					// 2. 准备 WASM 数据
 					const inputView = new Uint8Array(wasm.memory.buffer, processor.input_ptr(), WIDTH * HEIGHT * 4)
 					inputView.set(imgDataLarge.data)
 
 					const maskView = new Float32Array(wasm.memory.buffer, processor.mask_ptr(), MASK_WIDTH * MASK_HEIGHT)
 					maskView.set(currentMask)
 
-					// 3. 计算 Mask (耗时操作，只做一次)
 					const tFilterStart = performance.now()
 					processor.prepare_mask()
 					const tFilterEnd = performance.now()
 
-					// 4. 渲染流 A: 背景虚化 (Blur/Dim)
 					processor.render_blur()
 					const outputBlur = new Uint8ClampedArray(wasm.memory.buffer, processor.output_ptr(), WIDTH * HEIGHT * 4)
-					// 这里需要创建新的 ImageData 副本，因为 processor.output_ptr 是共享的
 					ctxBlur.putImageData(new ImageData(outputBlur.slice(), WIDTH, HEIGHT), 0, 0)
 
-					// 5. 渲染流 B: 背景替换 (Replace)
 					const tBlendStart = performance.now()
 					processor.render_replace()
 					const outputReplace = new Uint8ClampedArray(wasm.memory.buffer, processor.output_ptr(), WIDTH * HEIGHT * 4)
@@ -440,7 +585,6 @@
 					if (frameCount % 10 === 0) {
 						updateStat("fps-blur", fpsProcessed.getFPS().toFixed(1))
 						updateStat("fps-replace", fpsProcessed.getFPS().toFixed(1))
-
 						updateStat("time-wasm-filter", (tFilterEnd - tFilterStart).toFixed(1), " ms")
 						updateStat("time-blend-replace", (tEnd - tBlendStart).toFixed(2), " ms")
 						updateStat("time-total-blur", (tEnd - tStart).toFixed(1), " ms")

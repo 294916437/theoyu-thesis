@@ -1,6 +1,8 @@
 import { spawn, ChildProcess, execSync } from "child_process"
 import * as fs from "fs"
 import * as path from "path"
+import * as net from "net"
+import * as dgram from "dgram"
 import type * as mediasoupTypes from "mediasoup/node/lib/types"
 import { Logger } from "../utils/logger"
 import { MinioClient } from "../utils/minio-client"
@@ -37,6 +39,19 @@ interface RecordingSession {
 	_rejectUpload?: (error: Error) => void
 }
 
+const getFreePort = async (): Promise<number> => {
+	return new Promise((resolve, reject) => {
+		const socket = dgram.createSocket("udp4")
+		socket.bind(0, "127.0.0.1", () => {
+			const port = socket.address().port
+			socket.close(() => {
+				resolve(port)
+			})
+		})
+		socket.on("error", reject)
+	})
+}
+
 export class RecordingManager {
 	private static instance: RecordingManager
 	private sessions: Map<string, RecordingSession> = new Map()
@@ -59,6 +74,54 @@ export class RecordingManager {
 		return RecordingManager.instance
 	}
 
+	// 等待 FFmpeg 绑定端口就绪的辅助函数
+	private waitForFFmpegReady(ffmpegProcess: ChildProcess, timeoutMs: number = 5000): Promise<void> {
+		return new Promise((resolve) => {
+			let resolved = false
+
+			const doResolve = () => {
+				if (!resolved) {
+					resolved = true
+					resolve()
+				}
+			}
+
+			const timer = setTimeout(() => {
+				this.logger.warn("FFmpeg ready timeout, proceeding anyway")
+				doResolve()
+			}, timeoutMs)
+
+			const onData = (data: Buffer) => {
+				const text = data.toString()
+				// FFmpeg 输出这些关键词说明已完成端口绑定和流探测
+				if (
+					text.includes("Press [q]") ||
+					text.includes("Output #0") ||
+					text.includes("Stream mapping") ||
+					// 收到 RTP 数据后 FFmpeg 会输出此行（analyzeduration 阶段完成）
+					text.includes("Input #0")
+				) {
+					clearTimeout(timer)
+					// 关键修复：监听到就绪信号后，移除此临时监听器，避免重复 resolve
+					ffmpegProcess.stderr?.off("data", onData)
+					this.logger.info("FFmpeg ready signal detected")
+					doResolve()
+				}
+			}
+
+			// 若 FFmpeg 在等待期间就提前退出，立即 resolve（后续会处理错误）
+			const onClose = (code: number | null) => {
+				this.logger.warn(`FFmpeg exited with code ${code} during ready wait`)
+				clearTimeout(timer)
+				ffmpegProcess.stderr?.off("data", onData)
+				doResolve()
+			}
+
+			ffmpegProcess.stderr?.on("data", onData)
+			ffmpegProcess.once("close", onClose)
+		})
+	}
+
 	public async startRecording(roomId: string, hostId: string, router: mediasoupTypes.Router, producers: mediasoupTypes.Producer[], recordConfig: RecordingConfig): Promise<void> {
 		const recordingId = `${roomId}-${hostId}`
 
@@ -68,8 +131,17 @@ export class RecordingManager {
 
 		this.logger.info(`Starting recording ${recordingId} for room ${roomId}`)
 
-		const consumers: mediasoupTypes.Consumer[] = []
+		// ===== 阶段一：准备资源，构建 SDP，但暂不激活推流 =====
+
+		interface PreparedTrack {
+			transport: mediasoupTypes.PlainTransport
+			consumer: mediasoupTypes.Consumer
+			remotePort: number
+		}
+
+		const preparedTracks: PreparedTrack[] = []
 		const transports: mediasoupTypes.PlainTransport[] = []
+		const consumers: mediasoupTypes.Consumer[] = []
 		const sdpLines: string[] = []
 
 		sdpLines.push("v=0")
@@ -77,57 +149,63 @@ export class RecordingManager {
 		sdpLines.push("s=Mediasoup Recording")
 		sdpLines.push("c=IN IP4 127.0.0.1")
 		sdpLines.push("t=0 0")
+		sdpLines.push("a=tool:libavformat")
 
 		for (const producer of producers) {
 			try {
-				// 每个 producer 使用独立的 transport，避免端口冲突
+				// 1. 为 FFmpeg 动态获取一个空闲 UDP 端口
+				const remotePort = await getFreePort()
+
+				// 2. 创建 PlainTransport，rtcpMux: true（RTP/RTCP 复用同一端口）
+				//    comedia: false，需要显式调用 connect() 激活推流方向
+				//    此时不调用 connect()，Mediasoup 不会推送任何 RTP 包
 				const transport = await router.createPlainTransport({
 					listenIp: { ip: "127.0.0.1", announcedIp: undefined },
 					rtcpMux: true,
-					comedia: true,
+					comedia: false,
 				})
 				transports.push(transport)
 
-				this.logger.info(`PlainTransport created for ${producer.kind}: ${transport.tuple.localIp}:${transport.tuple.localPort}`)
+				this.logger.info(`[Phase1] PlainTransport created for ${producer.kind}: ` + `Mediasoup local port=${transport.tuple.localPort}, FFmpeg target port=${remotePort}`)
 
+				// 3. 创建 Consumer，paused: true
+				//    先暂停消费，避免数据在 FFmpeg 未就绪时堆积丢失
 				const consumer = await transport.consume({
 					producerId: producer.id,
 					rtpCapabilities: router.rtpCapabilities,
-					paused: false,
+					paused: true,
 				})
-
 				consumers.push(consumer)
 
-				if (consumer.kind === "video") {
-					await consumer.requestKeyFrame()
-					this.logger.info(`Requested key frame for consumer ${consumer.id}`)
-				}
+				// 4. 暂存待激活信息，供阶段三使用
+				preparedTracks.push({ transport, consumer, remotePort })
 
+				// 5. 根据 consumer 的 RTP 参数生成 SDP
 				const codecPayloadType = consumer.rtpParameters.codecs[0].payloadType
 				const codecName = consumer.rtpParameters.codecs[0].mimeType.split("/")[1]
 				const clockRate = consumer.rtpParameters.codecs[0].clockRate
 				const ssrc = consumer.rtpParameters.encodings?.[0]?.ssrc
 
-				// 每个 media line 使用各自 transport 的独立端口
-				sdpLines.push(`m=${consumer.kind} ${transport.tuple.localPort} RTP/AVP ${codecPayloadType}`)
+				// m= 行端口写 remotePort（FFmpeg 监听的端口）
+				sdpLines.push(`m=${consumer.kind} ${remotePort} RTP/AVP ${codecPayloadType}`)
 				sdpLines.push(`c=IN IP4 127.0.0.1`)
+				// rtcpMux 模式下 RTCP 端口与 RTP 端口相同
+				sdpLines.push(`a=rtcp:${remotePort}`)
+				sdpLines.push(`a=rtcp-mux`)
 				sdpLines.push(`a=rtpmap:${codecPayloadType} ${codecName}/${clockRate}`)
 
 				if (consumer.kind === "audio" && codecName.toLowerCase() === "opus") {
+					// Opus 需声明双声道
 					sdpLines.push(`a=rtpmap:${codecPayloadType} ${codecName}/${clockRate}/2`)
 				}
 
 				if (consumer.kind === "video") {
-					await consumer.requestKeyFrame()
-					// 从 rtpParameters 获取视频宽高
-					const encoding = consumer.rtpParameters.encodings?.[0] as any
-					const width = encoding?.scalabilityMode ? recordConfig.videoWidth : recordConfig.videoWidth
+					const width = recordConfig.videoWidth
 					const height = recordConfig.videoHeight
-					// VP8 不需要 packetization-mode，H264 才需要
 					if (codecName.toLowerCase() === "h264") {
-						sdpLines.push(`a=fmtp:${codecPayloadType} packetization-mode=1;profile-level-id=${consumer.rtpParameters.codecs[0].parameters?.["profile-level-id"] || "42e01f"}`)
+						const profileLevelId = consumer.rtpParameters.codecs[0].parameters?.["profile-level-id"] || "42e01f"
+						sdpLines.push(`a=fmtp:${codecPayloadType} packetization-mode=1;profile-level-id=${profileLevelId}`)
 					}
-					// 添加视频尺寸信息
 					sdpLines.push(`a=framesize:${codecPayloadType} ${width}-${height}`)
 				}
 
@@ -135,24 +213,28 @@ export class RecordingManager {
 					sdpLines.push(`a=ssrc:${ssrc} cname:recording`)
 				}
 
+				// FFmpeg 作为接收端，标记为 recvonly
 				sdpLines.push("a=recvonly")
 
-				this.logger.info(`Consumer created for producer ${producer.id}, kind: ${consumer.kind}`)
+				this.logger.info(`[Phase1] Consumer prepared for producer ${producer.id}, kind: ${consumer.kind}`)
 			} catch (error) {
-				this.logger.error(`Failed to create consumer for producer ${producer.id}`, error)
+				this.logger.error(`[Phase1] Failed to prepare consumer for producer ${producer.id}`, error)
 			}
 		}
 
+		// 若没有任何 consumer 创建成功，清理并抛出异常
 		if (consumers.length === 0) {
-			// 清理已创建的 transports
 			for (const t of transports) t.close()
 			throw new Error("No consumers created, cannot start recording")
 		}
 
+		// ===== 阶段二：写入 SDP，启动 FFmpeg 并等待其端口就绪 =====
+
 		const sdpPath = path.join(this.recordingsDir, `${recordingId}.sdp`)
 		fs.writeFileSync(sdpPath, sdpLines.join("\r\n"))
-		this.logger.info(`SDP file written to ${sdpPath}:\n${sdpLines.join("\n")}`)
+		this.logger.info(`[Phase2] SDP file written to ${sdpPath}:\n${sdpLines.join("\n")}`)
 
+		// 从 consumers 中检测视频编解码器，用于 FFmpeg 转码策略
 		let detectedVideoCodec: string | undefined
 		for (const consumer of consumers) {
 			if (consumer.kind === "video") {
@@ -160,33 +242,65 @@ export class RecordingManager {
 				break
 			}
 		}
-
-		this.logger.info(`Detected video codec from RTP: ${detectedVideoCodec}`)
+		this.logger.info(`[Phase2] Detected video codec from RTP: ${detectedVideoCodec}`)
 
 		const outputPath = path.join(this.recordingsDir, `${recordingId}.${recordConfig.format}`)
 
-		// 延迟启动 FFmpeg，确保 Keyframe 已发出且 RTP 端口有数据 ===
-		await new Promise((resolve) => setTimeout(resolve, 1000))
-		// 再请求一次 KeyFrame 确保万无一失
-		for (const consumer of consumers) {
-			if (consumer.kind === "video") {
-				await consumer.requestKeyFrame().catch(() => {})
-			}
-		}
+		// 先启动 FFmpeg：FFmpeg 会立即解析 SDP 并绑定 SDP 中定义的 UDP 端口，开始监听
+		// 此时 Mediasoup 尚未 connect，不会有 RTP 包发出，FFmpeg 处于等待状态
 		const ffmpegProcess = this.spawnFFmpeg(sdpPath, outputPath, recordConfig, detectedVideoCodec)
 
-		// 初始化上传完成 Promise，供 stopRecording 等待
+		// 等待 FFmpeg 完成端口绑定并准备好接收数据
+		// waitForFFmpegReady 通过监听 stderr 中的关键字（"Output #0" / "Press [q]"）来判断就绪
+		// 超时兜底：8 秒后无论如何都继续（FFmpeg 可能正在等待第一个 RTP 包）
+		this.logger.info(`[Phase2] Waiting for FFmpeg to bind ports and become ready...`)
+		await this.waitForFFmpegReady(ffmpegProcess, 8000)
+		this.logger.info(`[Phase2] FFmpeg is ready, activating Mediasoup transports...`)
+
+		// ===== 阶段三：FFmpeg 就绪后，激活所有 Transport，开始推流 =====
+
+		for (const track of preparedTracks) {
+			try {
+				// connect：告知 Mediasoup 将 RTP 包推送到 FFmpeg 监听的端口
+				// rtcpMux: true，只传 ip + port，不传 rtcpPort（两者互斥）
+				await track.transport.connect({
+					ip: "127.0.0.1",
+					port: track.remotePort,
+				})
+
+				// resume：解除 Consumer 暂停，开始消费 Producer 的流并转发给 FFmpeg
+				await track.consumer.resume()
+
+				// 对视频流请求关键帧，确保 FFmpeg 能立即解码，避免等待下一个 I 帧
+				if (track.consumer.kind === "video") {
+					await track.consumer.requestKeyFrame()
+					this.logger.info(`[Phase3] Key frame requested for consumer ${track.consumer.id}`)
+				}
+
+				this.logger.info(`[Phase3] Transport activated for ${track.consumer.kind}, ` + `pushing RTP to 127.0.0.1:${track.remotePort}`)
+			} catch (err) {
+				this.logger.error(`[Phase3] Failed to activate transport for ${track.consumer.kind} on port ${track.remotePort}`, err)
+			}
+		}
+
+		// ===== Session 管理：存储会话，注册 FFmpeg 事件处理 =====
+
+		// 初始化上传完成 Promise，供 stopRecording 等待上传结果
 		let resolveUpload: (result: RecordingUploadResult) => void
 		let rejectUpload: (error: Error) => void
 		const uploadCompletionPromise = new Promise<RecordingUploadResult>((resolve, reject) => {
 			resolveUpload = resolve
 			rejectUpload = reject
 		})
+		// 挂载 catch handler，防止未处理的 Promise 拒绝导致 Node.js 进程崩溃
+		uploadCompletionPromise.catch((err) => {
+			this.logger.warn(`Recording upload promise rejected (expected during failure): ${err.message}`)
+		})
 
 		const session: RecordingSession = {
 			recordingId,
 			roomId,
-			transports, // 存储所有 transports
+			transports,
 			consumers,
 			ffmpegProcess,
 			outputPath,
@@ -200,15 +314,15 @@ export class RecordingManager {
 
 		this.sessions.set(recordingId, session)
 
-		// 监听 FFmpeg 进程退出，触发上传
+		// FFmpeg 进程正常/异常退出时，触发资源清理和 MinIO 上传
 		ffmpegProcess.on("close", async (code) => {
 			this.logger.info(`FFmpeg process exited with code ${code} for recording ${recordingId}`)
 			await this.handleRecordingComplete(recordingId)
 		})
 
+		// FFmpeg 启动失败（如找不到可执行文件）时，reject 等待中的 stopRecording
 		ffmpegProcess.on("error", (error) => {
 			this.logger.error(`FFmpeg process error for recording ${recordingId}`, error)
-			// FFmpeg 启动失败时，也要 reject 等待中的 stopRecording
 			const s = this.sessions.get(recordingId)
 			if (s?._rejectUpload) {
 				s._rejectUpload(new Error(`FFmpeg process error: ${error.message}`))
@@ -298,30 +412,39 @@ export class RecordingManager {
 	private killFFmpegGracefully(session: RecordingSession, recordingId: string): void {
 		const pid = session.ffmpegProcess.pid
 		if (!pid) {
-			this.logger.warn(`FFmpeg process has no PID for ${recordingId}, using kill()`)
-			session.ffmpegProcess.kill("SIGTERM")
+			this.logger.warn(`FFmpeg process has no PID for ${recordingId}`)
 			return
 		}
 
-		// Windows + Linux/Mac 统一使用 SIGINT
-		// detached: true 已确保 FFmpeg 在独立进程组中
-		// SIGINT 只会发送给 FFmpeg 自身的进程组，不影响 Node.js 主进程
-		try {
-			this.logger.info(`Sending SIGINT to FFmpeg PID ${pid} for recording ${recordingId}`)
-			process.kill(pid, "SIGINT")
-		} catch (e: any) {
-			this.logger.warn(`SIGINT failed for ${recordingId}: ${e.message}, falling back to SIGTERM`)
+		// Windows 上 detached: true 的子进程必须用 taskkill
+		// process.kill(pid) 在 Windows 上对 detached 进程会报 ESRCH（找不到进程）
+		if (process.platform === "win32") {
 			try {
-				process.kill(pid, "SIGTERM")
-			} catch (e2) {
-				// 进程可能已退出
+				this.logger.info(`[Win32] taskkill /f /t /pid ${pid} for recording ${recordingId}`)
+				// /t: 同时终止子进程树，/f: 强制终止
+				execSync(`taskkill /f /t /pid ${pid}`, { stdio: "ignore" })
+			} catch (e: any) {
+				// 进程可能已退出，忽略错误
+				this.logger.warn(`taskkill failed for ${recordingId}: ${e.message}`)
+			}
+		} else {
+			// Linux/Mac：SIGINT 触发 FFmpeg 优雅停止（写入文件尾部）
+			try {
+				this.logger.info(`Sending SIGINT to FFmpeg PID ${pid} for recording ${recordingId}`)
+				process.kill(pid, "SIGINT")
+			} catch (e: any) {
+				this.logger.warn(`SIGINT failed for ${recordingId}: ${e.message}, falling back to SIGTERM`)
+				try {
+					process.kill(pid, "SIGTERM")
+				} catch (e2) {
+					// 进程可能已退出
+				}
 			}
 		}
 	}
 
 	/**
 	 * 停止录制
-	 * 发送 SIGTERM 给 FFmpeg，并等待 handleRecordingComplete 中上传 MinIO 完成后返回 URL
 	 */
 	public async stopRecording(recordingId: string): Promise<string> {
 		const session = this.sessions.get(recordingId)
@@ -365,9 +488,6 @@ export class RecordingManager {
 		})
 	}
 
-	/**
-	 * FFmpeg 进程退出后的处理：清理资源 -> 上传 MinIO -> 通知 stopRecording
-	 */
 	private async handleRecordingComplete(recordingId: string): Promise<void> {
 		const session = this.sessions.get(recordingId)
 		if (!session) {
@@ -377,46 +497,60 @@ export class RecordingManager {
 		this.logger.info(`Handling recording complete for ${recordingId}`)
 
 		try {
-			// 清理 consumers
+			// 清理 consumers 和 transports
 			for (const consumer of session.consumers) {
-				consumer.close()
+				try {
+					consumer.close()
+				} catch (_) {}
 			}
-			// 关闭所有 transports
 			for (const transport of session.transports) {
-				transport.close()
+				try {
+					transport.close()
+				} catch (_) {}
 			}
 
-			// 上传到 MinIO
 			const format = session.recordConfig.format
 			const fileName = `recordings-${recordingId}.${format}`
 			const bucketName = config.minio.bucketName
 
+			// 文件不存在时不直接 throw，而是视为录制异常（如 FFmpeg 从未成功写入）
+			// 此时 reject uploadPromise，让 stopRecording 感知到失败并正确返回错误
 			if (!fs.existsSync(session.outputPath)) {
-				throw new Error(`Output file not found: ${session.outputPath}`)
+				this.logger.warn(`Output file not found for ${recordingId}, FFmpeg may have failed`)
+				throw new Error(`Recording failed: output file not found (${session.outputPath})`)
 			}
 
+			// 检查文件大小，防止上传空文件
+			const fileStats = fs.statSync(session.outputPath)
+			if (fileStats.size === 0) {
+				throw new Error(`Recording failed: output file is empty (${session.outputPath})`)
+			}
+
+			this.logger.info(`Uploading recording to MinIO: ${fileName} (${fileStats.size} bytes)`)
 			await this.minioClient.uploadFile(bucketName, fileName, session.outputPath)
 			this.logger.info(`Recording uploaded to MinIO: bucket=${bucketName}, key=${fileName}`)
 
 			// 删除本地临时文件
-			fs.unlinkSync(session.outputPath)
-			const sdpPath = session.outputPath.replace(`.${format}`, ".sdp")
-			if (fs.existsSync(sdpPath)) {
-				fs.unlinkSync(sdpPath)
+			try {
+				fs.unlinkSync(session.outputPath)
+				const sdpPath = session.outputPath.replace(`.${format}`, ".sdp")
+				if (fs.existsSync(sdpPath)) {
+					fs.unlinkSync(sdpPath)
+				}
+				this.logger.info(`Local recording files cleaned up for ${recordingId}`)
+			} catch (cleanupErr) {
+				// 清理失败不影响主流程
+				this.logger.warn(`Failed to cleanup local files for ${recordingId}: ${cleanupErr}`)
 			}
-			this.logger.info(`Local recording files cleaned up for ${recordingId}`)
 
-			// 拼接完整 MinIO 访问 URL
 			const protocol = config.minio.useSSL ? "https" : "http"
 			const fileUrl = `${protocol}://${config.minio.endPoint}:${config.minio.port}/${bucketName}/${fileName}`
 
-			// 通知 stopRecording 成功
 			if (session._resolveUpload) {
 				session._resolveUpload({ fileUrl })
 			}
 		} catch (error: any) {
 			this.logger.error(`Failed to handle recording complete for ${recordingId}`, error)
-			// 通知 stopRecording 失败
 			if (session._rejectUpload) {
 				session._rejectUpload(error instanceof Error ? error : new Error(String(error)))
 			}

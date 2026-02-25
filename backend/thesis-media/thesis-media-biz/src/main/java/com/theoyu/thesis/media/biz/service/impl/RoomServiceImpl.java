@@ -991,7 +991,7 @@ public class RoomServiceImpl implements RoomService {
                             ? room.getStartTime().toEpochSecond(java.time.ZoneOffset.of("+8"))
                             : System.currentTimeMillis() / 1000.0;
 
-                    redisTemplate.opsForZSet().add(cacheKey, room.getId(), score);
+                    redisTemplate.opsForZSet().add(cacheKey,room.getId().toString(), score);
                 }
 
                 // 设置过期时间

@@ -84,9 +84,9 @@ async function startServer() {
 		}
 
 		// 初始化 gRPC 服务器
-		logger.info("Initializing gRPC server...")
-		const grpcServer = GrpcServer.getInstance()
-		await grpcServer.init()
+		// logger.info("Initializing gRPC server...")
+		// const grpcServer = GrpcServer.getInstance()
+		// await grpcServer.init()
 
 		// 初始化Socket接口
 		logger.info("Initializing Socket Handler...")

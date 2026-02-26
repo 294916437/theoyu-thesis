@@ -38,7 +38,6 @@ export function useRecording(roomId, userId) {
 	const errorMessage = ref('')
 
 	// ==================== 录制元数据 ====================
-	const recordId = ref(null)
 	const recordingFormat = ref('webm')
 	const recordingDuration = ref(0)
 	/** @type {import('vue').Ref<{fileUrl,fileSize,duration,endTime,format}|null>} */
@@ -251,10 +250,8 @@ export function useRecording(roomId, userId) {
 				format: recordingFormat.value,
 			})
 
-			recordId.value = data.recordId
-
 			if (data.exists && data.fileUrl) {
-				// 已有录制记录，直接展示
+				// 已有完成的录制记录
 				recordingResult.value = {
 					fileUrl: data.fileUrl,
 					fileSize: data.fileSize,
@@ -264,7 +261,7 @@ export function useRecording(roomId, userId) {
 				}
 				phase.value = RECORDING_PHASE.EXISTS
 			} else {
-				// 新建记录成功，进入「选择格式并开始」阶段
+				// 后端返回 exists=false（新建或重置了残留）
 				phase.value = RECORDING_PHASE.STARTING
 			}
 		} catch (error) {
@@ -356,6 +353,7 @@ export function useRecording(roomId, userId) {
 	 */
 	const _finishRecording = async () => {
 		uploadProgress.value = 0
+		let progressTimer = null
 
 		try {
 			// 合并所有录制分片为完整文件
@@ -371,7 +369,7 @@ export function useRecording(roomId, userId) {
 			formData.append('file', finalBlob, fileName)
 
 			// 模拟上传进度（uploadFile 暂不支持 onUploadProgress）
-			const progressTimer = setInterval(() => {
+			progressTimer = setInterval(() => {
 				if (uploadProgress.value < 85) uploadProgress.value += 5
 			}, 200)
 
@@ -382,7 +380,6 @@ export function useRecording(roomId, userId) {
 
 			// Step 2: 通知后端更新录制记录
 			const { data } = await stopRecording({
-				recordId: recordId.value,
 				roomId: roomId.value,
 				userId: userId.value,
 				fileUrl,
@@ -408,6 +405,7 @@ export function useRecording(roomId, userId) {
 			errorMessage.value = error.message || '录制文件保存失败'
 			phase.value = RECORDING_PHASE.ERROR
 		} finally {
+			if (progressTimer) clearInterval(progressTimer)
 			recordedChunks.value = []
 			await _cleanupMedia()
 		}
@@ -417,13 +415,18 @@ export function useRecording(roomId, userId) {
 	 * 重置到初始状态（关闭对话框时调用）
 	 */
 	const reset = async () => {
+		// 录制中：触发停止流程（会进入 STOPPING）
 		if (isRecording.value) {
 			handleStopRecording()
 			return
 		}
+		// 上传保存中：禁止重置，等待完成
+		if (phase.value === RECORDING_PHASE.STOPPING) {
+			$notify.warning('正在保存录制文件，请稍候...')
+			return
+		}
 		_stopTimer()
 		await _cleanupMedia()
-		recordId.value = null
 		recordingDuration.value = 0
 		recordingResult.value = null
 		uploadProgress.value = 0

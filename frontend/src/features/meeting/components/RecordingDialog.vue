@@ -280,7 +280,7 @@ const { copy, copied } = useClipboard({ legacy: true })
 
 // ==================== 计算属性 ====================
 const isActiveRecording = computed(() => props.phase === PHASE.RECORDING)
-const isLoading = computed(() => [PHASE.CHECKING, PHASE.STARTING, PHASE.STOPPING].includes(props.phase))
+const isLoading = computed(() => [PHASE.CHECKING, PHASE.STOPPING].includes(props.phase))
 
 const fileExtension = computed(() => {
 	const url = props.recordingResult?.fileUrl || ''

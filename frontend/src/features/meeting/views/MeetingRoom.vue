@@ -541,7 +541,7 @@
 										</v-tooltip>
 
 										<!-- 会议录制 -->
-										<v-tooltip location="top">
+										<v-tooltip v-if="isHost" location="top">
 											<template #activator="{ props }">
 												<v-btn
 													v-bind="props"
@@ -841,23 +841,18 @@
 				@close="closePreview"
 			/>
 
-			<!-- 录制开始 Dialog -->
-			<RecordingStartDialog
-				v-model="showRecordingStartDialog"
-				:loading="recordingLoading"
-				:format="recordingFormat"
-				@confirm="
-					fmt => {
-						recordingFormat = fmt
-						handleStartRecording()
-					}
-				"
-			/>
-
-			<!-- 录制完成 Dialog -->
-			<RecordingResultDialog
-				v-model="showRecordingResultDialog"
-				:result="recordingResult"
+			<RecordingDialog
+				v-if="isHost"
+				:model-value="showRecordingDialog"
+				:phase="recordingPhase"
+				:recording-format="recordingFormat"
+				:formatted-duration="recordingFormattedDuration"
+				:recording-result="recordingResult"
+				:upload-progress="recordingUploadProgress"
+				:error-message="recordingError"
+				@start="handleStartRecording"
+				@stop="handleStopRecording"
+				@close="resetRecording"
 				@download="handleDownloadFromPreview"
 				@preview="url => openPreview(url, '会议录制')"
 			/>
@@ -883,8 +878,7 @@ import {
 import VideoGrid from '../components/VideoGrid.vue'
 import ParticipantsList from '../components/ParticipantsList.vue'
 import FilePreview from '@/components/common/FilePreview.vue'
-import RecordingStartDialog from '../components/RecordingStartDialog.vue'
-import RecordingResultDialog from '../components/RecordingResultDialog.vue'
+import RecordingDialog from '../components/RecordingDialog.vue'
 import MeetingEntryOverlay from '../components/MeetingEntryOverlay.vue'
 import { useRecording } from '@/composables/useRecording'
 import { useFilePreview } from '@/composables/useFilePreview'
@@ -1441,20 +1435,24 @@ const handleDownloadFromPreview = async ({ url, name }) => {
 
 // ==================== 会议录制功能 ====================
 const {
+	phase: recordingPhase,
 	isRecording,
+	isLoading: recordingLoading,
 	recordingFormat,
-	recordingLoading,
 	formattedDuration: recordingFormattedDuration,
 	formattedFileSize: recordingFormattedFileSize,
 	recordingResult,
-	showStartDialog: showRecordingStartDialog,
-	showResultDialog: showRecordingResultDialog,
-	toggleRecording,
+	uploadProgress: recordingUploadProgress,
+	errorMessage: recordingError,
+	checkAndOpen,
 	handleStartRecording,
-} = useRecording(
-	roomId,
-	computed(() => meetingInfo.value.hostId),
-)
+	handleStopRecording,
+	toggleRecording,
+	reset: resetRecording,
+} = useRecording(roomId, currentUserId)
+
+// 控制对话框显示：phase 非 idle 时打开
+const showRecordingDialog = computed(() => recordingPhase.value !== 'idle')
 
 // ==================== 会议控制功能 ====================
 const handRaised = ref(false)

@@ -1,6 +1,6 @@
 import axios from '@/utils/axios'
 
-const RECORDING_API = '/media/recording'
+const RECORDING_API = '/media/media/recording'
 
 /**
  * 开始录制

@@ -92,6 +92,7 @@ public class MediaServiceImpl implements MediaService {
                         .status((byte) 0)
                         .startTime(now)
                         .endTime(null)
+                        .createdAt(now)
                         .updatedAt(now)
                         .build();
                 roomRecordPOMapper.updateByPrimaryKey(resetPO);

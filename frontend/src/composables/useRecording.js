@@ -240,6 +240,9 @@ export function useRecording(roomId, userId) {
 	 * 向后端请求检查是否已有 roomId+userId 的录制记录
 	 */
 	const checkAndOpen = async () => {
+		// 录制中：直接返回，让父组件打开 Dialog 展示 RECORDING 阶段即可
+		if (phase.value === RECORDING_PHASE.RECORDING) return
+
 		phase.value = RECORDING_PHASE.CHECKING
 		errorMessage.value = ''
 
@@ -251,7 +254,6 @@ export function useRecording(roomId, userId) {
 			})
 
 			if (data.exists && data.fileUrl) {
-				// 已有完成的录制记录
 				recordingResult.value = {
 					fileUrl: data.fileUrl,
 					fileSize: data.fileSize,
@@ -261,7 +263,6 @@ export function useRecording(roomId, userId) {
 				}
 				phase.value = RECORDING_PHASE.EXISTS
 			} else {
-				// 后端返回 exists=false（新建或重置了残留）
 				phase.value = RECORDING_PHASE.STARTING
 			}
 		} catch (error) {
@@ -368,7 +369,7 @@ export function useRecording(roomId, userId) {
 			const formData = new FormData()
 			formData.append('file', finalBlob, fileName)
 
-			// 模拟上传进度（uploadFile 暂不支持 onUploadProgress）
+			// 模拟上传进度
 			progressTimer = setInterval(() => {
 				if (uploadProgress.value < 85) uploadProgress.value += 5
 			}, 200)
@@ -414,9 +415,10 @@ export function useRecording(roomId, userId) {
 	/**
 	 * 重置到初始状态（关闭对话框时调用）
 	 */
-	const reset = async () => {
+	const reset = async (minimized = false) => {
 		// 录制中：触发停止流程（会进入 STOPPING）
 		if (isRecording.value) {
+			if (minimized) return
 			handleStopRecording()
 			return
 		}
@@ -440,11 +442,7 @@ export function useRecording(roomId, userId) {
 	 * - 录制中时：停止录制
 	 */
 	const toggleRecording = () => {
-		if (isRecording.value) {
-			handleStopRecording()
-		} else {
-			checkAndOpen()
-		}
+		checkAndOpen()
 	}
 
 	return {

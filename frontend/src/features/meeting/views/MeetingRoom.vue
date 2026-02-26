@@ -553,7 +553,6 @@
 													class="control-btn"
 													@click="toggleRecording"
 												>
-													<!-- 录制中：红点脉冲动画 -->
 													<v-badge v-if="isRecording" dot color="error" location="top end">
 														<v-icon>mdi-stop-circle</v-icon>
 													</v-badge>
@@ -561,8 +560,8 @@
 												</v-btn>
 											</template>
 											<div>
-												<div>{{ isRecording ? '停止录制' : '开始录制' }}</div>
-												<div v-if="isRecording" class="text-caption">{{ recordingFormattedDuration }} · {{ recordingFormattedFileSize }}</div>
+												<div>{{ isRecording ? '查看录制' : '开始录制' }}</div>
+												<div v-if="isRecording" class="text-caption">{{ recordingFormattedDuration }}</div>
 											</div>
 										</v-tooltip>
 
@@ -842,19 +841,19 @@
 			/>
 
 			<RecordingDialog
-				v-if="isHost"
-				:model-value="showRecordingDialog"
+				v-model="recordingDialogVisible"
 				:phase="recordingPhase"
 				:recording-format="recordingFormat"
 				:formatted-duration="recordingFormattedDuration"
 				:recording-result="recordingResult"
 				:upload-progress="recordingUploadProgress"
-				:error-message="recordingError"
-				@start="handleStartRecording"
+				:error-message="recordingErrorMessage"
+				@start="onStartRecording"
 				@stop="handleStopRecording"
-				@close="resetRecording"
+				@close="onDialogClose"
+				@minimize="onDialogMinimize"
 				@download="handleDownloadFromPreview"
-				@preview="url => openPreview(url, '会议录制')"
+				@preview="url => openPreview(url, 'record.mp4')"
 			/>
 		</v-main>
 	</v-app>
@@ -880,7 +879,7 @@ import ParticipantsList from '../components/ParticipantsList.vue'
 import FilePreview from '@/components/common/FilePreview.vue'
 import RecordingDialog from '../components/RecordingDialog.vue'
 import MeetingEntryOverlay from '../components/MeetingEntryOverlay.vue'
-import { useRecording } from '@/composables/useRecording'
+import { useRecording, RECORDING_PHASE } from '@/composables/useRecording'
 import { useFilePreview } from '@/composables/useFilePreview'
 import { useParticipants } from '@/composables/useParticipants'
 import { useMediaDevices } from '@/composables/useMediaDevices'
@@ -1440,19 +1439,46 @@ const {
 	isLoading: recordingLoading,
 	recordingFormat,
 	formattedDuration: recordingFormattedDuration,
-	formattedFileSize: recordingFormattedFileSize,
 	recordingResult,
 	uploadProgress: recordingUploadProgress,
-	errorMessage: recordingError,
+	errorMessage: recordingErrorMessage,
 	checkAndOpen,
 	handleStartRecording,
 	handleStopRecording,
-	toggleRecording,
 	reset: resetRecording,
 } = useRecording(roomId, currentUserId)
 
-// 控制对话框显示：phase 非 idle 时打开
-const showRecordingDialog = computed(() => recordingPhase.value !== 'idle')
+// Dialog 显示控制（独立 ref，与 phase 解耦）
+const recordingDialogVisible = ref(false)
+
+// 控制栏录制按钮点击：录制中直接打开 Dialog，未录制时检查并打开
+const toggleRecording = () => {
+	recordingDialogVisible.value = true
+	if (!isRecording.value) {
+		checkAndOpen()
+	}
+	// 录制中时 phase 已是 RECORDING，Dialog 直接展示录制中状态
+}
+
+// 开始录制：成功进入 RECORDING 后自动关闭 Dialog
+const onStartRecording = async format => {
+	await handleStartRecording(format)
+	if (recordingPhase.value === RECORDING_PHASE.RECORDING) {
+		recordingDialogVisible.value = false
+	}
+}
+
+// 真正关闭（非录制中）：重置状态、关闭 Dialog
+const onDialogClose = () => {
+	resetRecording(false)
+	recordingDialogVisible.value = false
+}
+
+// 最小化（录制中）：仅关闭 Dialog，不停止录制
+const onDialogMinimize = () => {
+	recordingDialogVisible.value = false
+	// resetRecording(true) 已在 RecordingDialog 的 minimize emit 中处理，此处无需调用
+}
 
 // ==================== 会议控制功能 ====================
 const handRaised = ref(false)

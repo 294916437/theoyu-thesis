@@ -1,30 +1,44 @@
 package com.theoyu.thesis.media.biz.model.vo;
 
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
 @Data
 @Builder
-@AllArgsConstructor
-@NoArgsConstructor
 public class StartRecordingResVO {
 
     private Long roomId;
 
-    private Long hostId;
+    private Long userId;
 
     /**
-     * 录制状态：0-录制中 1-上传中 2-已完成 3-失败
+     * true = 已存在录制记录，false = 新建
      */
-    private Integer status;
+    private Boolean exists;
+
+    /**
+     * 已有录制时返回，新建时为 null
+     */
+    private String fileUrl;
+
+    /**
+     * 已有录制时返回（字节）
+     */
+    private Integer fileSize;
+
+    /**
+     * 已有录制时返回（秒）
+     */
+    private Integer duration;
 
     private String format;
 
     private LocalDateTime startTime;
 
-    private String message;
+    /**
+     * 已有录制时返回
+     */
+    private LocalDateTime endTime;
 }

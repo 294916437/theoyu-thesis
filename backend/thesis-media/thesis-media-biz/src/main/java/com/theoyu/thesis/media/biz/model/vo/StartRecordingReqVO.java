@@ -9,25 +9,11 @@ public class StartRecordingReqVO {
     @NotNull(message = "房间ID不能为空")
     private Long roomId;
 
-    @NotNull(message = "主持人ID不能为空")
-    private Long hostId;
+    @NotNull(message = "用户ID不能为空")
+    private Long userId;
+
     /**
-     * 录制格式，默认 webm
+     * 录制格式：mp4 / webm
      */
     private String format = "webm";
-
-    /**
-     * 是否录制音频，默认 true
-     */
-    private Boolean audioEnabled = true;
-
-    /**
-     * 是否录制视频，默认 true
-     */
-    private Boolean videoEnabled = true;
-
-    /**
-     * 视频质量（low/medium/high），默认 medium
-     */
-    private String quality = "medium";
 }

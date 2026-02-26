@@ -1,9 +1,6 @@
 <template>
 	<v-dialog :model-value="modelValue" max-width="460" transition="dialog-bottom-transition" :persistent="isActiveRecording || isLoading" @update:model-value="handleDialogUpdate">
 		<v-card class="recording-dialog" rounded="xl" elevation="8">
-			<!-- 顶部装饰条（随阶段变色） -->
-			<div class="dialog-accent-bar" :class="accentBarClass"></div>
-
 			<!-- 标题栏 -->
 			<v-card-title class="d-flex align-center pa-5 pb-3">
 				<div class="icon-wrapper mr-3" :class="iconWrapperClass">
@@ -33,7 +30,7 @@
 					<v-alert type="info" variant="tonal" density="compact" rounded="lg" class="mb-4">
 						<div class="text-caption font-weight-medium">该会议已存在录制文件</div>
 					</v-alert>
-					<RecordingResultCard :result="recordingResult" @copy-url="onCopyUrl" :copied="copied" />
+					<RecordingResultCard :result="recordingResult" :copied="copied" @copy-url="onCopyUrl" />
 				</v-card-text>
 				<v-divider></v-divider>
 				<v-card-actions class="pa-4 ga-2">
@@ -120,12 +117,12 @@
 					</v-card>
 
 					<v-alert type="warning" variant="tonal" density="compact" rounded="lg">
-						<div class="text-caption">关闭此窗口不会停止录制，请使用下方停止按钮</div>
+						<div class="text-caption">最小化此窗口不会停止录制，点击停止录制即可结束</div>
 					</v-alert>
 				</v-card-text>
 				<v-divider></v-divider>
 				<v-card-actions class="pa-4">
-					<v-btn variant="text" @click="handleClose">最小化</v-btn>
+					<v-btn variant="text" @click="handleMinimize">最小化</v-btn>
 					<v-spacer></v-spacer>
 					<v-btn variant="flat" color="error" prepend-icon="mdi-stop-circle" rounded="lg" @click="$emit('stop')"> 停止录制 </v-btn>
 				</v-card-actions>
@@ -182,7 +179,7 @@
 						</div>
 					</v-card>
 
-					<RecordingResultCard :result="recordingResult" @copy-url="onCopyUrl" :copied="copied" />
+					<RecordingResultCard :result="recordingResult" :copied="copied" @copy-url="onCopyUrl" />
 				</v-card-text>
 				<v-divider></v-divider>
 				<v-card-actions class="pa-4 ga-2">
@@ -198,7 +195,7 @@
 						rounded="lg"
 						@click="$emit('download', { url: recordingResult.fileUrl, name: downloadFileName })"
 					>
-						下载录制
+						下载
 					</v-btn>
 				</v-card-actions>
 			</template>
@@ -225,21 +222,7 @@
 import { ref, computed } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { RECORDING_PHASE } from '@/composables/useRecording'
-
-// ==================== 子组件：URL 复制卡片 ====================
-const RecordingResultCard = {
-	name: 'RecordingResultCard',
-	props: { result: Object, copied: Boolean },
-	emits: ['copy-url'],
-	template: `
-        <div class="url-copy-box" @click="$emit('copy-url')">
-            <v-icon icon="mdi-link-variant" size="16" class="mr-2 flex-shrink-0" color="primary"></v-icon>
-            <span class="url-text text-caption">{{ result?.fileUrl }}</span>
-            <v-icon :icon="copied ? 'mdi-check' : 'mdi-content-copy'" size="16"
-                :color="copied ? 'success' : 'medium-emphasis'" class="ml-2 flex-shrink-0"></v-icon>
-        </div>
-    `,
-}
+import RecordingResultCard from './RecordingResultCard.vue'
 
 // ==================== Props & Emits ====================
 const props = defineProps({
@@ -270,7 +253,7 @@ const props = defineProps({
 	},
 })
 
-const emit = defineEmits(['update:modelValue', 'start', 'stop', 'close', 'download', 'preview'])
+const emit = defineEmits(['update:modelValue', 'start', 'stop', 'close', 'download', 'preview', 'minimize'])
 
 const PHASE = RECORDING_PHASE
 
@@ -386,10 +369,20 @@ const handleClose = () => {
 	emit('close')
 	emit('update:modelValue', false)
 }
+// 最小化：仅关闭对话框，不触发 close（不影响录制）
+const handleMinimize = () => {
+	emit('minimize')
+	emit('update:modelValue', false)
+}
 
 const handleDialogUpdate = val => {
-	// 录制中或加载中不允许通过点击遮罩关闭
-	if (!val && !isActiveRecording.value && !isLoading.value) {
+	// 录制中：点击遮罩视为最小化，不停止录制
+	if (!val && isActiveRecording.value) {
+		handleMinimize()
+		return
+	}
+	// 加载中不允许关闭
+	if (!val && !isLoading.value) {
 		handleClose()
 	}
 }

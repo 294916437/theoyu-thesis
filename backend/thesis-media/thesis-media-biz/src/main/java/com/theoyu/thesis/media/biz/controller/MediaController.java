@@ -10,7 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/media")
+@RequestMapping("/media/recording")
 @Slf4j
 public class MediaController {
 
@@ -18,36 +18,22 @@ public class MediaController {
     private MediaService mediaService;
 
     /**
-     * 启动录制
+     * 开始录制（幂等：已有记录直接返回）
      */
-    @PostMapping("/record/start")
-    @ApiOperationLog(description = "启动录制")
+    @PostMapping("/start")
+    @ApiOperationLog(description = "开始录制")
     public Response<StartRecordingResVO> startRecording(@RequestBody @Valid StartRecordingReqVO reqVO) {
-        log.info("收到启动录制请求: roomId={}, hostId={}", reqVO.getRoomId(), reqVO.getHostId());
-        StartRecordingResVO resVO = mediaService.startRecording(reqVO);
-        return Response.success(resVO);
+        log.info("[Recording] 开始录制请求: roomId={}, userId={}", reqVO.getRoomId(), reqVO.getUserId());
+        return Response.success(mediaService.startRecording(reqVO));
     }
 
     /**
-     * 停止录制
+     * 停止录制（前端上传文件后调用）
      */
-    @PostMapping("/record/stop")
+    @PostMapping("/stop")
     @ApiOperationLog(description = "停止录制")
     public Response<StopRecordingResVO> stopRecording(@RequestBody @Valid StopRecordingReqVO reqVO) {
-        log.info("收到停止录制请求: roomId={}, hostId={}", reqVO.getRoomId(), reqVO.getHostId());
-        StopRecordingResVO resVO = mediaService.stopRecording(reqVO);
-        return Response.success(resVO);
-    }
-
-    /**
-     * 获取录制状态
-     */
-    @GetMapping("/record/status")
-    @ApiOperationLog(description = "获取录制状态")
-    public Response<GetRecordingStatusResVO> getRecordingStatus(
-            @RequestParam Long roomId,
-            @RequestParam Long hostId) {
-        GetRecordingStatusResVO resVO = mediaService.getRecordingStatus(roomId, hostId);
-        return Response.success(resVO);
+        log.info("[Recording] 停止录制请求: roomId={}, userId={}", reqVO.getRoomId(), reqVO.getUserId());
+        return Response.success(mediaService.stopRecording(reqVO));
     }
 }

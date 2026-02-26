@@ -28,7 +28,7 @@ public class RecordingCompletedEventDTO {
     /**
      * 文件大小（字节）
      */
-    private Long fileSize;
+    private Integer fileSize;
 
     /**
      * 录制时长（秒）

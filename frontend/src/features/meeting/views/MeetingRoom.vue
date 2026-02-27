@@ -956,6 +956,7 @@ const {
 	effectLoading,
 	effectError,
 	effectProducerActive,
+	currentSpatialLayer,
 	joinMeeting,
 	leaveMeeting,
 	toggleAudio,
@@ -970,6 +971,7 @@ const {
 	muteAll,
 	disableAllVideo,
 	removeParticipant,
+	setAllConsumersPreferredLayers,
 } = useMedia()
 // 处理背景替换文件上传处理
 
@@ -1069,8 +1071,8 @@ const loadingProgress = ref(0)
 const controlBarCollapsed = ref(false)
 const showLeaveConfirm = ref(false)
 
-// 视频设置
-const videoQuality = ref(2)
+// 视频设置 (初始化时与底层状态同步: layer 0->1, 1->2, 2->3)
+const videoQuality = ref(currentSpatialLayer.value + 1)
 const enableHD = ref(true)
 const enableMirror = ref(false)
 
@@ -1756,9 +1758,14 @@ const handleSpotlightParticipant = participantId => {
 // ==================== 设置管理 ====================
 const saveSettings = async () => {
 	try {
-		// 应用视频质量设置
-		if (videoQuality.value !== 2) {
-			console.log('Apply video quality:', videoQuality.value)
+		// 应用视频质量设置 (1: 流畅/Layer 0, 2: 标清/Layer 1, 3: 高清/Layer 2)
+		if (videoQuality.value) {
+			const spatialLayer = videoQuality.value - 1
+			// 只有当设置发生变化时才发送请求
+			if (spatialLayer !== currentSpatialLayer.value) {
+				console.log(`Apply video quality: ${videoQuality.value}, mapping to spatial layer: ${spatialLayer}`)
+				await setAllConsumersPreferredLayers(spatialLayer)
+			}
 		}
 
 		showSettings.value = false

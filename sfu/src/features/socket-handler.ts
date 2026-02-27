@@ -433,6 +433,17 @@ export class SignalingHandler {
 			this.monitoring.recordConsumerScore(consumer.id, score)
 		})
 
+		// 监听 Simulcast 层级变化，实现码率自适应通知
+		consumer.on("layerschange", (layers) => {
+			this.logger.debug(`Consumer ${consumer.id} layers changed: ${JSON.stringify(layers)}`)
+			socket.emit("consumerLayersChanged", {
+				consumerId: consumer.id,
+				producerId: consumer.producerId,
+				spatialLayer: layers ? layers.spatialLayer : null,
+				temporalLayer: layers ? layers.temporalLayer : null,
+			})
+		})
+
 		callback({
 			id: consumer.id,
 			producerId: consumer.producerId,

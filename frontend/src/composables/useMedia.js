@@ -2,6 +2,7 @@
 import { ref, computed, watch, nextTick, markRaw } from 'vue'
 import { socketClient } from '@/utils/SocketClient'
 import { MediasoupClient } from '@/utils/MediasoupClient'
+import { useThrottleFn } from '@vueuse/core'
 import init, { MeetProcessor, init_panic_hook } from '@/libs/meet-effect/meet_background_effect.js'
 import wasmUrl from '@/libs/meet-effect/meet_background_effect_bg.wasm?url'
 import { $notify } from '@/plugins/notification'
@@ -83,6 +84,20 @@ export function useMedia() {
 		screen: null,
 	})
 	let statsIntervalId = null
+	// 维护全局视频码率 (默认 2: 高清)
+	const currentSpatialLayer = ref(2)
+
+	// Simulcast 编码参数配置 (低、中、高三层)
+	const SIMULCAST_ENCODINGS = [
+		{ scaleResolutionDownBy: 4, maxBitrate: 100000 }, // 空间层 0: 低画质
+		{ scaleResolutionDownBy: 2, maxBitrate: 300000 }, // 空间层 1: 中画质
+		{ scaleResolutionDownBy: 1, maxBitrate: 900000 }, // 空间层 2: 高画质
+	]
+
+	// 网络不佳提示的节流函数，避免频繁弹窗 (10秒内最多提示一次)
+	const notifyPoorNetwork = useThrottleFn(username => {
+		$notify.warning(`您的网络出现波动，已自动将 [${username}] 的视频切换至流畅画质`, { timeout: 3000 })
+	}, 10000)
 
 	/**
 	 * 初始化背景特效资源
@@ -350,6 +365,8 @@ export function useMedia() {
 			// 9. 创建新 Producer
 			const effectProducer = await mediasoupClient.produce(effectVideoTrack, {
 				kind: 'video',
+				encodings: SIMULCAST_ENCODINGS,
+				codecOptions: { videoGoogleStartBitrate: 1000 },
 				appData: {
 					source: 'effect',
 					effectType: effectType.value,
@@ -449,6 +466,8 @@ export function useMedia() {
 		if (originalCameraTrack.value && originalCameraTrack.value.readyState === 'live') {
 			const newProducer = await mediasoupClient.produce(originalCameraTrack.value, {
 				kind: 'video',
+				encodings: SIMULCAST_ENCODINGS,
+				codecOptions: { videoGoogleStartBitrate: 1000 },
 				appData: { source: 'camera' },
 			})
 			mediasoupClient.producers.set('video', newProducer)
@@ -474,6 +493,8 @@ export function useMedia() {
 			const newTrack = stream.getVideoTracks()[0]
 			const newProducer = await mediasoupClient.produce(newTrack, {
 				kind: 'video',
+				encodings: SIMULCAST_ENCODINGS,
+				codecOptions: { videoGoogleStartBitrate: 1000 },
 				appData: { source: 'camera' },
 			})
 			mediasoupClient.producers.set('video', newProducer)
@@ -780,9 +801,9 @@ export function useMedia() {
 				const audioTrack = localStream.value.getAudioTracks()[0]
 				const videoTrack = localStream.value.getVideoTracks()[0]
 
-				const publishWithTimeout = async (track, kind, timeout = 15000) => {
+				const publishWithTimeout = async (track, kind, extraOptions = {}, timeout = 15000) => {
 					return Promise.race([
-						mediasoupClient.produce(track, { kind }),
+						mediasoupClient.produce(track, { kind, ...extraOptions }),
 						new Promise((_, reject) => setTimeout(() => reject(new Error(`Publish ${kind} timeout`)), timeout)),
 					])
 				}
@@ -793,7 +814,10 @@ export function useMedia() {
 						updateLocalProducer('audio', audioProducer)
 					}
 					if (videoTrack) {
-						const videoProducer = await publishWithTimeout(videoTrack, 'video')
+						const videoProducer = await publishWithTimeout(videoTrack, 'video', {
+							encodings: SIMULCAST_ENCODINGS,
+							codecOptions: { videoGoogleStartBitrate: 1000 },
+						})
 						updateLocalProducer('video', videoProducer)
 					}
 				} catch (error) {
@@ -1167,6 +1191,19 @@ export function useMedia() {
 			// 3. 强制触发响应式更新
 			participants.value = [...participants.value]
 		})
+		// 监听 Simulcast 层级变化 (码率自适应)
+		socketClient.on('consumerLayersChanged', data => {
+			const { consumerId, spatialLayer } = data
+
+			// 如果 spatialLayer 为 0，说明 SFU 因为带宽不足将流降级到了最低画质
+			if (spatialLayer === 0) {
+				// 查找是哪个用户的流降级了（可选：用于更精确的提示）
+				const participant = participants.value.find(p => p.consumers && p.consumers[consumerId])
+				if (participant && !participant.isLocal) {
+					notifyPoorNetwork(participant.username)
+				}
+			}
+		})
 	}
 
 	/**
@@ -1394,6 +1431,8 @@ export function useMedia() {
 			// 3. 创建新的屏幕共享 producer（使用 video kind）
 			const screenProducer = await mediasoupClient.produce(screenVideoTrack, {
 				kind: 'video',
+				// 屏幕共享不使用 Simulcast 降分辨率，而是使用高码率单层或 SVC，并开启 DTX(不活动时降低带宽)
+				encodings: [{ dtx: true, maxBitrate: 1500000 }],
 				appData: {
 					source: 'screen',
 					shareType: 'display',
@@ -1505,6 +1544,8 @@ export function useMedia() {
 				// 如果原轨道还活着，直接复用
 				const newProducer = await mediasoupClient.produce(originalVideoTrack.value, {
 					kind: 'video',
+					encodings: SIMULCAST_ENCODINGS,
+					codecOptions: { videoGoogleStartBitrate: 1000 },
 					appData: { source: 'camera' },
 				})
 
@@ -1545,6 +1586,8 @@ export function useMedia() {
 
 				const newProducer = await mediasoupClient.produce(newVideoTrack, {
 					kind: 'video',
+					encodings: SIMULCAST_ENCODINGS,
+					codecOptions: { videoGoogleStartBitrate: 1000 },
 					appData: { source: 'camera' },
 				})
 
@@ -1643,6 +1686,31 @@ export function useMedia() {
 			console.log(`Set preferred layers for consumer ${consumerId}`, { spatialLayer, temporalLayer })
 		} catch (error) {
 			console.error('Failed to set preferred layers', error)
+		}
+	}
+
+	/**
+	 * 全局设置所有视频消费者的首选层级 (用于 UI 设置)
+	 */
+	async function setAllConsumersPreferredLayers(spatialLayer) {
+		try {
+			// 更新全局状态，确保后续新加入的流也能继承此设置
+			currentSpatialLayer.value = spatialLayer
+
+			const promises = []
+			participants.value.forEach(p => {
+				if (!p.isLocal && p.consumers) {
+					Object.values(p.consumers).forEach(consumer => {
+						if (consumer.track.kind === 'video') {
+							promises.push(setPreferredLayers(consumer.id, spatialLayer))
+						}
+					})
+				}
+			})
+			await Promise.all(promises)
+			console.log(`Successfully set all video consumers to spatial layer ${spatialLayer}`)
+		} catch (error) {
+			console.error('Failed to set global preferred layers', error)
 		}
 	}
 
@@ -1918,6 +1986,7 @@ export function useMedia() {
 		allBackgrounds,
 		effectLoading,
 		effectError,
+		currentSpatialLayer,
 
 		// 方法
 		joinMeeting,
@@ -1933,6 +2002,7 @@ export function useMedia() {
 		stopScreenShare,
 		stopStatsCollection,
 		setPreferredLayers,
+		setAllConsumersPreferredLayers,
 		getStats,
 		changeAudioDevice,
 		changeVideoDevice,

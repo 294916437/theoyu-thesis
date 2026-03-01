@@ -789,42 +789,38 @@
 			</v-dialog>
 
 			<!-- 离开会议确认对话框 -->
-			<v-dialog v-model="showLeaveConfirm" max-width="480" persistent transition="dialog-bottom-transition">
-				<v-card>
-					<!-- 警告图标 -->
-					<v-card-title class="d-flex align-center pa-6">
-						<div class="warning-icon-wrapper">
-							<v-icon icon="mdi-exit-to-app" color="warning" size="40"></v-icon>
+			<v-dialog v-model="showLeaveConfirm" max-width="420" persistent transition="dialog-bottom-transition">
+				<v-card rounded="xl" elevation="8">
+					<!-- 顶部图标区域 -->
+					<div class="leave-dialog-header">
+						<div class="leave-dialog-icon">
+							<v-icon icon="mdi-exit-to-app" color="primary" size="32"></v-icon>
 						</div>
-					</v-card-title>
-
-					<v-card-text class="px-6 pb-6">
-						<!-- 主要提示 -->
-						<div class="mb-4">
-							<h3 class="text-h6 font-weight-medium mb-2">确认离开会议？</h3>
-							<p class="text-body-2 text-medium-emphasis">会议时长: {{ meetingDuration }}</p>
+						<div class="leave-dialog-title">
+							<span class="text-h6 font-weight-semibold">离开会议</span>
+							<span class="text-caption text-medium-emphasis mt-1">会议时长：{{ meetingDuration }}</span>
 						</div>
-
-						<!-- 信息提示卡片 -->
-						<v-alert type="info" variant="tonal" density="compact" class="mb-0">
-							<div class="text-body-2">
-								<div class="font-weight-medium mb-2">温馨提示</div>
-								<div>
-									• 会议记录和聊天内容将会保留<br />
-									• 您的离开不会结束整个会议<br />
-								</div>
-							</div>
-						</v-alert>
-					</v-card-text>
+						<v-btn icon="mdi-close" variant="text" size="small" density="comfortable" class="leave-dialog-close" @click="showLeaveConfirm = false"></v-btn>
+					</div>
 
 					<v-divider></v-divider>
 
-					<v-card-actions class="pa-4">
-						<v-btn variant="text" prepend-icon="mdi-arrow-left" @click="showLeaveConfirm = false"> 留在会议 </v-btn>
+					<v-card-text class="pa-5">
+						<!-- 提示信息列表 -->
+						<v-list density="compact" bg-color="transparent" class="leave-tip-list">
+							<v-list-item v-for="tip in leaveTips" :key="tip.text" :prepend-icon="tip.icon" :base-color="tip.color" density="compact" class="px-0 rounded-lg">
+								<v-list-item-title class="text-body-2">{{ tip.text }}</v-list-item-title>
+							</v-list-item>
+						</v-list>
+					</v-card-text>
 
-						<v-spacer></v-spacer>
-
-						<v-btn variant="flat" color="error" prepend-icon="mdi-exit-to-app" class="leave-btn" @click="confirmLeaveMeeting"> 确认离开 </v-btn>
+					<v-card-actions class="px-5 pb-5 pt-0 ga-3">
+						<v-btn variant="tonal" color="primary" size="large" rounded="lg" class="flex-1-1" prepend-icon="mdi-arrow-left" @click="showLeaveConfirm = false">
+							留在会议
+						</v-btn>
+						<v-btn variant="outlined" color="on-surface-variant" size="large" rounded="lg" class="flex-1-1" prepend-icon="mdi-exit-to-app" @click="confirmLeaveMeeting">
+							确认离开
+						</v-btn>
 					</v-card-actions>
 				</v-card>
 			</v-dialog>
@@ -894,7 +890,12 @@ import { useUserStore } from '@/stores/user'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
-
+// ==================== 离开会议 ====================
+const leaveTips = [
+	{ icon: 'mdi-chat-outline', color: 'primary', text: '会议记录和聊天内容将会保留' },
+	{ icon: 'mdi-account-multiple-outline', color: 'primary', text: '您的离开不会结束整个会议' },
+	{ icon: 'mdi-clock-outline', color: 'primary', text: '可随时使用会议号重新加入' },
+]
 // ==================== 基础信息 ====================
 const meetingInfo = ref({
 	roomId: '',
@@ -1838,7 +1839,6 @@ useEventListener('beforeunload', e => {
 	height: 100%;
 }
 
-/* 侧边栏 */
 .sidebar-container {
 	display: flex;
 	flex-direction: column;
@@ -1871,6 +1871,43 @@ useEventListener('beforeunload', e => {
 
 .sidebar-content :deep(.v-window-item) {
 	height: 100%;
+}
+
+/* 离开会议对话框 */
+.leave-dialog-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 20px 20px 16px;
+	position: relative;
+}
+
+.leave-dialog-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 52px;
+	height: 52px;
+	border-radius: 16px;
+	background: rgba(var(--v-theme-primary), 0.1);
+	flex-shrink: 0;
+}
+
+.leave-dialog-title {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-width: 0;
+}
+
+.leave-dialog-close {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+}
+
+.leave-tip-list :deep(.v-list-item__prepend .v-icon) {
+	opacity: 0.75;
 }
 
 /* 聊天面板 */

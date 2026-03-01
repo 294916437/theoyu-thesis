@@ -89,9 +89,9 @@ export function useMedia() {
 
 	// Simulcast 编码参数配置 (低、中、高三层)
 	const SIMULCAST_ENCODINGS = [
-		{ scaleResolutionDownBy: 4, maxBitrate: 100000 }, // 空间层 0: 低画质
-		{ scaleResolutionDownBy: 2, maxBitrate: 300000 }, // 空间层 1: 中画质
-		{ scaleResolutionDownBy: 1, maxBitrate: 900000 }, // 空间层 2: 高画质
+		{ rid: 'r0', scaleResolutionDownBy: 4, maxBitrate: 100000 },
+		{ rid: 'r1', scaleResolutionDownBy: 2, maxBitrate: 300000 },
+		{ rid: 'r2', scaleResolutionDownBy: 1, maxBitrate: 900000 },
 	]
 
 	// 网络不佳提示的节流函数，避免频繁弹窗 (10秒内最多提示一次)
@@ -965,6 +965,11 @@ export function useMedia() {
 			console.log(`Consuming producer ${producerId} ${remotePeerId}`)
 
 			const consumer = await mediasoupClient.consume(roomId.value, producerId, remotePeerId)
+
+			// 继承全局首选层设置
+			if (consumer.track.kind === 'video' && currentSpatialLayer.value !== 2) {
+				await setPreferredLayers(consumer.id, currentSpatialLayer.value)
+			}
 
 			// 找到对应的参与者
 			const participant = participants.value.find(p => p.peerId === remotePeerId)

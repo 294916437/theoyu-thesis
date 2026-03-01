@@ -9,8 +9,8 @@
 						<div class="d-flex align-center justify-space-between">
 							<h2 class="text-h6 font-weight-bold text-primary">私信</h2>
 							<div class="d-flex ga-2">
-								<v-btn icon="mdi-magnify" variant="text" size="large" density="comfortable"></v-btn>
-								<v-btn icon="mdi-plus" variant="text" size="large" density="comfortable" color="primary"></v-btn>
+								<v-btn icon="mdi-magnify" variant="text" size="large" density="comfortable" />
+								<v-btn icon="mdi-plus" variant="text" size="large" density="comfortable" color="primary" @click="dialogOpen = true" />
 							</div>
 						</div>
 					</div>
@@ -34,16 +34,18 @@
 						<v-icon icon="mdi-message-text-outline" size="80" color="grey-lighten-1"></v-icon>
 						<h3 class="text-h6 mt-4 text-medium-emphasis">选择一个对话开始聊天</h3>
 						<p class="text-body-2 text-disabled mt-2">或者创建新的对话</p>
-						<v-btn color="primary" variant="elevated" class="mt-6" prepend-icon="mdi-plus" rounded="lg" @click="handleCreateConversation"> 新建对话 </v-btn>
+						<v-btn color="primary" variant="elevated" class="mt-6" prepend-icon="mdi-plus" rounded="lg" @click="dialogOpen = true"> 新建对话 </v-btn>
 					</div>
 				</v-sheet>
 			</v-col>
 		</v-row>
+		<CreateConversationDialog v-model="dialogOpen" @confirm="handleCreateConversation" />
 	</v-container>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import CreateConversationDialog from '@/features/chat/components/CreateConversationDialog.vue'
 import ConversationList from '@/features/chat/components/ConversationList.vue'
 import ChatPanel from '@/features/chat/components/ChatPanel.vue'
 import ConversationListSkeleton from '../components/ConversationListSkeleton.vue'
@@ -73,6 +75,9 @@ const conversationHasMoreMap = ref(new Map())
 const loadingConversations = ref(false)
 const initialLoadingConversations = ref(true)
 const loadingMessages = ref(false)
+
+// Dialog 开关状态
+const dialogOpen = ref(false)
 
 // 骨架屏最小显示时间(毫秒)
 const SKELETON_MIN_DURATION = 600
@@ -434,7 +439,7 @@ const handleLoadMoreMessages = async () => {
  * 创建新会话
  * @param {number} targetUserId - 目标用户ID
  */
-const handleCreateConversation = async targetUserId => {
+const handleCreateConversation = async ({ targetUserId, onSuccess, onError }) => {
 	try {
 		console.log('创建新会话, targetUserId:', targetUserId)
 
@@ -442,6 +447,9 @@ const handleCreateConversation = async targetUserId => {
 
 		if (result.success) {
 			console.log('会话创建成功')
+
+			// 通知 Dialog 成功（Dialog 内部会延迟关闭）
+			onSuccess()
 
 			// 重新加载会话列表
 			await loadConversations()
@@ -451,11 +459,11 @@ const handleCreateConversation = async targetUserId => {
 				await handleSelectConversation(result.data.conversationId)
 			}
 		} else {
-			throw new Error(result.message || '创建失败')
+			onError(result.message || '创建失败，请稍后重试')
 		}
 	} catch (error) {
-		console.error(' 创建会话失败:', error)
-		$notify.error('创建会话失败: ' + error.message)
+		console.error('创建会话失败:', error)
+		onError(error.message || '创建失败，请稍后重试')
 	}
 }
 

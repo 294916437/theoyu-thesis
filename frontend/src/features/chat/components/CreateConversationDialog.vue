@@ -22,12 +22,11 @@
 				<v-form ref="formRef" @submit.prevent="handleSubmit">
 					<div class="field-label text-caption font-weight-medium text-medium-emphasis mb-2">目标用户 ID</div>
 					<v-text-field
-						ref="inputRef"
 						v-model.trim="targetUserIdInput"
 						:rules="userIdRules"
 						:error-messages="serverError"
 						:disabled="loading"
-						placeholder="请输入用户ID (纯数字)"
+						placeholder="请输入用户ID（纯数字）"
 						variant="outlined"
 						density="comfortable"
 						color="primary"
@@ -37,10 +36,8 @@
 						hide-details="auto"
 						prepend-inner-icon="mdi-account-search-outline"
 						@input="serverError = ''"
-						@keydown.enter.prevent="handleSubmit"
 					/>
 
-					<!-- 提示信息 -->
 					<v-alert v-if="hint" :type="hint.type" :text="hint.text" density="compact" variant="tonal" rounded="md" class="mt-3" />
 				</v-form>
 			</v-card-text>
@@ -86,13 +83,15 @@ const emit = defineEmits(['update:modelValue', 'confirm'])
 // ==================== 状态 ====================
 
 const isOpen = useVModel(props, 'modelValue', emit)
-
 const formRef = ref(null)
 const targetUserIdInput = ref('')
 const loading = ref(false)
 const serverError = ref('')
-
 const hint = ref(null)
+
+// ==================== 计算属性 ====================
+
+const canSubmit = computed(() => !loading.value && !!targetUserIdInput.value)
 
 // ==================== 表单校验规则 ====================
 
@@ -103,17 +102,8 @@ const userIdRules = [
 	v => String(v).length <= 18 || '用户 ID 格式不正确',
 ]
 
-// ==================== 计算属性 ====================
-
-const canSubmit = computed(() => {
-	return targetUserIdInput.value.length > 0 && !loading.value
-})
-
 // ==================== 方法 ====================
 
-/**
- * 重置表单状态
- */
 const resetForm = () => {
 	targetUserIdInput.value = ''
 	serverError.value = ''
@@ -121,40 +111,42 @@ const resetForm = () => {
 	formRef.value?.reset()
 }
 
-/**
- * 关闭 Dialog
- */
 const handleClose = () => {
 	if (loading.value) return
 	resetForm()
 	isOpen.value = false
 }
 
-/**
- * 提交创建会话
- */
 const handleSubmit = async () => {
 	const { valid } = await formRef.value.validate()
-	if (!valid) return
+	if (!valid || loading.value) return
 
 	loading.value = true
 	serverError.value = ''
 	hint.value = null
 
-	const targetUserId = Number(targetUserIdInput.value)
-
-	emit('confirm', {
-		targetUserId,
-		onSuccess: () => {
-			loading.value = false // 移入回调
-			hint.value = { type: 'success', text: '会话已创建，即将跳转...' }
-			setTimeout(() => handleClose(), 800)
-		},
-		onError: message => {
-			loading.value = false // 移入回调
-			serverError.value = message || '创建失败，请稍后重试'
-		},
-	})
+	try {
+		emit('confirm', {
+			targetUserId: Number(targetUserIdInput.value),
+			onSuccess: isNew => {
+				hint.value = {
+					type: 'success',
+					text: isNew ? '会话已创建，即将跳转...' : '会话已存在，即将跳转...',
+				}
+				setTimeout(() => {
+					loading.value = false
+					handleClose()
+				}, 800)
+			},
+			onError: message => {
+				loading.value = false
+				serverError.value = message || '创建失败，请稍后重试'
+			},
+		})
+	} catch {
+		loading.value = false
+		serverError.value = '操作异常，请稍后重试'
+	}
 }
 
 // Dialog 关闭时重置表单

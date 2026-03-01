@@ -437,26 +437,24 @@ const handleLoadMoreMessages = async () => {
 
 /**
  * 创建新会话
- * @param {number} targetUserId - 目标用户ID
  */
 const handleCreateConversation = async ({ targetUserId, onSuccess, onError }) => {
 	try {
-		console.log('创建新会话, targetUserId:', targetUserId)
+		// 传入对象格式，与接口定义一致
+		const result = await createConversation({ targetUserId })
 
-		const result = await createConversation(targetUserId)
+		if (result.success && result.data) {
+			const { conversationId, isNew } = result.data
 
-		if (result.success) {
-			console.log('会话创建成功')
-
-			// 通知 Dialog 成功（Dialog 内部会延迟关闭）
-			onSuccess()
+			// 将 isNew 透传给 Dialog 以展示正确提示
+			onSuccess(isNew)
 
 			// 重新加载会话列表
 			await loadConversations()
 
-			// 自动选中新创建的会话
-			if (result.data?.conversationId) {
-				await handleSelectConversation(result.data.conversationId)
+			// 自动选中该会话
+			if (conversationId) {
+				await handleSelectConversation(conversationId)
 			}
 		} else {
 			onError(result.message || '创建失败，请稍后重试')

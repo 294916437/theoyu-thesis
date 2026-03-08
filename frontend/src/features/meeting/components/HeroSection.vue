@@ -102,7 +102,7 @@ const handleJoin = () => {
 	}
 }
 
-// ─── 辅助：创建单朵云图形 ────────────────────────────────────────────
+// 创建单朵云图形
 function createCloudGraphic() {
 	const cloud = new Graphics()
 	cloud.ellipse(0, 0, 70, 32)
@@ -116,7 +116,7 @@ function createCloudGraphic() {
 	return cloud
 }
 
-// ─── 辅助：创建单只飞鸟图形 ─────────────────────────────────────────
+// 创建单只飞鸟图形
 function createBirdGraphic() {
 	const bird = new Graphics()
 	bird.moveTo(-30, -15)
@@ -137,29 +137,41 @@ const initPixiAnimation = async () => {
 
 	pixiContainer.value.appendChild(app.canvas)
 
-	// ── 图层顺序：背景场景 → 天空元素(视差) ──────────────────────────
-	const sceneContainer = new Container() // 静态场景（海浪、沙滩）
-	const skyContainer = new Container() // 天空元素（云、鸟），做视差
+	// 图层顺序：背景场景 → 天空元素(视差)
+	const sceneContainer = new Container()
+	const skyContainer = new Container()
 
 	app.stage.addChild(sceneContainer)
 	app.stage.addChild(skyContainer)
 
-	// 静态场景图形
-	const sceneryGraphics = new Graphics()
-	const foamGraphics = new Graphics() // 海浪浪沫
-	const beachGraphics = new Graphics() // 沙滩层
-	const beachDetailGraphics = new Graphics() // 沙滩细节
+	// ── 图层拆分：静态/慢变/动态 分层管理 ──────────────────────────────
+	// oceanBgGraphics   : 海洋色块      → 仅 resize 时重绘
+	// waveGraphics      : 波纹 + 高光   → 每帧，但减少采样点
+	// foamGraphics      : 破碎浪泡沫    → 每帧，步长加大
+	// beachBgGraphics   : 沙滩色块      → 仅 resize 时重绘
+	// transitionGraphics: 水沙过渡带    → 节流 ~20fps
+	// beachLineGraphics : 沙滩纹理线    → 节流 ~12fps
+	// beachDetailGraphics: 贝壳/脚印   → 一次性
+	const oceanBgGraphics = new Graphics()
+	const waveGraphics = new Graphics()
+	const foamGraphics = new Graphics()
+	const beachBgGraphics = new Graphics()
+	const transitionGraphics = new Graphics()
+	const beachLineGraphics = new Graphics()
+	const beachDetailGraphics = new Graphics()
 
-	sceneContainer.addChild(sceneryGraphics)
+	sceneContainer.addChild(oceanBgGraphics)
+	sceneContainer.addChild(waveGraphics)
 	sceneContainer.addChild(foamGraphics)
-	sceneContainer.addChild(beachGraphics)
+	sceneContainer.addChild(beachBgGraphics)
+	sceneContainer.addChild(transitionGraphics)
+	sceneContainer.addChild(beachLineGraphics)
 	sceneContainer.addChild(beachDetailGraphics)
 
-	// ── 白云：初始分散在全屏，移出右侧后从左侧随机高度重入 ────────────
+	// 白云
 	const clouds = []
 	for (let i = 0; i < 10; i++) {
 		const cloud = createCloudGraphic()
-		// 初始化时分散在全屏宽度范围内，避免全部堆在左侧
 		cloud.x = Math.random() * app.screen.width
 		cloud.y = Math.random() * (app.screen.height * 0.42)
 		cloud.scale.set(0.5 + Math.random() * 0.9)
@@ -168,7 +180,7 @@ const initPixiAnimation = async () => {
 		clouds.push({ sprite: cloud, speed })
 	}
 
-	// ── 飞鸟 ──────────────────────────────────────────────────────────
+	// 飞鸟
 	const birds = []
 	for (let i = 0; i < 7; i++) {
 		const bird = createBirdGraphic()
@@ -181,11 +193,18 @@ const initPixiAnimation = async () => {
 		birds.push({ sprite: bird, speed, baseScaleY: baseScale, timer: Math.random() * Math.PI * 2 })
 	}
 
-	// ── 沙滩上的静态贝壳/小石子（一次性绘制到 beachDetailGraphics） ──
-	// 先占位，等第一帧拿到真实尺寸后在 ticker 头部初始化
 	let beachDetailInited = false
-
 	let time = 0
+
+	// 节流时间戳
+	let lastTransitionRedraw = -999
+	let lastBeachLineRedraw = -999
+	const TRANSITION_INTERVAL = 0.05 // 水沙过渡带 ~20fps
+	const BEACH_LINE_INTERVAL = 0.083 // 沙滩纹理线 ~12fps
+
+	// 缓存尺寸，用于 resize 检测
+	let cachedW = -1
+	let cachedH = -1
 
 	app.ticker.add(ticker => {
 		const dt = ticker.deltaTime
@@ -194,104 +213,122 @@ const initPixiAnimation = async () => {
 		const w = app.screen.width
 		const h = app.screen.height
 
-		// ── 关键分界线（站在岸边的透视视角）────────────────────────────
-		// horizonY：地平线（天空与远海交界），约在画面 55%
-		// shoreY：近岸水线，约在 78%
-		// beachTopY：沙滩顶边，即水线，和 shoreY 相同
-		// 底部：画面 100%（就是观察者脚边的沙滩）
 		const horizonY = h * 0.52
-		const shoreY = h * 0.76 // 水面与沙滩交界（水线）
+		const shoreY = h * 0.76
 		const beachTopY = shoreY
 
-		// 1. 海洋主体（透视感：远端窄色带 → 近端宽色带，颜色由深到浅）
-		sceneryGraphics.clear()
+		// 1. 海洋色块
+		const sizeChanged = w !== cachedW || h !== cachedH
+		if (sizeChanged) {
+			cachedW = w
+			cachedH = h
 
-		// 远海（深蓝，地平线附近）
-		sceneryGraphics.moveTo(0, horizonY)
-		sceneryGraphics.lineTo(w, horizonY)
-		sceneryGraphics.lineTo(w, horizonY + (shoreY - horizonY) * 0.3)
-		sceneryGraphics.lineTo(0, horizonY + (shoreY - horizonY) * 0.3)
-		sceneryGraphics.fill({ color: 0x1a4a7a, alpha: 0.92 })
+			oceanBgGraphics.clear()
 
-		// 中海（中蓝）
-		sceneryGraphics.moveTo(0, horizonY + (shoreY - horizonY) * 0.28)
-		sceneryGraphics.lineTo(w, horizonY + (shoreY - horizonY) * 0.28)
-		sceneryGraphics.lineTo(w, horizonY + (shoreY - horizonY) * 0.62)
-		sceneryGraphics.lineTo(0, horizonY + (shoreY - horizonY) * 0.62)
-		sceneryGraphics.fill({ color: 0x2e6daf, alpha: 0.9 })
+			// 远海（深蓝）
+			oceanBgGraphics.moveTo(0, horizonY)
+			oceanBgGraphics.lineTo(w, horizonY)
+			oceanBgGraphics.lineTo(w, horizonY + (shoreY - horizonY) * 0.3)
+			oceanBgGraphics.lineTo(0, horizonY + (shoreY - horizonY) * 0.3)
+			oceanBgGraphics.fill({ color: 0x1a4a7a, alpha: 0.92 })
 
-		// 近海（浅蓝绿，最宽）
-		sceneryGraphics.moveTo(0, horizonY + (shoreY - horizonY) * 0.6)
-		sceneryGraphics.lineTo(w, horizonY + (shoreY - horizonY) * 0.6)
-		sceneryGraphics.lineTo(w, shoreY)
-		sceneryGraphics.lineTo(0, shoreY)
-		sceneryGraphics.fill({ color: 0x4d9fd6, alpha: 0.88 })
+			// 中海（中蓝）
+			oceanBgGraphics.moveTo(0, horizonY + (shoreY - horizonY) * 0.28)
+			oceanBgGraphics.lineTo(w, horizonY + (shoreY - horizonY) * 0.28)
+			oceanBgGraphics.lineTo(w, horizonY + (shoreY - horizonY) * 0.62)
+			oceanBgGraphics.lineTo(0, horizonY + (shoreY - horizonY) * 0.62)
+			oceanBgGraphics.fill({ color: 0x2e6daf, alpha: 0.9 })
 
-		// 2. 海面透视波纹（水平线条，越靠近地平线越细密，体现透视感）
-		const waveLayerCount = 18
-		for (let i = 0; i < waveLayerCount; i++) {
-			// 透视插值：靠近地平线（i=0）的波纹尽量细，靠近水线（i=waveLayerCount-1）的波纹较粗
-			const t = i / (waveLayerCount - 1)
-			// 非线性分布：用 t^1.6 使近处波纹间距更大，远处更密
-			const tNL = Math.pow(t, 1.6)
-			const waveY = horizonY + tNL * (shoreY - horizonY)
+			// 近海（浅蓝绿）
+			oceanBgGraphics.moveTo(0, horizonY + (shoreY - horizonY) * 0.6)
+			oceanBgGraphics.lineTo(w, horizonY + (shoreY - horizonY) * 0.6)
+			oceanBgGraphics.lineTo(w, shoreY)
+			oceanBgGraphics.lineTo(0, shoreY)
+			oceanBgGraphics.fill({ color: 0x4d9fd6, alpha: 0.88 })
 
-			// 波浪振幅也随透视增大
-			const amp = 2 + t * 14
-			// 波浪频率随透视变小（远处看起来波长更短）
-			const freq = 0.012 - t * 0.007
-			// 透明度
-			const alpha = 0.18 + t * 0.45
-			// 线宽
-			const lw = 0.8 + t * 2.5
+			// 沙滩色块也随尺寸一起重绘
+			beachBgGraphics.clear()
 
-			sceneryGraphics.moveTo(0, waveY + Math.sin(time * (1.2 - t * 0.5) + 0) * amp)
-			for (let x = 10; x <= w; x += 10) {
-				sceneryGraphics.lineTo(x, waveY + Math.sin(time * (1.2 - t * 0.5) + x * freq) * amp + Math.sin(time * 0.7 + x * freq * 1.7 + i) * amp * 0.4)
+			// 湿沙区
+			beachBgGraphics.moveTo(-10, beachTopY + 8)
+			for (let x = 0; x <= w + 20; x += 20) {
+				beachBgGraphics.lineTo(x, beachTopY + 8 + Math.sin(x * 0.015) * 4)
 			}
-			sceneryGraphics.stroke({ color: 0xaaddff, alpha, width: lw })
+			beachBgGraphics.lineTo(w + 20, beachTopY + h * 0.09)
+			beachBgGraphics.lineTo(-10, beachTopY + h * 0.09)
+			beachBgGraphics.fill({ color: 0xc8b89a, alpha: 1 })
+
+			// 干沙区
+			beachBgGraphics.moveTo(-10, beachTopY + h * 0.07)
+			beachBgGraphics.lineTo(w + 20, beachTopY + h * 0.07)
+			beachBgGraphics.lineTo(w + 20, h + 10)
+			beachBgGraphics.lineTo(-10, h + 10)
+			beachBgGraphics.fill({ color: 0xe8d5b0, alpha: 1 })
+
+			// resize 后需重新初始化贝壳细节
+			beachDetailInited = false
+			beachDetailGraphics.clear()
 		}
 
-		// 3. 海面高光（模拟阳光在水面上的闪烁光斑）
-		const glintCount = 30
+		// 2. 波纹 + 高光
+		waveGraphics.clear()
+
+		const waveLayerCount = 10
+		for (let i = 0; i < waveLayerCount; i++) {
+			const t = i / (waveLayerCount - 1)
+			const tNL = Math.pow(t, 1.6)
+			const waveY = horizonY + tNL * (shoreY - horizonY)
+			const amp = 2 + t * 14
+			const freq = 0.012 - t * 0.007
+			const alpha = 0.18 + t * 0.45
+			const lw = 0.8 + t * 2.5
+
+			waveGraphics.moveTo(0, waveY + Math.sin(time * (1.2 - t * 0.5)) * amp)
+			for (let x = 18; x <= w; x += 18) {
+				waveGraphics.lineTo(x, waveY + Math.sin(time * (1.2 - t * 0.5) + x * freq) * amp + Math.sin(time * 0.7 + x * freq * 1.7 + i) * amp * 0.4)
+			}
+			waveGraphics.stroke({ color: 0xaaddff, alpha, width: lw })
+		}
+
+		// 高光光斑
+		const glintCount = 16
 		for (let i = 0; i < glintCount; i++) {
-			// 固定"随机"种子：用正弦函数避免每帧重新随机
 			const gx = (Math.sin(i * 37.13) * 0.5 + 0.5) * w
 			const gyRatio = Math.sin(i * 53.77) * 0.5 + 0.5
 			const gy = horizonY + gyRatio * (shoreY - horizonY)
 			const glintAlpha = (0.4 + Math.sin(time * 3.1 + i * 1.7) * 0.35) * gyRatio
 			const glintSize = (1 + gyRatio * 3) * (0.6 + Math.sin(time * 2 + i) * 0.4)
-			if (glintAlpha > 0.05 && glintSize > 0.3) {
-				sceneryGraphics.ellipse(gx, gy, glintSize * 3, glintSize * 0.8)
-				sceneryGraphics.fill({ color: 0xffffff, alpha: Math.min(glintAlpha, 0.7) })
+			if (glintAlpha > 0.08 && glintSize > 0.5) {
+				waveGraphics.ellipse(gx, gy, glintSize * 3, glintSize * 0.8)
+				waveGraphics.fill({ color: 0xffffff, alpha: Math.min(glintAlpha, 0.7) })
 			}
 		}
 
-		// 4. 近岸破碎浪（水线处，有弧度的白色泡沫）
+		// 3. 破碎浪泡沫
 		foamGraphics.clear()
 
-		//退潮渗透过渡层（水线下方，薄薄一层半透明蓝绿，柔化水-沙交界）
+		// 退潮渗透过渡层
 		foamGraphics.moveTo(0, shoreY - 4)
-		for (let x = 0; x <= w; x += 8) {
+		for (let x = 0; x <= w; x += 14) {
 			foamGraphics.lineTo(x, shoreY - 4 + Math.sin(time * 1.0 + x * 0.016) * 5)
 		}
-		for (let x = w; x >= 0; x -= 8) {
+		for (let x = w; x >= 0; x -= 14) {
 			foamGraphics.lineTo(x, shoreY + 28 + Math.sin(time * 0.7 + x * 0.019) * 5)
 		}
 		foamGraphics.fill({ color: 0x7ec8e8, alpha: 0.32 })
 
-		// 破碎浪主体（白色泡沫带）
+		// 破碎浪主体
 		foamGraphics.moveTo(0, shoreY + Math.sin(time * 1.1) * 5)
-		for (let x = 0; x <= w; x += 8) {
+		for (let x = 0; x <= w; x += 14) {
 			foamGraphics.lineTo(x, shoreY + Math.sin(time * 1.1 + x * 0.018) * 6 + Math.sin(time * 2.3 + x * 0.031) * 3)
 		}
-		for (let x = w; x >= 0; x -= 8) {
+		for (let x = w; x >= 0; x -= 14) {
 			foamGraphics.lineTo(x, shoreY + 14 + Math.sin(time * 0.9 + x * 0.022) * 4)
 		}
 		foamGraphics.fill({ color: 0xdff3ff, alpha: 0.72 })
 
-		// 浪沫小泡（点状）
-		for (let fi = 0; fi < 28; fi++) {
+		// 浪沫小泡
+		for (let fi = 0; fi < 16; fi++) {
 			const fx = (Math.sin(fi * 41.3 + time * 0.4) * 0.5 + 0.5) * w
 			const fy = shoreY + 2 + (Math.sin(fi * 29.7 + time * 0.6) * 0.5 + 0.5) * 14
 			const fr = 1.5 + Math.sin(fi + time * 2) * 1.2
@@ -302,53 +339,40 @@ const initPixiAnimation = async () => {
 			}
 		}
 
-		// 5. 沙滩主体
-		beachGraphics.clear()
-
-		// 水沙过渡带
-		for (let ti = 0; ti < 6; ti++) {
-			const tRatio = ti / 5
-			const bandY = beachTopY + 4 + tRatio * 18
-			beachGraphics.moveTo(0, bandY + Math.sin(ti * 1.3 + time * 0.4) * 3)
-			for (let x = 0; x <= w + 20; x += 16) {
-				beachGraphics.lineTo(x, bandY + Math.sin(x * 0.014 + ti * 1.3 + time * 0.4) * 4)
+		// 4. 水沙过渡带
+		if (time - lastTransitionRedraw > TRANSITION_INTERVAL) {
+			lastTransitionRedraw = time
+			transitionGraphics.clear()
+			for (let ti = 0; ti < 6; ti++) {
+				const tRatio = ti / 5
+				const bandY = beachTopY + 4 + tRatio * 18
+				transitionGraphics.moveTo(0, bandY + Math.sin(ti * 1.3 + time * 0.4) * 3)
+				for (let x = 0; x <= w + 20; x += 24) {
+					transitionGraphics.lineTo(x, bandY + Math.sin(x * 0.014 + ti * 1.3 + time * 0.4) * 4)
+				}
+				const bandColor = tRatio < 0.5 ? 0xa8cfe0 : 0xc0b090
+				transitionGraphics.stroke({ color: bandColor, alpha: 0.28 - tRatio * 0.12, width: 4 + tRatio * 3 })
 			}
-			// 从浅蓝（靠近水）渐变到沙色（靠近沙滩）
-			const bandColor = tRatio < 0.5 ? 0xa8cfe0 : 0xc0b090
-			beachGraphics.stroke({ color: bandColor, alpha: 0.28 - tRatio * 0.12, width: 4 + tRatio * 3 })
 		}
 
-		// 湿沙区（靠近水线，颜色较深）
-		beachGraphics.moveTo(-10, beachTopY + 8)
-		for (let x = 0; x <= w + 20; x += 20) {
-			beachGraphics.lineTo(x, beachTopY + 8 + Math.sin(x * 0.015 + time * 0.3) * 4)
-		}
-		beachGraphics.lineTo(w, beachTopY + h * 0.09)
-		beachGraphics.lineTo(0, beachTopY + h * 0.09)
-		beachGraphics.fill({ color: 0xc8b89a, alpha: 1 })
-
-		// 干沙区（远离水线，颜色较浅暖）
-		beachGraphics.moveTo(0, beachTopY + h * 0.07)
-		beachGraphics.lineTo(w, beachTopY + h * 0.07)
-		beachGraphics.lineTo(w, h)
-		beachGraphics.lineTo(0, h)
-		beachGraphics.fill({ color: 0xe8d5b0, alpha: 1 })
-
-		// 沙滩纹理线条（平行的细浪痕，近大远小）
-		for (let si = 0; si < 12; si++) {
-			const t2 = si / 11
-			const sy = beachTopY + 12 + t2 * (h - beachTopY - 12)
-			const lineAlpha = 0.08 + t2 * 0.1
-			const lineWidth = 0.5 + t2 * 1.5
-			beachGraphics.moveTo(-10, sy + Math.sin(sy * 0.03 + time * 0.15) * (2 + t2 * 6))
-			for (let x = 0; x <= w + 20; x += 20) {
-				// 从-10开始，到w+20结束
-				beachGraphics.lineTo(x, sy + Math.sin(x * 0.012 + sy * 0.025 + time * 0.15) * (2 + t2 * 6))
+		// 5. 沙滩纹理线
+		if (time - lastBeachLineRedraw > BEACH_LINE_INTERVAL) {
+			lastBeachLineRedraw = time
+			beachLineGraphics.clear()
+			for (let si = 0; si < 12; si++) {
+				const t2 = si / 11
+				const sy = beachTopY + 12 + t2 * (h - beachTopY - 12)
+				const lineAlpha = 0.08 + t2 * 0.1
+				const lineWidth = 0.5 + t2 * 1.5
+				beachLineGraphics.moveTo(-10, sy + Math.sin(sy * 0.03 + time * 0.15) * (2 + t2 * 6))
+				for (let x = 0; x <= w + 20; x += 28) {
+					beachLineGraphics.lineTo(x, sy + Math.sin(x * 0.012 + sy * 0.025 + time * 0.15) * (2 + t2 * 6))
+				}
+				beachLineGraphics.stroke({ color: 0xa08060, alpha: lineAlpha, width: lineWidth })
 			}
-			beachGraphics.stroke({ color: 0xa08060, alpha: lineAlpha, width: lineWidth })
 		}
 
-		// 6. 沙滩细节（贝壳、小石子）
+		// 6. 沙滩细节（贝壳、小石子、脚印）—— 一次性绘制
 		if (!beachDetailInited && w > 0 && h > 0) {
 			beachDetailInited = true
 			beachDetailGraphics.clear()
@@ -361,12 +385,10 @@ const initPixiAnimation = async () => {
 				const isShell = Math.random() > 0.45
 
 				if (isShell) {
-					// 贝壳：椭圆 + 几条纹路
 					beachDetailGraphics.ellipse(sx, sy, sr * 1.8, sr)
 					beachDetailGraphics.fill({ color: 0xf5e6d0, alpha: 0.85 })
 					beachDetailGraphics.ellipse(sx, sy, sr * 1.8, sr)
 					beachDetailGraphics.stroke({ color: 0xc8a878, alpha: 0.5, width: 0.6 })
-					// 贝壳纹路
 					for (let li = 1; li <= 3; li++) {
 						const lx = sx - sr * 1.4 + (li / 4) * sr * 2.8
 						beachDetailGraphics.moveTo(lx, sy - sr * 0.7)
@@ -374,32 +396,27 @@ const initPixiAnimation = async () => {
 						beachDetailGraphics.stroke({ color: 0xb89060, alpha: 0.35, width: 0.5 })
 					}
 				} else {
-					// 小石子：不规则圆
 					const stoneColor = [0xb0a090, 0x9a8878, 0xccc0b0][Math.floor(Math.random() * 3)]
 					beachDetailGraphics.ellipse(sx, sy, sr * (0.8 + Math.random() * 0.5), sr * (0.6 + Math.random() * 0.5))
 					beachDetailGraphics.fill({ color: stoneColor, alpha: 0.75 })
 				}
 			}
 
-			// 沙滩上的脚印（简单椭圆对）
 			const footprintCount = 6
 			for (let fi = 0; fi < footprintCount; fi++) {
 				const fpx = 0.05 * w + Math.random() * w * 0.9
 				const fpy = beachTopY + 25 + Math.random() * (h - beachTopY - 50)
 				const fSize = 3 + Math.random() * 3
-				// 左脚
 				beachDetailGraphics.ellipse(fpx - fSize * 0.7, fpy, fSize * 0.65, fSize * 1.4)
 				beachDetailGraphics.fill({ color: 0xc0a87a, alpha: 0.45 })
-				// 右脚
 				beachDetailGraphics.ellipse(fpx + fSize * 0.7, fpy + fSize * 2, fSize * 0.65, fSize * 1.4)
 				beachDetailGraphics.fill({ color: 0xc0a87a, alpha: 0.45 })
 			}
 		}
 
-		// 7. 白云动画（移出右侧后从左侧随机高度重入）
+		// 7. 白云动画
 		clouds.forEach(c => {
 			c.sprite.x += c.speed * dt
-			// 移出右侧后，从左侧（屏幕外）以新的随机高度重新进入
 			if (c.sprite.x - c.sprite.width * c.sprite.scale.x > app.screen.width) {
 				c.sprite.x = -c.sprite.width * c.sprite.scale.x - 60
 				c.sprite.y = Math.random() * (app.screen.height * 0.42)
@@ -420,7 +437,7 @@ const initPixiAnimation = async () => {
 			}
 		})
 
-		// 9. 视差效果（仅作用于天空容器）
+		// 9. 视差效果
 		const targetX = (mouseX.value / windowWidth.value - 0.5) * -45
 		const targetY = (mouseY.value / windowHeight.value - 0.5) * -25
 		skyContainer.x += (targetX - skyContainer.x) * 0.05

@@ -4,12 +4,11 @@ import { Server } from "socket.io"
 import cors from "cors"
 import config from "./config/config"
 import { MediasoupManager } from "./core/mediasoup-manager"
-import { SignalingHandler } from "./features/socket-handler"
+import { SocketHandler } from "./features/socket-handler"
 import { NacosClient } from "./utils/nacos-client"
 import { GrpcClient } from "./utils/grpc-client"
 import { Logger } from "./utils/logger"
 import { RoomManager } from "./core/room-manager"
-import { GrpcServer } from "./features/grpc-server"
 import { GlobalErrorHandler } from "./utils/error-handler"
 
 const logger = new Logger("SFU-Server")
@@ -49,7 +48,7 @@ async function startServer() {
 		})
 		// 统计端点
 		app.get("/metrics", (req, res) => {
-			const handler = (httpServer as any).signalingHandler as SignalingHandler
+			const handler = (httpServer as any).socketHandler as SocketHandler
 			if (handler && handler["monitoring"]) {
 				res.json(handler["monitoring"].getMetrics())
 			} else {
@@ -90,9 +89,9 @@ async function startServer() {
 
 		// 初始化Socket接口
 		logger.info("Initializing Socket Handler...")
-		const signalingHandler = new SignalingHandler(io)
+		const socketHandler = new SocketHandler(io)
 
-		signalingHandler["monitoring"].startPeriodicLogging(60000)
+		socketHandler["monitoring"].startPeriodicLogging(60000)
 
 		// 初始化 Nacos 客户端并注册服务
 		logger.info("Initializing Nacos client...")

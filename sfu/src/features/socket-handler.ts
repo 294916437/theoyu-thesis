@@ -10,7 +10,7 @@ import { MonitoringService } from "./monitoring-service"
 import config from "../config/config"
 import type * as mediasoupTypes from "mediasoup/node/lib/types"
 
-export class SignalingHandler {
+export class SocketHandler {
 	private io: Server
 	private roomManager: RoomManager
 	private grpcClient: GrpcClient
@@ -18,7 +18,7 @@ export class SignalingHandler {
 	private sessionManager: SessionManager
 	private transportManager: TransportManager
 	private monitoring: MonitoringService
-	private logger = new Logger("SignalingHandler")
+	private logger = new Logger("SocketHandler")
 
 	constructor(io: Server) {
 		this.io = io

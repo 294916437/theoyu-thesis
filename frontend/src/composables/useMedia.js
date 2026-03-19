@@ -220,7 +220,7 @@ export function useMedia() {
 	}
 
 	/**
-	 * 渲染循环 - 应用特效（改为定时器驱动，增强稳定性）
+	 * 渲染循环 - 应用特效
 	 */
 	function renderLoop() {
 		// 使用闭包或全局引用 sourceVideoElement
@@ -1034,7 +1034,7 @@ export function useMedia() {
 	 * 设置 Socket 事件监听
 	 */
 	function setupSocketListeners() {
-		// 注册心跳监听(测试暂时关闭)
+		// 注册心跳监听
 		socketClient.on('ping', data => {
 			console.log('Received ping from server', data)
 			// 立即响应 pong
@@ -1202,7 +1202,7 @@ export function useMedia() {
 
 			// 如果 spatialLayer 为 0，说明 SFU 因为带宽不足将流降级到了最低画质
 			if (spatialLayer === 0) {
-				// 查找是哪个用户的流降级了（可选：用于更精确的提示）
+				// 查找对应用户并通知可能的网络问题
 				const participant = participants.value.find(p => p.consumers && p.consumers[consumerId])
 				if (participant && !participant.isLocal) {
 					notifyPoorNetwork(participant.username)
@@ -1765,7 +1765,7 @@ export function useMedia() {
 	}
 
 	/**
-	 * 启动统计信息收集
+	 * 启动统计信息收集(暂时未启用 )
 	 */
 	function startStatsCollection() {
 		// 清理旧的定时器

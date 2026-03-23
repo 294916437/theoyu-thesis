@@ -69,12 +69,6 @@ export function useParticipants(roomId, sfuParticipants) {
 	 * 获取在线参与者
 	 */
 	const onlineParticipants = computed(() => mergedParticipants.value.filter(p => p.status === 1))
-
-	/**
-	 * 获取离线参与者（历史记录）
-	 */
-	const offlineParticipants = computed(() => mergedParticipants.value.filter(p => p.status === 2))
-
 	/**
 	 * 从后端加载参与者列表
 	 */
@@ -135,7 +129,6 @@ export function useParticipants(roomId, sfuParticipants) {
 		// 数据
 		mergedParticipants,
 		onlineParticipants,
-		offlineParticipants,
 		loading,
 		error,
 

@@ -12,6 +12,10 @@ const props = defineProps({
 		type: Boolean,
 		default: false,
 	},
+	hostId: {
+		type: [String, Number],
+		default: null,
+	},
 	currentUserId: {
 		type: String,
 		required: true,
@@ -36,8 +40,15 @@ const props = defineProps({
 const emit = defineEmits(['host-toggle-audio', 'host-toggle-video', 'mute-all', 'disable-all-video', 'remove-participant'])
 // 按角色分组
 const participantsByRole = computed(() => {
-	const members = props.participants.filter(p => p.role === 1 && p.status === 1)
-	const hosts = props.participants.filter(p => p.role === 2 && p.status === 1)
+	const hosts = props.participants.filter(p => String(p.userId) === String(props.hostId))
+	const members = props.participants.filter(p => String(p.userId) !== String(props.hostId))
+
+	// 打印区分结果
+	console.log('Participants by role:', {
+		hosts: hosts.map(h => ({ id: h.userId, name: h.username })),
+		members: members.map(m => ({ id: m.userId, name: m.username })),
+	})
+
 	return { hosts, members }
 })
 

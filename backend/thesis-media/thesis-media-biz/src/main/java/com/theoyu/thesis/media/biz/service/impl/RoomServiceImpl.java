@@ -611,16 +611,25 @@ public class RoomServiceImpl implements RoomService {
 
             if (members != null) {
                 for (Object member : members) {
-                    ParticipantListItemVO vo = JsonUtils.parseObject(
-                            member.toString(), ParticipantListItemVO.class);
+                    try {
+                        String jsonStr = member.toString();
+                        if (!jsonStr.trim().startsWith("{")) {
+                            continue; // 跳过由于旧逻辑遗留的纯 userId 脏数据
+                        }
+                        
+                        ParticipantListItemVO vo = JsonUtils.parseObject(
+                                jsonStr, ParticipantListItemVO.class);
 
-                    if (vo != null && vo.getUserId().equals(userId)) {
-                        // 从在线 Set 中删除
-                        redisTemplate.opsForSet().remove(onlineKey, member);
+                        if (vo != null && vo.getUserId().equals(userId)) {
+                            // 从在线 Set 中删除
+                            redisTemplate.opsForSet().remove(onlineKey, member);
 
-                        log.info("[RoomService] 从在线缓存移除参与者 - roomId: {}, userId: {}",
-                                roomId, userId);
-                        break;
+                            log.info("[RoomService] 从在线缓存移除参与者 - roomId: {}, userId: {}",
+                                    roomId, userId);
+                            break;
+                        }
+                    } catch (Exception e) {
+                        log.warn("[RoomService] 解析在线参与者缓存异常，跳过记录: {}", member);
                     }
                 }
             }
@@ -882,7 +891,19 @@ public class RoomServiceImpl implements RoomService {
 
             // 反序列化为 VO 对象
             List<ParticipantListItemVO> allParticipants = members.stream()
-                    .map(obj -> JsonUtils.parseObject(obj.toString(), ParticipantListItemVO.class))
+                    .map(obj -> {
+                        try {
+                            String jsonStr = obj.toString();
+                            // 简单判定是否为 JSON 对象字符串
+                            if (!jsonStr.trim().startsWith("{")) {
+                                return null;
+                            }
+                            return JsonUtils.parseObject(jsonStr, ParticipantListItemVO.class);
+                        } catch (Exception e) {
+                            log.warn("[RoomService] 忽略格式异常的在线参与者缓存数据: {}", obj);
+                            return null;
+                        }
+                    })
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
 

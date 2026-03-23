@@ -122,8 +122,9 @@
 								<!-- 参与者列表 -->
 								<v-tabs-window-item value="participants" class="fill-height">
 									<ParticipantsList
-										:participants="mergedParticipants"
+										:participants="onlineParticipants"
 										:is-host="isHost"
+										:host-id="meetingInfo.hostId"
 										:current-user-id="currentUserId"
 										:meeting-no="meetingInfo.roomNo"
 										:meeting-id="meetingInfo.roomId"
@@ -1021,7 +1022,7 @@ const changeBackground = async bgId => {
 	effectType.value = 'replace'
 }
 // ==================== 房间参与者 ====================
-const { mergedParticipants, onlineParticipants, loading: participantsLoading, loadParticipants } = useParticipants(roomId, participants)
+const { mergedParticipants, onlineParticipants, loadParticipants } = useParticipants(roomId, participants)
 // ==================== 网络状态监控 ====================
 const online = useOnline()
 const networkState = useNetwork()

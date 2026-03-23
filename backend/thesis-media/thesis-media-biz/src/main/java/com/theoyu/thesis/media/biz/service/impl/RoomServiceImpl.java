@@ -14,8 +14,10 @@ import com.theoyu.thesis.media.biz.grpc.SFUGrpcServer;
 import com.theoyu.thesis.media.biz.model.dto.RoomCreatedEventDTO;
 import com.theoyu.thesis.media.biz.model.entity.RoomPO;
 import com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO;
+import com.theoyu.thesis.media.biz.model.entity.RoomRecordPO;
 import com.theoyu.thesis.media.biz.model.mapper.RoomPOMapper;
 import com.theoyu.thesis.media.biz.model.mapper.RoomParticipantPOMapper;
+import com.theoyu.thesis.media.biz.model.mapper.RoomRecordPOMapper;
 import com.theoyu.thesis.media.biz.model.vo.*;
 import com.theoyu.thesis.media.biz.rpc.UserRpcService;
 import com.theoyu.thesis.media.biz.rpc.IdGeneratorRpcService;
@@ -44,6 +46,9 @@ public class RoomServiceImpl implements RoomService {
 
     @Resource
     private RoomParticipantPOMapper roomParticipantPOMapper;
+
+    @Resource
+    private RoomRecordPOMapper roomRecordPOMapper;
 
     @Resource
     private IdGeneratorRpcService idGeneratorRpcService;
@@ -203,19 +208,23 @@ public class RoomServiceImpl implements RoomService {
             // 5. 计算持续时间（分钟）
             Integer duration = calculateDuration(room);
 
-            // 6. 构建响应
+            // 6. 获取录像信息
+            RoomRecordPO roomRecord = roomRecordPOMapper.selectByRoomIdAndHostId(roomId, room.getHostId());
+
+            // 7. 构建响应
             return GetRoomDetailResVO.builder()
                     .roomId(room.getId())
                     .roomNo(room.getRoomNo())
                     .title(room.getTitle())
                     .description(room.getSettings()) // 假设 settings 包含描述信息
                     .startTime(room.getStartTime())
+                    .endTime(room.getEndTime()) // 补充 endTime
                     .duration(duration)
                     .status(room.getStatus())
                     .host(hostInfo)
                     .participantCount(participants.size())
                     .participants(participants)
-                    .recording(buildRecordingInfo())
+                    .recording(buildRecordingInfo(roomRecord)) // 传入 roomRecord
                     .transcript(buildTranscriptInfo())
                     .build();
 
@@ -826,14 +835,24 @@ public class RoomServiceImpl implements RoomService {
     }
 
     /**
-     * 构建录像信息（预留）
+     * 构建录像信息
      */
-    private GetRoomDetailResVO.RecordingInfo buildRecordingInfo() {
+    private GetRoomDetailResVO.RecordingInfo buildRecordingInfo(RoomRecordPO roomRecord) {
+        if (roomRecord == null || roomRecord.getStatus() != 2) {
+            // 假设 status = 2 表示录制完成且可用
+            return GetRoomDetailResVO.RecordingInfo.builder()
+                    .available(false)
+                    .url("")
+                    .size(0L)
+                    .duration(0)
+                    .build();
+        }
+
         return GetRoomDetailResVO.RecordingInfo.builder()
-                .available(false)
-                .url("")
-                .size(0L)
-                .duration(0)
+                .available(true)
+                .url(roomRecord.getFileUrl())
+                .size(roomRecord.getFileSize() != null ? roomRecord.getFileSize().longValue() : 0L)
+                .duration(roomRecord.getDuration() != null ? roomRecord.getDuration() : 0)
                 .build();
     }
 

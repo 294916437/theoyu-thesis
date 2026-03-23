@@ -161,11 +161,11 @@
 										<v-btn icon="mdi-dots-vertical" variant="text" color="grey-darken-1" v-bind="props"></v-btn>
 									</template>
 									<v-list>
-										<v-list-item v-if="meetingDetail.recording?.available" @click="downloadRecording">
+										<v-list-item v-if="meetingDetail.recording?.available" @click="openPreview(meetingDetail.recording.url, 'record.mp4')">
 											<template #prepend>
 												<v-icon color="primary">mdi-download</v-icon>
 											</template>
-											<v-list-item-title>下载录像</v-list-item-title>
+											<v-list-item-title>预览&下载录像</v-list-item-title>
 										</v-list-item>
 										<v-list-item v-if="meetingDetail.transcript?.available" @click="exportTranscript">
 											<template #prepend>
@@ -268,7 +268,7 @@
 						</v-card-title>
 						<v-divider></v-divider>
 						<v-list>
-							<v-list-item v-if="meetingDetail.recording?.available" @click="playRecording" class="px-6">
+							<v-list-item v-if="meetingDetail.recording?.available" class="px-6" @click="openPreview(meetingDetail.recording.url, 'record.mp4')">
 								<template #prepend>
 									<v-icon color="primary">mdi-play-circle</v-icon>
 								</template>
@@ -296,7 +296,7 @@
 						<v-divider></v-divider>
 						<v-list>
 							<template v-for="(related, index) in relatedMeetings" :key="related.roomNo">
-								<v-list-item @click="navigateToMeeting(related.roomNo)" class="px-6">
+								<v-list-item class="px-6" @click="navigateToMeeting(related.roomNo)">
 									<template #prepend>
 										<v-icon color="secondary">mdi-video</v-icon>
 									</template>
@@ -334,6 +334,16 @@
 				</v-card-actions>
 			</v-card>
 		</v-dialog>
+		<!-- 录像预览对话框 -->
+		<FilePreview
+			v-model="previewVisible"
+			:file-url="previewFileUrl"
+			:file-name="previewFileName"
+			:file-type="previewFileType"
+			:download-progress="downloadProgress"
+			@download="downloadFile"
+			@close="closePreview"
+		/>
 	</v-container>
 </template>
 
@@ -341,18 +351,30 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDateFormat, useClipboard } from '@vueuse/core'
-import MeetingStatistics from '../components/MeetingStatistics.vue'
-import MeetingForm from '../components/MeetingForm.vue'
+import { useFilePreview } from '@/composables/useFilePreview'
+import { useUserStore } from '@/stores/user'
 import { $notify } from '@/plugins/notification'
 import { fetchMeetingDetail, updateMeeting, deleteMeeting } from '@/api/room'
-import { useUserStore } from '@/stores/user'
+import MeetingStatistics from '../components/MeetingStatistics.vue'
+import MeetingForm from '../components/MeetingForm.vue'
+import FilePreview from '@/components/common/FilePreview.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { copy, copied } = useClipboard()
 const userStore = useUserStore()
 const currentUserId = computed(() => userStore.user?.id)
-
+// ==================== 文件预览与下载 ====================
+const {
+	visible: previewVisible,
+	fileUrl: previewFileUrl,
+	fileName: previewFileName,
+	fileType: previewFileType,
+	downloadProgress,
+	openPreview,
+	closePreview,
+	downloadFile,
+} = useFilePreview()
 // 响应式数据
 const loading = ref(false)
 const error = ref(null)
@@ -361,6 +383,14 @@ const relatedMeetings = ref([])
 const showEditDialog = ref(false)
 const showDeleteDialog = ref(false)
 
+const handleDownloadFromPreview = async ({ url, name }) => {
+	try {
+		await downloadFile({ url, name })
+	} catch (error) {
+		console.error('Download failed:', error)
+		$notify.error('下载失败，请重试')
+	}
+}
 // 会议链接
 const meetingLink = computed(() => {
 	if (!meetingDetail.value) return ''
@@ -560,27 +590,11 @@ const handleDelete = async () => {
 	}
 }
 
-const downloadRecording = () => {
-	if (meetingDetail.value.recording?.url) {
-		window.open(meetingDetail.value.recording.url, '_blank')
-	} else {
-		$notify.warning('录像文件不可用')
-	}
-}
-
 const exportTranscript = () => {
 	if (meetingDetail.value.transcript?.url) {
 		window.open(meetingDetail.value.transcript.url, '_blank')
 	} else {
 		$notify.warning('记录文件不可用')
-	}
-}
-
-const playRecording = () => {
-	if (meetingDetail.value.recording?.url) {
-		window.open(meetingDetail.value.recording.url, '_blank')
-	} else {
-		$notify.warning('录像文件不可用')
 	}
 }
 

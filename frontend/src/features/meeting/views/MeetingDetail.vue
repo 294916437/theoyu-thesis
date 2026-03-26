@@ -383,14 +383,6 @@ const relatedMeetings = ref([])
 const showEditDialog = ref(false)
 const showDeleteDialog = ref(false)
 
-const handleDownloadFromPreview = async ({ url, name }) => {
-	try {
-		await downloadFile({ url, name })
-	} catch (error) {
-		console.error('Download failed:', error)
-		$notify.error('下载失败，请重试')
-	}
-}
 // 会议链接
 const meetingLink = computed(() => {
 	if (!meetingDetail.value) return ''

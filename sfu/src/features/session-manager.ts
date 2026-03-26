@@ -29,10 +29,13 @@ export class SessionManager {
 	): Promise<Session> {
 		const { roomId, userId, username, token } = data
 
-		// 验证 Token
+		// 通过gRPC调用SprintCloud的业务接口，验证房间的访问权限
 		const validation = await this.grpcClient.validateRoomAccess(roomId, userId, token)
 		if (!validation.allowed) {
-			throw new Error(`Access denied: ${validation.message}`)
+			// 抛出可以由withErrorHandling捕获的错误
+			const error: any = new Error(validation.message || "Access denied")
+			error.code = "FORBIDDEN"
+			throw error
 		}
 
 		// 创建会话

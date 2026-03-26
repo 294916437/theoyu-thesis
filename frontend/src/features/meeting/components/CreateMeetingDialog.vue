@@ -45,6 +45,20 @@
 						class="mb-4"
 					></v-select>
 
+					<!-- 开始时间（仅预约会议显示） -->
+					<v-text-field
+						v-show="formData.type === 2"
+						v-model="formData.startTime"
+						label="开始时间"
+						type="datetime-local"
+						variant="outlined"
+						density="comfortable"
+						color="primary"
+						prepend-inner-icon="mdi-clock-outline"
+						class="mb-4"
+						:rules="startTimeRules"
+					></v-text-field>
+
 					<!-- 最大参与者数量 -->
 					<v-text-field
 						v-model.number="formData.maxParticipants"
@@ -92,14 +106,7 @@
 									<v-label class="text-body-2 font-weight-medium mb-2">会议设置</v-label>
 
 									<!-- 启用录制 -->
-									<v-switch
-										v-model="settings.enableRecording"
-										label="启用录制"
-										color="primary"
-										hide-details
-										density="comfortable"
-										class="mb-2"
-									>
+									<v-switch v-model="settings.enableRecording" label="启用录制" color="primary" hide-details density="comfortable" class="mb-2">
 										<template #prepend>
 											<v-icon color="primary">mdi-record-rec</v-icon>
 										</template>
@@ -123,27 +130,14 @@
 									></v-select>
 
 									<!-- 等候室 -->
-									<v-switch
-										v-model="settings.enableWaitingRoom"
-										label="启用等候室"
-										color="primary"
-										hide-details
-										density="comfortable"
-										class="mb-2"
-									>
+									<v-switch v-model="settings.enableWaitingRoom" label="启用等候室" color="primary" hide-details density="comfortable" class="mb-2">
 										<template #prepend>
 											<v-icon color="primary">mdi-door-open</v-icon>
 										</template>
 									</v-switch>
 
 									<!-- 禁用摄像头 -->
-									<v-switch
-										v-model="settings.disableCamera"
-										label="默认关闭摄像头"
-										color="primary"
-										hide-details
-										density="comfortable"
-									>
+									<v-switch v-model="settings.disableCamera" label="默认关闭摄像头" color="primary" hide-details density="comfortable">
 										<template #prepend>
 											<v-icon color="primary">mdi-camera-off</v-icon>
 										</template>
@@ -173,11 +167,16 @@
 <script setup>
 import { ref, reactive, watch } from 'vue'
 import { $notify } from '@/plugins/notification'
+import { useDateFormat } from '@vueuse/core'
 
 const props = defineProps({
 	modelValue: {
 		type: Boolean,
 		default: false,
+	},
+	userName: {
+		type: String,
+		default: '',
 	},
 })
 
@@ -204,10 +203,11 @@ const loading = ref(false)
 
 // 表单数据
 const formData = reactive({
-	title: '',
-	type: 1,
+	title: `${props.userName}的会议`,
+	type: 2, // 默认为预约会议
 	maxParticipants: 15,
 	sfuNodeId: 0,
+	startTime: '', // 添加开始时间
 })
 
 // 会议设置
@@ -228,18 +228,11 @@ const meetingTypes = [
 const codecOptions = ['opus', 'VP8', 'VP9', 'H264', 'H265', 'AV1']
 
 // 表单验证规则
-const titleRules = [
-	v => !!v || '会议标题不能为空',
-	v => (v && v.length >= 2) || '会议标题至少2个字符',
-	v => (v && v.length <= 50) || '会议标题不能超过50个字符',
-]
+const titleRules = [v => !!v || '会议标题不能为空', v => (v && v.length >= 2) || '会议标题至少2个字符', v => (v && v.length <= 50) || '会议标题不能超过50个字符']
 
-const maxParticipantsRules = [
-	v => !!v || '参与者数量不能为空',
-	v => v > 0 || '参与者数量必须大于0',
-	v => v <= 100 || '参与者数量不能超过100',
-]
+const maxParticipantsRules = [v => !!v || '参与者数量不能为空', v => v > 0 || '参与者数量必须大于0', v => v <= 100 || '参与者数量不能超过100']
 
+const startTimeRules = [v => formData.type !== 2 || !!v || '请选择开始时间', v => formData.type !== 2 || !v || new Date(v).getTime() > Date.now() || '开始时间必须晚于当前时间']
 // 关闭对话框
 const handleClose = () => {
 	if (!loading.value) {
@@ -254,6 +247,7 @@ const resetForm = () => {
 	formData.type = 1
 	formData.maxParticipants = 15
 	formData.sfuNodeId = 0
+	formData.startTime = ''
 
 	settings.enableRecording = false
 	settings.allowedCodecs = ['opus', 'VP8']
@@ -275,12 +269,17 @@ const handleSubmit = async () => {
 	try {
 		loading.value = true
 
+		// 处理时间格式化为后端要求的 "YYYY-MM-DD HH:mm:ss"
+		const rawTime = formData.type === 2 ? formData.startTime : new Date()
+		const formattedStartTime = useDateFormat(rawTime, 'YYYY-MM-DD HH:mm:ss').value
+
 		// 构建提交数据
 		const submitData = {
 			title: formData.title.trim(),
 			type: formData.type,
 			maxParticipants: formData.maxParticipants,
 			sfuNodeId: formData.sfuNodeId,
+			startTime: formattedStartTime,
 			settings: JSON.stringify(settings),
 		}
 

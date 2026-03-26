@@ -40,22 +40,14 @@
 									</v-list-item-subtitle>
 
 									<template #append>
-										<v-chip
-											size="small"
-											variant="flat"
-											color="primary-lighten-1"
-											class="font-weight-medium"
-										>
+										<v-chip size="small" variant="flat" color="primary-lighten-1" class="font-weight-medium">
 											{{ getTimeUntil(meeting.startTime) }}
 										</v-chip>
 									</template>
 								</v-list-item>
 							</v-list>
 
-							<v-skeleton-loader
-								v-else-if="upcomingLoading"
-								type="list-item-avatar-two-line@3"
-							></v-skeleton-loader>
+							<v-skeleton-loader v-else-if="upcomingLoading" type="list-item-avatar-two-line@3"></v-skeleton-loader>
 
 							<div v-else class="text-center py-8">
 								<v-icon size="64" color="grey-lighten-2" class="mb-4"> mdi-calendar-blank </v-icon>
@@ -80,13 +72,7 @@
 									<v-icon end>{{ showAllRecent ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
 								</v-btn>
 
-								<v-btn
-									icon
-									size="small"
-									variant="text"
-									:loading="recentLoading"
-									@click="loadRecentMeetings"
-								>
+								<v-btn icon size="small" variant="text" :loading="recentLoading" @click="loadRecentMeetings">
 									<v-icon>mdi-refresh</v-icon>
 								</v-btn>
 							</div>
@@ -96,10 +82,7 @@
 
 						<v-card-text class="px-6 pb-6">
 							<!-- 加载骨架屏 -->
-							<v-skeleton-loader
-								v-if="recentLoading"
-								type="list-item-avatar-three-line@5"
-							></v-skeleton-loader>
+							<v-skeleton-loader v-if="recentLoading" type="list-item-avatar-three-line@5"></v-skeleton-loader>
 
 							<!-- 会议列表 -->
 							<v-list v-else-if="recentMeetings.length > 0" class="py-0">
@@ -123,12 +106,7 @@
 									<v-list-item-subtitle class="d-flex align-center mb-1">
 										<v-icon size="16" class="mr-1">mdi-clock-outline</v-icon>
 										{{ formatDateTime(meeting.startTime) }}
-										<v-chip
-											size="small"
-											:color="getStatusColor(meeting.status)"
-											variant="flat"
-											class="ml-3"
-										>
+										<v-chip size="small" :color="getStatusColor(meeting.status)" variant="flat" class="ml-3">
 											{{ getStatusText(meeting.status) }}
 										</v-chip>
 									</v-list-item-subtitle>
@@ -160,7 +138,7 @@
 		</v-container>
 
 		<!-- 创建会议对话框 -->
-		<CreateMeetingDialog v-model="showCreateDialog" @submit="handleCreateMeeting" />
+		<CreateMeetingDialog v-model="showCreateDialog" :user-name="userName" @submit="handleCreateMeeting" />
 	</v-container>
 </template>
 
@@ -307,8 +285,14 @@ const handleCreateMeeting = async meetingData => {
 			$notify.success('会议创建成功')
 			// 刷新会议列表
 			await Promise.all([loadUpcomingMeetings(), loadRecentMeetings()])
-			// 跳转到会议页面
-			router.push(`/meeting/info/${data.roomNo}`)
+			// 根据会议类型决定跳转路径
+			if (meetingData.type === 1) {
+				// 即时会议，直接进入房间
+				router.push(`/meeting/room/${data.roomNo}`)
+			} else {
+				// 预约会议，跳转到详情页
+				router.push(`/meeting/info/${data.roomNo}`)
+			}
 		} else {
 			$notify.error('创建会议失败')
 			return

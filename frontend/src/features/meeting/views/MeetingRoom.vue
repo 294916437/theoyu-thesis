@@ -2,7 +2,16 @@
 	<v-app>
 		<v-main class="meeting-room">
 			<!-- 初始化遮罩层 -->
-			<MeetingEntryOverlay :phase="entryPhase" :loading-message="loadingMessage" :loading-progress="loadingProgress" @confirm="handleMediaConsent" />
+			<MeetingEntryOverlay
+				:phase="entryPhase"
+				:loading-message="loadingMessage"
+				:loading-progress="loadingProgress"
+				:meeting-info="meetingInfo"
+				:is-retrying="isRetrying"
+				@confirm="handleMediaConsent"
+				@retry="handleRetryJoin"
+				@timeup="handleTimeup"
+			/>
 			<!-- 顶部信息栏 -->
 			<v-app-bar density="compact" flat elevation="0" color="surface" class="meeting-header">
 				<v-toolbar-title class="d-flex align-center">
@@ -857,7 +866,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onBeforeUnmount, watch, nextTick, mergeProps } from 'vue'
+import { ref, computed, onBeforeUnmount, watch, nextTick, onMounted, mergeProps } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
 	useIntervalFn,
@@ -1022,7 +1031,7 @@ const changeBackground = async bgId => {
 	effectType.value = 'replace'
 }
 // ==================== 房间参与者 ====================
-const { mergedParticipants, onlineParticipants, loadParticipants } = useParticipants(roomId, participants)
+const { onlineParticipants, loadParticipants } = useParticipants(roomId, participants)
 // ==================== 网络状态监控 ====================
 const online = useOnline()
 const networkState = useNetwork()
@@ -1067,7 +1076,7 @@ const showSidebar = ref(true)
 const showSettings = ref(false)
 const sidebarTab = ref('participants')
 const videoLayout = ref('grid')
-const entryPhase = ref('consent')
+const entryPhase = ref('loading')
 const loadingMessage = ref('')
 const loadingProgress = ref(0)
 const controlBarCollapsed = ref(false)
@@ -1078,14 +1087,69 @@ const videoQuality = ref(currentSpatialLayer.value + 1)
 const enableHD = ref(true)
 const enableMirror = ref(false)
 
+// 等候室相关状态
+
+const isRetrying = ref(false)
+const WAITING_THRESHOLD_MS = 30 * 60 * 1000 // 30分钟
+
+// 检查会议时间拦截规则
+const checkMeetingEligibility = () => {
+	const diff = new Date(meetingInfo.value.startTime).getTime() - Date.now()
+	// 当预约会议 (type === 2) 且离开始时间大于30分钟时触发等候室 phase 状态
+	if (meetingInfo.value.type === 2 && diff > WAITING_THRESHOLD_MS) {
+		entryPhase.value = 'waiting'
+		return false
+	}
+	return true
+}
+
+const handleRetryJoin = async () => {
+	isRetrying.value = true
+	try {
+		await loadMeetingDetail()
+		if (checkMeetingEligibility()) {
+			entryPhase.value = 'consent'
+		} else {
+			$notify.warning('还未到可加入时间，请稍候')
+		}
+	} catch (e) {
+		console.log(e)
+		$notify.error('检测状态失败，请重试')
+	} finally {
+		isRetrying.value = false
+	}
+}
+
+// 时间自然到达放行逻辑
+const handleTimeup = () => {
+	if (entryPhase.value === 'waiting') {
+		entryPhase.value = 'consent'
+	}
+}
+// 页面挂载先执行会议拉取判断时间拦截
+onMounted(async () => {
+	try {
+		loadingMessage.value = '正在加载会议信息...'
+		loadingProgress.value = 20
+		await loadMeetingDetail()
+		if (checkMeetingEligibility()) {
+			entryPhase.value = 'consent'
+		}
+	} catch (error) {
+		console.log(error)
+		entryPhase.value = 'not-found'
+	}
+})
+
 // 用户选择媒体权限后的处理
 const handleMediaConsent = async ({ withMedia }) => {
 	entryPhase.value = 'loading'
 
 	try {
+		loadingProgress.value = 10
 		loadingMessage.value = '正在检测设备...'
 		await enumerateDevices()
-		loadingProgress.value = 20
+		loadingProgress.value = 30
 
 		loadingMessage.value = '正在加载会议信息...'
 		await loadMeetingDetail()

@@ -85,6 +85,13 @@ public class RoomServiceImpl implements RoomService {
 
         // 3. 创建会议记录
         LocalDateTime now = LocalDateTime.now();
+        LocalDateTime meetingStartTime = now;
+        // 判断会议类型：1为即时会议，2为预约会议
+        boolean isReserved = reqVO.getType() == 2;
+        if (isReserved && reqVO.getStartTime() != null) {
+            // 记录预约会议的开始时间，立即会议的开始时间则为当前时间
+            meetingStartTime = reqVO.getStartTime();
+        }
         RoomPO room = RoomPO.builder()
                 .id(roomId)
                 .sfuNodeId(reqVO.getSfuNodeId())
@@ -93,8 +100,8 @@ public class RoomServiceImpl implements RoomService {
                 .title(reqVO.getTitle())
                 .type(reqVO.getType())
                 .maxParticipants(reqVO.getMaxParticipants())
-                .status(1)
-                .startTime(now)
+                .status(isReserved ? 1 : 2)
+                .startTime(meetingStartTime)
                 .settings(reqVO.getSettings())
                 .createdTime(now)
                 .updatedTime(now)

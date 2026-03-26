@@ -3,6 +3,8 @@ package com.theoyu.thesis.media.biz.model.vo;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 @Data
 public class CreateRoomReqVO {
     /**
@@ -31,4 +33,8 @@ public class CreateRoomReqVO {
      * 例如: {"enableRecording": true, "allowedCodecs": ["opus", "VP8"]}
      */
     private String settings;
+    /**
+     * 预约会议的开始时间
+     */
+    private LocalDateTime startTime;
 }

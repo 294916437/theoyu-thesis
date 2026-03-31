@@ -238,25 +238,15 @@ const getMeetingColor = index => {
 }
 
 // 获取状态颜色
+const colorArr = ['success', 'primary', 'warning', 'error']
+const statusArr = ['预约中', '进行中', '已结束', '已取消']
 const getStatusColor = status => {
-	const colorMap = {
-		completed: 'success',
-		ongoing: 'primary',
-		cancelled: 'warning',
-		scheduled: 'error',
-	}
-	return colorMap[status] || 'grey'
+	return colorArr[status] || 'grey'
 }
 
 // 获取状态文本
 const getStatusText = status => {
-	const textMap = {
-		completed: '预约中',
-		ongoing: '进行中',
-		cancelled: '已结束',
-		scheduled: '已取消',
-	}
-	return textMap[status] || '未知'
+	return statusArr[status] || '未知'
 }
 
 // 打开创建会议对话框

@@ -36,8 +36,16 @@ class RoomMessageService {
 		this.currentRoomId = roomId
 
 		return new Promise((resolve, reject) => {
-			// 将 HTTP URL 转换为 WebSocket URL
-			const wsUrl = url.replace(/^http/, 'ws')
+			// 将 URL 转换为 WebSocket URL
+			// 相对路径（/开头）：根据当前页面协议构建，走 Vite proxy 避免混合内容
+			// 绝对路径（http/https）：直接替换协议前缀
+			let wsUrl
+			if (url.startsWith('/')) {
+				const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+				wsUrl = `${protocol}//${window.location.host}${url}`
+			} else {
+				wsUrl = url.replace(/^https/, 'wss').replace(/^http(?!s)/, 'ws')
+			}
 
 			// 创建 STOMP 客户端
 			this.client = new Client({

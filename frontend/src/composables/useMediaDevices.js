@@ -25,6 +25,9 @@ export function useMediaDevices() {
 	 * 枚举所有媒体设备
 	 */
 	const enumerateDevices = async () => {
+		if (!navigator.mediaDevices) {
+			throw new Error('当前页面不在安全上下文中（需要 HTTPS 或 localhost），无法访问媒体设备')
+		}
 		try {
 			const devices = await navigator.mediaDevices.enumerateDevices()
 
@@ -73,6 +76,10 @@ export function useMediaDevices() {
 	 * 请求媒体权限
 	 */
 	const requestPermissions = async () => {
+		if (!navigator.mediaDevices) {
+			console.error('当前页面不在安全上下文中（需要 HTTPS 或 localhost），无法请求媒体权限')
+			return false
+		}
 		try {
 			const stream = await navigator.mediaDevices.getUserMedia({
 				video: true,

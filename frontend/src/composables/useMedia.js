@@ -732,7 +732,9 @@ export function useMedia() {
 			roomId.value = meetingId
 
 			// 1. 连接 Socket.io
-			await socketClient.connect(import.meta.env.VITE_SFU_URL || 'http://localhost:3000', {
+			// 开发时通过 Vite proxy 走同源 wss，生产时使用 VITE_SFU_URL
+			const sfuUrl = import.meta.env.VITE_SFU_URL || window.location.origin
+			await socketClient.connect(sfuUrl, {
 				auth: { token },
 			})
 

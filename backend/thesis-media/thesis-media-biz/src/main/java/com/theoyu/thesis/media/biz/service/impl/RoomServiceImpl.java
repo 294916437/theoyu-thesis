@@ -100,7 +100,7 @@ public class RoomServiceImpl implements RoomService {
                 .title(reqVO.getTitle())
                 .type(reqVO.getType())
                 .maxParticipants(reqVO.getMaxParticipants())
-                .status(isReserved ? 1 : 2)
+                .status(isReserved ? 0 : 1)
                 .startTime(meetingStartTime)
                 .settings(reqVO.getSettings())
                 .createdTime(now)

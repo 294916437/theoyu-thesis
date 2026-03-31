@@ -42,13 +42,6 @@ const emit = defineEmits(['host-toggle-audio', 'host-toggle-video', 'mute-all', 
 const participantsByRole = computed(() => {
 	const hosts = props.participants.filter(p => String(p.userId) === String(props.hostId))
 	const members = props.participants.filter(p => String(p.userId) !== String(props.hostId))
-
-	// 打印区分结果
-	console.log('Participants by role:', {
-		hosts: hosts.map(h => ({ id: h.userId, name: h.username })),
-		members: members.map(m => ({ id: m.userId, name: m.username })),
-	})
-
 	return { hosts, members }
 })
 

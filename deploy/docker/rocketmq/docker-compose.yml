@@ -23,6 +23,7 @@ services:
       - "10909:10909"
       - "10911:10911"
       - "10912:10912"
+      - "8070:8080"
     volumes:
       # 统一挂载路径
       - "/mnt/e/linux/docker/rocketmq/broker/logs:/home/rocketmq/logs/rocketmqlogs"
@@ -31,24 +32,21 @@ services:
       - "/mnt/e/linux/docker/rocketmq/broker/bin/runbroker.sh:/home/rocketmq/rocketmq-5.3.1/bin/runbroker.sh"
     environment:
       NAMESRV_ADDR: "rocketmq-namesrv:9876"
-    command: ["sh", "mqbroker", "--enable-proxy", "-c", "/home/rocketmq/rocketmq-5.3.1/conf/broker.conf"]
+    command: ["sh", "mqbroker", "-c", "/home/rocketmq/rocketmq-5.3.1/conf/broker.conf"]
     networks:
       - rocketmq_net
     depends_on:
-      - namesrv # 确保 NameServer 先于 Broker 启动
+      - namesrv
 
   # Dashboard 服务
   dashboard:
     image: apacherocketmq/rocketmq-dashboard
     container_name: rocketmq-dashboard
-    ports:
-      - "8070:8080"
+    network_mode: "service:broker"
     environment:
       JAVA_OPTS: "-Xmx200M -Xms200M -Xmn100M -Drocketmq.namesrv.addr=rocketmq-namesrv:9876 -Dcom.rocketmq.sendMessageWithVIPChannel=false"
-    networks:
-      - rocketmq_net
     depends_on:
-      - namesrv # 确保 NameServer 先于 Dashboard 启动
+      - broker
 
 # 定义网络
 networks:

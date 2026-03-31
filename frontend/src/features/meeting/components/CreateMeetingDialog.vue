@@ -204,7 +204,7 @@ const loading = ref(false)
 // 表单数据
 const formData = reactive({
 	title: `${props.userName}的会议`,
-	type: 2, // 默认为预约会议
+	type: 1, // 默认为立即会议
 	maxParticipants: 15,
 	sfuNodeId: 0,
 	startTime: '', // 添加开始时间

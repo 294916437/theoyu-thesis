@@ -8,6 +8,7 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), '')
+	const isProd = mode === 'production'
 
 	const localIp = env.VITE_LOCAL_IP || '127.0.0.1'
 
@@ -49,12 +50,41 @@ export default defineConfig(({ mode }) => {
 			},
 		},
 		build: {
-			// 确保 WASM 文件被正确处理
+			// 针对支持 ESM 的现代浏览器，减少 polyfill 体积
+			target: 'es2020',
+			// 关闭 gzip 体积报告，加快构建速度
+			reportCompressedSize: false,
+			// chunk 超过 1MB 才警告
+			chunkSizeWarningLimit: 1000,
 			rollupOptions: {
-				external: [],
+				output: {
+					// 将大型第三方库拆分为独立 chunk，利用浏览器并行加载与长期缓存
+					manualChunks: id => {
+						// WebRTC / 媒体相关
+						if (id.includes('mediasoup-client') || id.includes('socket.io-client')) {
+							return 'vendor-media'
+						}
+						// Canvas 渲染
+						if (id.includes('pixi.js') || id.includes('@pixi/')) {
+							return 'vendor-pixi'
+						}
+						// UI 框架
+						if (id.includes('vuetify') || id.includes('@mdi/font')) {
+							return 'vendor-vuetify'
+						}
+						// Vue 核心生态
+						if (id.includes('node_modules/vue') || id.includes('node_modules/pinia') || id.includes('vue-router') || id.includes('@vueuse/')) {
+							return 'vendor-vue'
+						}
+						// 其余 node_modules 合并为公共 vendor
+						if (id.includes('node_modules')) {
+							return 'vendor-misc'
+						}
+					},
+				},
 			},
-			// 增加资源内联限制，防止 WASM 被内联
-			assetsInlineLimit: 0,
+			// 确保 WASM 文件被正确处理，禁止内联
+			assetsInlineLimit: isProd ? 4096 : 0,
 		},
 	}
 })

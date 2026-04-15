@@ -242,7 +242,7 @@
     WHERE id = #{id}
   </update>
   <!-- 查询用户即将开始的会议（分页） -->
-  <select id="selectUpcomingRoomsByUserId" resultType="com.theoyu.thesis.media.biz.model.entity.RoomPO">
+  <select id="selectUpcomingRoomsByUserId" resultMap="BaseResultMap">
     SELECT DISTINCT r.*
     FROM t_room r
            LEFT JOIN t_room_participant rp ON r.id = rp.room_id

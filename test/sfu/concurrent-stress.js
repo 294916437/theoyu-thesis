@@ -35,7 +35,10 @@ const http = require("http")
 const https = require("https")
 const fs = require("fs")
 const path = require("path")
+const dotenv = require("dotenv")
 const { EventEmitter } = require("events")
+
+dotenv.config({ path: path.join(__dirname, "../.env") })
 
 // ─────────────────────────── 配置 ───────────────────────────────────────────
 
@@ -471,7 +474,7 @@ async function runLevel(concurrency) {
 		const conns = m?.connections?.current ?? "?"
 		const producers = (m?.producers?.audio ?? "?") + (m?.producers?.video ?? 0)
 		const consumers = m?.consumers ?? "?"
-		console.log(`  [${elapsed}s] 活跃连接=${conns}  Producer总数=${producers}  Consumer总数=${consumers}`)
+		console.log(`  [${elapsed}s] 活跃连接=${conns}  Producer总数=${producers.length}  Consumer总数=${consumers.length}`)
 	}, heartbeatInterval)
 
 	await new Promise((r) => setTimeout(r, CONFIG.stableMs))
@@ -624,7 +627,7 @@ function saveResults(allResults) {
 async function main() {
 	console.log("\n")
 	console.log("╔══════════════════════════════════════════════════════════════╗")
-	console.log("║          SFU Mediasoup 并发压力测试                           ║")
+	console.log("║          SFU Mediasoup 并发压力测试                          ║")
 	console.log("╚══════════════════════════════════════════════════════════════╝")
 	console.log(`  目标服务: ${CONFIG.sfuUrl}`)
 	console.log(`  并发级别: ${CONFIG.levels.join(" → ")}`)

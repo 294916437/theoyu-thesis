@@ -54,8 +54,14 @@ export interface MinioConfig {
 	secretKey: string
 	bucketName: string
 }
+export class TestModeConfig {
+	public readonly enabled: boolean = process.env.SFU_TEST_MODE === "true"
+}
 
 export class Config {
+	public readonly testMode: TestModeConfig = {
+		enabled: process.env.SFU_TEST_MODE === "true",
+	}
 	public readonly minio: MinioConfig = {
 		endPoint: process.env.MINIO_ENDPOINT || "127.0.0.1",
 		port: parseInt(process.env.MINIO_PORT || "9000", 10),

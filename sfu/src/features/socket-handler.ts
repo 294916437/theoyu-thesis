@@ -186,7 +186,7 @@ export class SocketHandler {
 		})
 
 		// 通知业务系统，测试模式下跳过通知
-		if (process.env.SFU_TEST_MODE === "false") {
+		if (!config.testMode.enabled) {
 			await this.grpcClient.notifyParticipantJoined(roomId, userId, username)
 		}
 

@@ -233,10 +233,10 @@ class TestBroadcaster extends EventEmitter {
 	// ─── 完整信令流程 ─────────────────────────────────────────────────────
 
 	/**
-	 * 执行完整信令流程
-	 * @param {string[]} existingProducerIds 已在房间内的其他 Producer ID 列表（用于消费）
+	 * 阶段一：加入房间 + 建立 Transport + Produce
+	 * 完成后 this.producerIds 已填充，this.routerRtpCapabilities 已设置
 	 */
-	async runSignaling(existingProducerIds) {
+	async runSetup() {
 		// 1. joinRoom
 		const joinResult = await this.emit_measured("joinRoom", {
 			roomId: this.roomId,
@@ -244,7 +244,6 @@ class TestBroadcaster extends EventEmitter {
 			username: this.username,
 			token: CONFIG.token,
 		})
-		// 记录加入时已有的 peers（用于调试）
 		this._peersOnJoin = joinResult.peers?.length ?? 0
 
 		// 2. getRouterRtpCapabilities
@@ -310,9 +309,16 @@ class TestBroadcaster extends EventEmitter {
 		} catch (err) {
 			this.warnings.push({ step: "produce_audio", message: err.message })
 		}
+	}
 
-		// 9. consume 订阅其他参与者的 Producer
-		for (const producerId of existingProducerIds) {
+	/**
+	 * 阶段二：订阅其他参与者的 Producer
+	 * 必须在所有参与者完成 runSetup() 后调用，此时所有 Producer ID 已确定
+	 * N 人房间预期创建 N×(N-1) 个 Consumer
+	 * @param {string[]} otherProducerIds 其他所有参与者的 Producer ID 列表
+	 */
+	async runConsume(otherProducerIds) {
+		for (const producerId of otherProducerIds) {
 			try {
 				const consumeResult = await this.emit_measured(
 					"consume",
@@ -325,15 +331,8 @@ class TestBroadcaster extends EventEmitter {
 				)
 				this.consumerIds.push(consumeResult.id)
 
-				// 10. resumeConsumer（mediasoup 要求消费者先处于 paused 再 resume）
-				await this.emit_measured(
-					"resumeConsumer",
-					{
-						roomId: this.roomId,
-						consumerId: consumeResult.id,
-					},
-					"resumeConsumer",
-				)
+				// resumeConsumer（mediasoup Consumer 默认 paused，需主动 resume）
+				await this.emit_measured("resumeConsumer", { roomId: this.roomId, consumerId: consumeResult.id }, "resumeConsumer")
 			} catch (err) {
 				this.warnings.push({ step: "consume", producerId, message: err.message })
 			}
@@ -412,56 +411,79 @@ async function runLevel(concurrency) {
 		return result
 	}
 
-	// ── Phase 2: 信令交互 ──────────────────────────────────────────────────
+	// ── Phase 2a: Setup（join + produce）────────────────────────────────────
 
-	console.log(`\n[Phase 2] 执行完整信令流程（joinRoom → produce → consume）...`)
+	console.log(`\n[Phase 2] Setup 阶段（joinRoom → produce）...`)
 	const p2Start = Date.now()
 
-	// sharedProducerIds 在所有 Broadcaster 之间共享，先加入的 Producer 供后加入的 Broadcaster 消费
-	const sharedProducerIds = []
-
-	// 采用小幅错峰启动（每隔 50ms），避免服务器瞬时洪峰
-	const signalingPromises = broadcasters.map(async (b, i) => {
+	// 小幅错峰启动避免服务端瞬时洪峰，每人独立完成 join+produce
+	const setupPromises = broadcasters.map(async (b, i) => {
 		if (!b.connected) return
 		await new Promise((r) => setTimeout(r, i * 50))
-		// 在该实例加入时，捕获当前已知的 Producer 列表
-		const producersSnapshot = [...sharedProducerIds]
-		await b.runSignaling(producersSnapshot)
-		// 将自身的 Producer 追加到共享列表
-		sharedProducerIds.push(...b.producerIds)
+		await b.runSetup()
 	})
 
-	const signalingResults = await Promise.allSettled(signalingPromises)
-	result.phases.signaling = Date.now() - p2Start
+	const setupResults = await Promise.allSettled(setupPromises)
+	result.phases.setup = Date.now() - p2Start
 
-	for (let i = 0; i < signalingResults.length; i++) {
-		const r = signalingResults[i]
+	const setupFailed = []
+	for (let i = 0; i < setupResults.length; i++) {
+		if (setupResults[i].status === "rejected") {
+			setupFailed.push(i)
+			console.warn(`  Broadcaster[${i}] setup 失败: ${setupResults[i].reason?.message}`)
+		}
+	}
+
+	const totalProducers = broadcasters.reduce((s, b) => s + b.producerIds.length, 0)
+	console.log(`  Setup 完成，共 ${totalProducers} 个 Producer，耗时 ${result.phases.setup}ms`)
+
+	// ── Phase 2b: Consume（全员互订阅）────────────────────────────────────
+	// 必须等所有人 setup 完成后再执行，此时所有 Producer ID 已确定
+	// N 人房间预期 Consumer 总数 = N×(N-1)
+
+	console.log(`\n[Phase 3] Consume 阶段（互相订阅，预期 Consumer=${concurrency}×${concurrency - 1}=${concurrency * (concurrency - 1)} 个）...`)
+	const p3Start = Date.now()
+
+	const consumePromises = broadcasters.map(async (b, i) => {
+		if (!b.connected || setupFailed.includes(i) || !b.routerRtpCapabilities) return
+		// 收集其他所有参与者的 Producer ID（排除自身）
+		const othersProducerIds = broadcasters.filter((other, j) => j !== i && !setupFailed.includes(j)).flatMap((other) => other.producerIds)
+		await b.runConsume(othersProducerIds)
+	})
+
+	const consumeResults = await Promise.allSettled(consumePromises)
+	result.phases.consume = Date.now() - p3Start
+
+	for (let i = 0; i < consumeResults.length; i++) {
+		const r = consumeResults[i]
 		if (r.status === "fulfilled") {
 			result.signaling.success++
 		} else {
 			result.signaling.failed++
 			result.signaling.failedIndexes.push(i)
-			console.warn(`  Broadcaster[${i}] 信令失败: ${r.reason?.message}`)
+			console.warn(`  Broadcaster[${i}] consume 失败: ${r.reason?.message}`)
 		}
-		// 收集非致命 warnings
 		if (broadcasters[i].warnings.length > 0) {
 			result.signaling.warnings.push(...broadcasters[i].warnings.map((w) => ({ index: i, ...w })))
 		}
 	}
 
-	console.log(`  信令完成: ${result.signaling.success}/${concurrency} 成功，` + `共 ${sharedProducerIds.length} 个 Producer，耗时 ${result.phases.signaling}ms`)
+	const totalConsumers = broadcasters.reduce((s, b) => s + b.consumerIds.length, 0)
+	console.log(`  Consume 完成，共 ${totalConsumers} 个 Consumer，耗时 ${result.phases.consume}ms`)
+	result.phases.signaling = result.phases.setup + result.phases.consume
+
 	if (result.signaling.warnings.length > 0) {
 		console.warn(`  非致命警告 ${result.signaling.warnings.length} 条（见结果文件）`)
 	}
 
-	// ── Phase 3: 初始指标采集 ──────────────────────────────────────────────
+	// ── Phase 4: 初始指标采集 ──────────────────────────────────────────────
 
 	result.metricsAtStart = await httpGet(`${CONFIG.sfuUrl}/metrics`)
 
-	// ── Phase 4: 稳定期 ───────────────────────────────────────────────────
+	// ── Phase 5: 稳定期 ───────────────────────────────────────────────────
 
 	const stableSec = CONFIG.stableMs / 1000
-	console.log(`\n[Phase 3] 稳定推流 ${stableSec}s，每 30s 打印一次心跳...`)
+	console.log(`\n[Phase 5] 稳定推流 ${stableSec}s，每 30s 打印一次心跳...`)
 	const p4Start = Date.now()
 
 	// 定期打印心跳（每 30s 或稳定期 1/6 取较小值）
@@ -474,9 +496,10 @@ async function runLevel(concurrency) {
 		const conns = m?.connections?.current ?? "?"
 		const activeProducers = m?.producers?.totalActive ?? "?"
 		const activeConsumers = m?.consumers?.active ?? "?"
-		const cpuPct = m?.cpu?.usagePercent != null ? `${m.cpu.usagePercent}%` : "?"
+		const procCpu = m?.cpu?.processUsagePercent != null ? `${m.cpu.processUsagePercent}%` : "?"
+		const sysLoad = m?.cpu?.systemLoadAvg ? m.cpu.systemLoadAvg[0] : "?"
 		const heapMB = m?.memory?.heapUsedMB != null ? `${m.memory.heapUsedMB}MB` : "?"
-		console.log(`  [${elapsed}s] 连接=${conns}  Producer(active)=${activeProducers}  Consumer(active)=${activeConsumers}  CPU=${cpuPct}  Heap=${heapMB}`)
+		console.log(`  [${elapsed}s] 连接=${conns}  Producer(active)=${activeProducers}  Consumer(active)=${activeConsumers}  proc-CPU=${procCpu}  load1m=${sysLoad}  Heap=${heapMB}`)
 	}, heartbeatInterval)
 
 	await new Promise((r) => setTimeout(r, CONFIG.stableMs))
@@ -485,13 +508,13 @@ async function runLevel(concurrency) {
 
 	// ── Phase 5: 最终指标采集 ─────────────────────────────────────────────
 
-	console.log(`\n[Phase 4] 采集最终指标...`)
+	console.log(`\n[Phase 6] 采集最终指标...`)
 	result.metricsAfterStable = await httpGet(`${CONFIG.sfuUrl}/metrics`)
 	result.roomStats = await httpGet(`${CONFIG.sfuUrl}/api/stats`)
 
-	// ── Phase 6: 断开连接 ──────────────────────────────────────────────────
+	// ── Phase 7: 断开连接 ──────────────────────────────────────────────────
 
-	console.log(`[Phase 5] 断开全部连接...`)
+	console.log(`[Phase 7] 断开全部连接...`)
 	broadcasters.forEach((b) => b.disconnect())
 	await new Promise((r) => setTimeout(r, 1000))
 
@@ -529,13 +552,15 @@ function printLevelResult(result) {
 	sep()
 	console.log(`  信令成功率: ${result.signaling.success}/${result.concurrency}`)
 	console.log(`  连接阶段耗时: ${fmtMs(result.phases.connect)}`)
-	console.log(`  信令阶段耗时: ${fmtMs(result.phases.signaling)}`)
+	console.log(`  Setup 耗时(join+produce): ${fmtMs(result.phases.setup)}`)
+	console.log(`  Consume 耗时(互订阅):     ${fmtMs(result.phases.consume)}`)
+	console.log(`  信令总耗时: ${fmtMs(result.phases.signaling)}`)
 	console.log(`  稳定期时长: ${fmtMs(result.phases.stable)}`)
 
 	if (m) {
 		console.log(`\n  /metrics 采集（稳定期结束）:`)
 		console.log(`    运行时长:     ${m.uptime ?? "N/A"}s`)
-		console.log(`    CPU 使用率:   ${m.cpu?.usagePercent ?? "N/A"}%  (${m.cpu?.cores ?? "?"} 核)`)
+		console.log(`    CPU(主进程): ${m.cpu?.processUsagePercent ?? "N/A"}%  (系统负载 1/5/15min: ${(m.cpu?.systemLoadAvg || []).join(" / ") || "N/A"})  (${m.cpu?.cores ?? "?"} 核)`)
 		console.log(`    内存(Heap):   ${m.memory?.heapUsedMB ?? "N/A"}MB / ${m.memory?.heapTotalMB ?? "N/A"}MB`)
 		console.log(`    内存(RSS):    ${m.memory?.rssMB ?? "N/A"}MB`)
 		console.log(`    系统内存:     空闲 ${m.memory?.systemFreeMB ?? "N/A"}MB / 总计 ${m.memory?.systemTotalMB ?? "N/A"}MB`)
@@ -573,8 +598,8 @@ function printSummary(allResults) {
 		"活跃连接".padStart(6),
 		"Producer".padStart(10),
 		"Consumer".padStart(10),
-		"CPU%".padStart(4),
-		"HeapMB".padStart(4),
+		"proc-CPU%".padStart(6),
+		"load1min".padStart(8),
 		"joinRoom耗时".padStart(8),
 	]
 	console.log(header.join(" | "))
@@ -590,8 +615,8 @@ function printSummary(allResults) {
 			String(m?.connections?.current ?? "N/A").padStart(10),
 			String(m?.producers?.totalActive ?? "N/A").padStart(10),
 			String(m?.consumers?.active ?? "N/A").padStart(10),
-			String(m?.cpu?.usagePercent != null ? `${m.cpu.usagePercent}%` : "N/A").padStart(4),
-			String(m?.memory?.heapUsedMB != null ? `${m.memory.heapUsedMB}` : "N/A").padStart(4),
+			String(m?.cpu?.processUsagePercent != null ? `${m.cpu.processUsagePercent}%` : "N/A").padStart(6),
+			String(m?.cpu?.systemLoadAvg ? m.cpu.systemLoadAvg[0] : "N/A").padStart(8),
 			fmtMs(r.latencyByEvent?.joinRoom?.avg).padStart(8),
 		]
 		console.log(row.join(" | "))

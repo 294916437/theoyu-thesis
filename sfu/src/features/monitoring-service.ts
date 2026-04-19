@@ -44,7 +44,10 @@ export class MonitoringService {
 		this.scheduleCpuSampling()
 	}
 
-	/** 周期采样 CPU 使用率，不阻塞进程退出 */
+	/** 周期采样 Node.js 进程级 CPU 使用率，不阻塞进程退出
+	 *  注意：Mediasoup Worker 是独立子进程，其 CPU 消耗不在此范围内
+	 *  系统级负载请参考 cpu.systemLoadAvg
+	 */
 	private scheduleCpuSampling(): void {
 		const interval = setInterval(() => {
 			const now = Date.now()
@@ -159,7 +162,10 @@ export class MonitoringService {
 		return {
 			uptime: Math.floor((Date.now() - this.startTime) / 1000),
 			cpu: {
-				usagePercent: this.cpuPercent,
+				// Node.js 主进程级别的 CPU 占用率（不含 Mediasoup Worker 子进程）
+				processUsagePercent: this.cpuPercent,
+				// 系统 1/5/15 分钟平均负载，反映含 Worker 在内的整机压力
+				systemLoadAvg: os.loadavg().map((v) => parseFloat(v.toFixed(2))),
 				cores: os.cpus().length,
 			},
 			memory: {
@@ -206,7 +212,7 @@ export class MonitoringService {
 		const interval = setInterval(() => {
 			const s = this.getMetrics()
 			this.logger.info(
-				`[Metrics] uptime=${s.uptime}s cpu=${s.cpu.usagePercent}% ` +
+				`[Metrics] uptime=${s.uptime}s proc-cpu=${s.cpu.processUsagePercent}% load1m=${s.cpu.systemLoadAvg[0]} ` +
 					`mem=${s.memory.heapUsedMB}MB/${s.memory.rssMB}MB ` +
 					`conn=${s.connections.current} ` +
 					`producers(active)=${s.producers.totalActive} consumers(active)=${s.consumers.active}`,

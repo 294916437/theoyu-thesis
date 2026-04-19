@@ -441,7 +441,7 @@ async function runLevel(concurrency) {
 	// 必须等所有人 setup 完成后再执行，此时所有 Producer ID 已确定
 	// N 人房间预期 Consumer 总数 = N×(N-1)
 
-	console.log(`\n[Phase 3] Consume 阶段（互相订阅，预期 Consumer=${concurrency}×${concurrency - 1}=${concurrency * (concurrency - 1)} 个）...`)
+	console.log("\n[Phase 3] Consume 阶段（互相订阅音视频流）...")
 	const p3Start = Date.now()
 
 	const consumePromises = broadcasters.map(async (b, i) => {

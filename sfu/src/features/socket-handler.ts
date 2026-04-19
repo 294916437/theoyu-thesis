@@ -185,8 +185,10 @@ export class SocketHandler {
 			username: peer.username,
 		})
 
-		// 通知业务系统
-		await this.grpcClient.notifyParticipantJoined(roomId, userId, username)
+		// 通知业务系统，测试模式下跳过通知
+		if (process.env.SFU_TEST_MODE === "false") {
+			await this.grpcClient.notifyParticipantJoined(roomId, userId, username)
+		}
 
 		// 获取现有参与者和他们的生产者
 		const otherPeers = room.getPeersExcept(peer.id).map((p: Peer) => ({

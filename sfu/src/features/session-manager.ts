@@ -30,7 +30,14 @@ export class SessionManager {
 		const { roomId, userId, username, token } = data
 
 		// 通过gRPC调用SprintCloud的业务接口，验证房间的访问权限
-		const validation = await this.grpcClient.validateRoomAccess(roomId, userId, token)
+		// SFU_TEST_MODE=true 时跳过gRPC验证，仅用于压力测试场景
+		let validation: { allowed: boolean; message?: string }
+		if (process.env.SFU_TEST_MODE === "true") {
+			this.logger.warn(`[TEST MODE] 跳过 gRPC 验证，用户 ${userId} 直接准入`)
+			validation = { allowed: true, message: "Test mode bypass" }
+		} else {
+			validation = await this.grpcClient.validateRoomAccess(roomId, userId, token)
+		}
 		if (!validation.allowed) {
 			// 抛出可以由withErrorHandling捕获的错误
 			const error: any = new Error(validation.message || "Access denied")

@@ -1051,7 +1051,9 @@ export class SocketHandler {
 			}
 
 			// 通知业务系统
-			await this.grpcClient.notifyParticipantLeft(roomId, peer.userId, peer.username)
+			if (!config.testMode.enabled) {
+				await this.grpcClient.notifyParticipantLeft(roomId, peer.userId, peer.username)
+			}
 
 			// 清理房间资源
 			this.roomManager.removePeerFromRoom(roomId, peer.id)

@@ -556,13 +556,6 @@ function printLevelResult(result) {
 	} else {
 		console.log(`  /metrics 无法访问`)
 	}
-
-	if (Object.keys(result.latencyByEvent).length > 0) {
-		console.log(`\n  客户端侧信令往返延迟（均值）:`)
-		for (const [key, stat] of Object.entries(result.latencyByEvent)) {
-			console.log(`    ${key.padEnd(30)} avg=${fmtMs(stat.avg)}  min=${fmtMs(stat.min)}  max=${fmtMs(stat.max)}`)
-		}
-	}
 }
 
 /** 打印所有轮次的对比汇总表 */
@@ -573,16 +566,16 @@ function printSummary(allResults) {
 	sep("═")
 
 	const header = [
-		"并发数".padStart(6),
-		"信令成功".padStart(8),
-		"连接耗时".padStart(10),
-		"信令耗时".padStart(10),
-		"活跃连接".padStart(10),
-		"Producer(活)".padStart(13),
-		"Consumer(活)".padStart(13),
-		"CPU%".padStart(6),
-		"HeapMB".padStart(8),
-		"joinRoom均值".padStart(14),
+		"并发数".padStart(3),
+		"信令成功".padStart(4),
+		"连接耗时".padStart(6),
+		"信令耗时".padStart(6),
+		"活跃连接".padStart(6),
+		"Producer".padStart(10),
+		"Consumer".padStart(10),
+		"CPU%".padStart(4),
+		"HeapMB".padStart(4),
+		"joinRoom耗时".padStart(8),
 	]
 	console.log(header.join(" | "))
 	sep("-")
@@ -595,11 +588,11 @@ function printSummary(allResults) {
 			fmtMs(r.phases.connect).padStart(10),
 			fmtMs(r.phases.signaling).padStart(10),
 			String(m?.connections?.current ?? "N/A").padStart(10),
-			String(m?.producers?.totalActive ?? "N/A").padStart(13),
-			String(m?.consumers?.active ?? "N/A").padStart(13),
-			String(m?.cpu?.usagePercent != null ? `${m.cpu.usagePercent}%` : "N/A").padStart(6),
-			String(m?.memory?.heapUsedMB != null ? `${m.memory.heapUsedMB}` : "N/A").padStart(8),
-			fmtMs(r.latencyByEvent?.joinRoom?.avg).padStart(14),
+			String(m?.producers?.totalActive ?? "N/A").padStart(10),
+			String(m?.consumers?.active ?? "N/A").padStart(10),
+			String(m?.cpu?.usagePercent != null ? `${m.cpu.usagePercent}%` : "N/A").padStart(4),
+			String(m?.memory?.heapUsedMB != null ? `${m.memory.heapUsedMB}` : "N/A").padStart(4),
+			fmtMs(r.latencyByEvent?.joinRoom?.avg).padStart(8),
 		]
 		console.log(row.join(" | "))
 	}
@@ -627,7 +620,7 @@ function saveResults(allResults) {
 	}
 	try {
 		fs.writeFileSync(CONFIG.outputFile, JSON.stringify(output, null, 2), "utf-8")
-		console.log(`\n✓ 测试结果已写入: ${CONFIG.outputFile}`)
+		console.log(`\n测试结果已写入: ${CONFIG.outputFile}`)
 	} catch (err) {
 		console.error(`结果保存失败: ${err.message}`)
 	}

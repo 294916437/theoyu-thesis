@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="UTF-8" />
+		<title>E2E延迟测试 - 时间戳广播器（发送端辅助）</title>
+		<style>
+			body {
+				font-family: monospace;
+				background: #1a1a1a;
+				color: #eee;
+				padding: 20px;
+			}
+			#status {
+				padding: 10px;
+				background: #333;
+				border-radius: 4px;
+			}
+			#ts-canvas {
+				border: 1px solid #555;
+				display: block;
+				margin: 10px 0;
+			}
+			label {
+				display: block;
+				margin: 6px 0 2px;
+			}
+			input,
+			button {
+				padding: 6px 12px;
+				margin: 4px 0;
+			}
+			button {
+				background: #0078d4;
+				color: white;
+				border: none;
+				border-radius: 4px;
+				cursor: pointer;
+			}
+			.section {
+				margin: 16px 0;
+				border-top: 1px solid #555;
+				padding-top: 12px;
+			}
+		</style>
+	</head>
+	<body>
+		<h2>📡 发送端 — 时间戳帧推流（主页面）</h2>
+		<p style="color: #aaa">
+			本页面同时承担两个职责：<br />
+			1. 通过 Canvas + captureStream 生成带时间戳的视频帧推送到 SFU<br />
+			2. 通过 <b>BroadcastChannel</b> 每帧广播当前时间戳，供同浏览器其他标签页（接收端）精确计算 E2E 延迟
+		</p>
+
+		<div class="section">
+			<label>SFU 地址</label>
+			<input id="sfuUrl" value="http://localhost:3000" style="width: 280px" />
+			<label>房间 ID</label>
+			<input id="roomId" value="e2e-test-room" />
+			<label>用户 ID</label>
+			<input id="userId" value="sender-001" />
+			<label>昵称</label>
+			<input id="username" value="发送端" />
+			<label>Token</label>
+			<input id="token" value="test-token" />
+			<br />
+			<button onclick="start()">🚀 开始推流</button>
+			<button onclick="stop()" style="background: #c62828">⏹ 停止</button>
+		</div>
+
+		<div id="status">等待操作…</div>
+		<canvas id="ts-canvas" width="640" height="360"></canvas>
+
+		<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/mediasoup-client@3.7.8/dist/mediasoup-client.min.js"></script>
+		<script>
+			let socket = null,
+				device = null,
+				sendTransport = null,
+				recvTransport = null
+			let rafId = null
+			const bc = new BroadcastChannel("e2e-latency-ts")
+			const canvas = document.getElementById("ts-canvas")
+			const ctx = canvas.getContext("2d")
+
+			function log(msg) {
+				document.getElementById("status").innerText = msg
+				console.log("[Sender-Main]", msg)
+			}
+
+			function emitAsync(ev, data) {
+				return new Promise((res, rej) => socket.emit(ev, data, (r) => (r?.error ? rej(new Error(r.error)) : res(r))))
+			}
+
+			// 每帧：绘制时间戳 + 广播给接收端页面
+			function drawAndBroadcast() {
+				const now = Date.now()
+
+				// 背景
+				ctx.fillStyle = "#000"
+				ctx.fillRect(0, 0, 640, 360)
+
+				// 动态内容（让视频帧有明显变化，避免编码器跳帧）
+				ctx.fillStyle = `hsl(${(now / 50) % 360}, 70%, 40%)`
+				ctx.fillRect(0, 40, 640, 320)
+
+				// 时间戳叠加（黑底白字，固定在顶部 38px）
+				ctx.fillStyle = "#000"
+				ctx.fillRect(0, 0, 640, 38)
+				ctx.fillStyle = "#fff"
+				ctx.font = "bold 28px monospace"
+				ctx.fillText(`TS:${now}`, 8, 30)
+
+				// 广播给接收端标签页
+				bc.postMessage({ type: "timestamp", ts: now })
+
+				rafId = requestAnimationFrame(drawAndBroadcast)
+			}
+
+			async function start() {
+				const sfuUrl = document.getElementById("sfuUrl").value.trim()
+				const rid = document.getElementById("roomId").value.trim()
+				const uid = document.getElementById("userId").value.trim()
+				const uname = document.getElementById("username").value.trim()
+				const token = document.getElementById("token").value.trim()
+
+				log("连接 SFU…")
+				socket = io(sfuUrl, { auth: { token }, transports: ["websocket"] })
+				await new Promise((res, rej) => {
+					socket.on("connect", res)
+					socket.on("connect_error", rej)
+				})
+
+				const joinResp = await emitAsync("joinRoom", { roomId: rid, userId: uid, username: uname, token })
+				log(`加入房间成功，peerId=${joinResp.peerId}`)
+
+				const { rtpCapabilities } = await emitAsync("getRouterRtpCapabilities", { roomId: rid })
+				device = new window.mediasoupClient.Device()
+				await device.load({ routerRtpCapabilities: rtpCapabilities })
+
+				// Send Transport
+				const sp = await emitAsync("createWebRtcTransport", { roomId: rid, producing: true, consuming: false })
+				sendTransport = device.createSendTransport(sp)
+				sendTransport.on("connect", ({ dtlsParameters }, cb, eb) => emitAsync("connectWebRtcTransport", { roomId: rid, transportId: sp.id, dtlsParameters }).then(cb).catch(eb))
+				sendTransport.on("produce", async ({ kind, rtpParameters, appData }, cb, eb) => {
+					try {
+						const { id } = await emitAsync("produce", { roomId: rid, transportId: sp.id, kind, rtpParameters, appData })
+						cb({ id })
+					} catch (e) {
+						eb(e)
+					}
+				})
+
+				// Recv Transport
+				const rp = await emitAsync("createWebRtcTransport", { roomId: rid, producing: false, consuming: true })
+				recvTransport = device.createRecvTransport(rp)
+				recvTransport.on("connect", ({ dtlsParameters }, cb, eb) => emitAsync("connectWebRtcTransport", { roomId: rid, transportId: rp.id, dtlsParameters }).then(cb).catch(eb))
+
+				// 启动帧绘制 + 广播
+				drawAndBroadcast()
+
+				// 捕获并发布
+				const stream = canvas.captureStream(30)
+				await sendTransport.produce({ track: stream.getVideoTracks()[0], appData: { source: "e2e-ts" } })
+
+				log("推流中，同时广播时间戳给同浏览器接收端标签页")
+			}
+
+			function stop() {
+				if (rafId) {
+					cancelAnimationFrame(rafId)
+					rafId = null
+				}
+				if (socket) {
+					socket.disconnect()
+					socket = null
+				}
+				if (sendTransport) {
+					sendTransport.close()
+				}
+				if (recvTransport) {
+					recvTransport.close()
+				}
+				log("已停止")
+			}
+		</script>
+	</body>
+</html>

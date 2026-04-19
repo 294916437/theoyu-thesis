@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="UTF-8" />
+		<title>E2E延迟测试 - 发送端</title>
+		<style>
+			body {
+				font-family: monospace;
+				background: #1a1a1a;
+				color: #eee;
+				padding: 20px;
+			}
+			#status {
+				margin: 10px 0;
+				padding: 10px;
+				background: #333;
+				border-radius: 4px;
+			}
+			#ts-canvas {
+				border: 1px solid #555;
+				display: block;
+				margin: 10px 0;
+			}
+			#preview {
+				border: 1px solid #555;
+				display: block;
+				margin: 10px 0;
+				width: 320px;
+				height: 180px;
+			}
+			label {
+				display: block;
+				margin: 6px 0 2px;
+			}
+			input,
+			button {
+				padding: 6px 12px;
+				margin: 4px 0;
+			}
+			button {
+				background: #0078d4;
+				color: white;
+				border: none;
+				border-radius: 4px;
+				cursor: pointer;
+			}
+			button:hover {
+				background: #106ebe;
+			}
+			.section {
+				margin: 16px 0;
+				border-top: 1px solid #555;
+				padding-top: 12px;
+			}
+		</style>
+	</head>
+	<body>
+		<h2>📤 E2E延迟测试 — 发送端</h2>
+		<div class="section">
+			<label>SFU 地址（Socket.io URL）</label>
+			<input id="sfuUrl" value="http://localhost:3000" style="width: 280px" />
+			<label>房间 ID</label>
+			<input id="roomId" value="e2e-test-room" />
+			<label>用户 ID</label>
+			<input id="userId" value="sender-001" />
+			<label>昵称</label>
+			<input id="username" value="发送端" />
+			<label>Token</label>
+			<input id="token" value="test-token" />
+			<br />
+			<button onclick="startSender()">🚀 加入并推流</button>
+			<button onclick="stopSender()" style="background: #c62828">⏹ 断开</button>
+		</div>
+		<div id="status">等待操作...</div>
+		<!-- 隐藏的时间戳叠加 Canvas，作为发布源 -->
+		<canvas id="ts-canvas" width="640" height="360"></canvas>
+		<label>本地预览（Canvas 帧）</label>
+		<video id="preview" autoplay muted playsinline></video>
+
+		<!-- 依赖：Socket.io + mediasoup-client -->
+		<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/mediasoup-client@3.7.8/dist/mediasoup-client.min.js"></script>
+		<script>
+			let socket = null
+			let device = null
+			let sendTransport = null
+			let recvTransport = null
+			let animFrameId = null
+			let roomId = null
+
+			// ─── Canvas 时间戳叠加 ───────────────────────────────────────────────────
+			const canvas = document.getElementById("ts-canvas")
+			const ctx = canvas.getContext("2d")
+
+			/**
+			 * 每帧将当前毫秒时间戳写入 Canvas。
+			 * 格式：13位整数，左上角绘制，白字黑底。
+			 */
+			function drawTimestamp() {
+				const now = Date.now()
+				ctx.fillStyle = "#000000"
+				ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+				// 主内容区（随机色块，让画面有明显变化）
+				ctx.fillStyle = `hsl(${(now / 50) % 360}, 70%, 40%)`
+				ctx.fillRect(0, 40, canvas.width, canvas.height - 40)
+
+				// 时间戳字符串叠加区（黑底白字，固定位置）
+				ctx.fillStyle = "#000000"
+				ctx.fillRect(0, 0, canvas.width, 38)
+				ctx.fillStyle = "#ffffff"
+				ctx.font = "bold 28px monospace"
+				ctx.fillText(`TS:${now}`, 8, 30)
+
+				animFrameId = requestAnimationFrame(drawTimestamp)
+			}
+
+			// ─── 工具函数 ────────────────────────────────────────────────────────────
+			function log(msg) {
+				document.getElementById("status").innerText = msg
+				console.log("[Sender]", msg)
+			}
+
+			function emitAsync(eventName, data) {
+				return new Promise((resolve, reject) => {
+					socket.emit(eventName, data, (response) => {
+						if (response && response.error) return reject(new Error(response.error))
+						resolve(response)
+					})
+				})
+			}
+
+			// ─── 主流程 ─────────────────────────────────────────────────────────────
+			async function startSender() {
+				const sfuUrl = document.getElementById("sfuUrl").value.trim()
+				const rid = document.getElementById("roomId").value.trim()
+				const uid = document.getElementById("userId").value.trim()
+				const uname = document.getElementById("username").value.trim()
+				const token = document.getElementById("token").value.trim()
+				roomId = rid
+
+				// 1. 连接 Socket.io
+				log("连接 SFU…")
+				socket = io(sfuUrl, { auth: { token }, transports: ["websocket"] })
+				await new Promise((res, rej) => {
+					socket.on("connect", res)
+					socket.on("connect_error", rej)
+				})
+				log("Socket 已连接，加入房间…")
+
+				// 2. 加入房间
+				const joinResp = await emitAsync("joinRoom", { roomId: rid, userId: uid, username: uname, token })
+				log(`已加入房间，peerId=${joinResp.peerId}，当前参与者：${joinResp.peers.length + 1}`)
+
+				// 3. 获取路由 RTP 能力
+				const { rtpCapabilities } = await emitAsync("getRouterRtpCapabilities", { roomId: rid })
+
+				// 4. 加载 mediasoup Device
+				device = new window.mediasoupClient.Device()
+				await device.load({ routerRtpCapabilities: rtpCapabilities })
+				log("Device 已加载")
+
+				// 5. 创建 Send Transport
+				const sendParams = await emitAsync("createWebRtcTransport", { roomId: rid, producing: true, consuming: false })
+				sendTransport = device.createSendTransport(sendParams)
+				sendTransport.on("connect", ({ dtlsParameters }, callback, errback) => {
+					emitAsync("connectWebRtcTransport", { roomId: rid, transportId: sendParams.id, dtlsParameters }).then(callback).catch(errback)
+				})
+				sendTransport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
+					try {
+						const { id } = await emitAsync("produce", { roomId: rid, transportId: sendParams.id, kind, rtpParameters, appData })
+						callback({ id })
+					} catch (e) {
+						errback(e)
+					}
+				})
+
+				// 6. 创建 Recv Transport（订阅其他人）
+				const recvParams = await emitAsync("createWebRtcTransport", { roomId: rid, producing: false, consuming: true })
+				recvTransport = device.createRecvTransport(recvParams)
+				recvTransport.on("connect", ({ dtlsParameters }, callback, errback) => {
+					emitAsync("connectWebRtcTransport", { roomId: rid, transportId: recvParams.id, dtlsParameters }).then(callback).catch(errback)
+				})
+
+				// 7. 启动时间戳 Canvas 并捕获流
+				drawTimestamp()
+				const stream = canvas.captureStream(30)
+				const videoTrack = stream.getVideoTracks()[0]
+
+				// 本地预览
+				document.getElementById("preview").srcObject = stream
+
+				// 8. 发布视频
+				await sendTransport.produce({ track: videoTrack, appData: { source: "e2e-sender" } })
+				log("✅ 视频推流中（时间戳叠加帧），等待接收端加入测量…")
+
+				// 9. 监听新生产者，自动消费
+				socket.on("newProducer", async ({ producerId, peerId }) => {
+					log(`发现新参与者生产者 ${producerId}（peerId=${peerId}），开始订阅…`)
+					await subscribeProducer(producerId, rid)
+				})
+
+				// 订阅已有参与者
+				for (const peer of joinResp.peers) {
+					for (const producer of peer.producers || []) {
+						await subscribeProducer(producer.id, rid)
+					}
+				}
+			}
+
+			async function subscribeProducer(producerId, rid) {
+				try {
+					const consumerParams = await emitAsync("consume", {
+						roomId: rid,
+						producerId,
+						rtpCapabilities: device.rtpCapabilities,
+					})
+					const consumer = await recvTransport.consume(consumerParams)
+					await emitAsync("resumeConsumer", { roomId: rid, consumerId: consumer.id })
+					console.log("[Sender] subscribed to producer", producerId)
+				} catch (e) {
+					console.warn("[Sender] subscribe error:", e.message)
+				}
+			}
+
+			function stopSender() {
+				if (animFrameId) {
+					cancelAnimationFrame(animFrameId)
+					animFrameId = null
+				}
+				if (socket) {
+					socket.disconnect()
+					socket = null
+				}
+				if (sendTransport) {
+					sendTransport.close()
+					sendTransport = null
+				}
+				if (recvTransport) {
+					recvTransport.close()
+					recvTransport = null
+				}
+				log("已断开")
+			}
+		</script>
+	</body>
+</html>

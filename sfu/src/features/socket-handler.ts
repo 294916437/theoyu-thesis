@@ -104,13 +104,13 @@ export class SocketHandler {
 		socket.on("getStats", (data, callback) => this.withErrorHandling(socket, "getStats", data, callback, this.handleGetStats))
 
 		// 心跳响应处理
-		socket.on("ping", (data: { timestamp: number }) => {
-			// 更新活动时间
-			this.sessionManager.updateActivity(socket.id)
-			this.connectionManager.updateActivity(socket.id)
-			// 立即响应 pong
-			socket.emit("pong", { timestamp: data?.timestamp || Date.now() })
-		})
+		// socket.on("ping", (data: { timestamp: number }) => {
+		// 	// 更新活动时间
+		// 	this.sessionManager.updateActivity(socket.id)
+		// 	this.connectionManager.updateActivity(socket.id)
+		// 	// 立即响应 pong
+		// 	socket.emit("pong", { timestamp: data?.timestamp || Date.now() })
+		// })
 	}
 
 	// 错误处理包装器

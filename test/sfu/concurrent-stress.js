@@ -472,9 +472,11 @@ async function runLevel(concurrency) {
 		const elapsed = Math.round((Date.now() - p4Start) / 1000)
 		const m = await httpGet(`${CONFIG.sfuUrl}/metrics`)
 		const conns = m?.connections?.current ?? "?"
-		const producers = (m?.producers?.audio ?? "?") + (m?.producers?.video ?? 0)
-		const consumers = m?.consumers ?? "?"
-		console.log(`  [${elapsed}s] 活跃连接=${conns}  Producer总数=${producers.length}  Consumer总数=${consumers.length}`)
+		const activeProducers = m?.producers?.totalActive ?? "?"
+		const activeConsumers = m?.consumers?.active ?? "?"
+		const cpuPct = m?.cpu?.usagePercent != null ? `${m.cpu.usagePercent}%` : "?"
+		const heapMB = m?.memory?.heapUsedMB != null ? `${m.memory.heapUsedMB}MB` : "?"
+		console.log(`  [${elapsed}s] 连接=${conns}  Producer(active)=${activeProducers}  Consumer(active)=${activeConsumers}  CPU=${cpuPct}  Heap=${heapMB}`)
 	}, heartbeatInterval)
 
 	await new Promise((r) => setTimeout(r, CONFIG.stableMs))
@@ -532,16 +534,21 @@ function printLevelResult(result) {
 
 	if (m) {
 		console.log(`\n  /metrics 采集（稳定期结束）:`)
-		console.log(`    当前连接数: ${m.connections?.current ?? "N/A"}`)
-		console.log(`    累计连接数: ${m.connections?.total ?? "N/A"}`)
-		console.log(`    Producer(audio/video): ${m.producers?.audio ?? 0}/${m.producers?.video ?? 0}`)
-		console.log(`    Consumer 总数: ${m.consumers ?? "N/A"}`)
+		console.log(`    运行时长:     ${m.uptime ?? "N/A"}s`)
+		console.log(`    CPU 使用率:   ${m.cpu?.usagePercent ?? "N/A"}%  (${m.cpu?.cores ?? "?"} 核)`)
+		console.log(`    内存(Heap):   ${m.memory?.heapUsedMB ?? "N/A"}MB / ${m.memory?.heapTotalMB ?? "N/A"}MB`)
+		console.log(`    内存(RSS):    ${m.memory?.rssMB ?? "N/A"}MB`)
+		console.log(`    系统内存:     空闲 ${m.memory?.systemFreeMB ?? "N/A"}MB / 总计 ${m.memory?.systemTotalMB ?? "N/A"}MB`)
+		console.log(`    当前连接数:   ${m.connections?.current ?? "N/A"}  (累计 ${m.connections?.total ?? "N/A"})`)
+		console.log(`    Audio Producer: active=${m.producers?.audio?.active ?? "N/A"}  total=${m.producers?.audio?.total ?? "N/A"}  closed=${m.producers?.audio?.closed ?? "N/A"}`)
+		console.log(`    Video Producer: active=${m.producers?.video?.active ?? "N/A"}  total=${m.producers?.video?.total ?? "N/A"}  closed=${m.producers?.video?.closed ?? "N/A"}`)
+		console.log(`    Consumer:       active=${m.consumers?.active ?? "N/A"}  total=${m.consumers?.total ?? "N/A"}  closed=${m.consumers?.closed ?? "N/A"}`)
 		if (m.messages && m.messages.length > 0) {
 			console.log(`\n  事件处理耗时（均值）:`)
 			for (const msg of m.messages) {
 				if (msg.count > 0) {
 					console.log(
-						`    ${msg.event.padEnd(28)} count=${String(msg.count).padStart(5)}  avgDuration=${fmtMs(Math.round(msg.avgDuration))}  errorRate=${(msg.errorRate * 100).toFixed(2)}%`,
+						`    ${msg.event.padEnd(28)} count=${String(msg.count).padStart(5)}  avgDuration=${fmtMs(msg.avgDuration)}  errorRate=${(msg.errorRate * 100).toFixed(2)}%  errors=${msg.errors}`,
 					)
 				}
 			}
@@ -571,8 +578,10 @@ function printSummary(allResults) {
 		"连接耗时".padStart(10),
 		"信令耗时".padStart(10),
 		"活跃连接".padStart(10),
-		"Producer".padStart(10),
-		"Consumer".padStart(10),
+		"Producer(活)".padStart(13),
+		"Consumer(活)".padStart(13),
+		"CPU%".padStart(6),
+		"HeapMB".padStart(8),
 		"joinRoom均值".padStart(14),
 	]
 	console.log(header.join(" | "))
@@ -586,8 +595,10 @@ function printSummary(allResults) {
 			fmtMs(r.phases.connect).padStart(10),
 			fmtMs(r.phases.signaling).padStart(10),
 			String(m?.connections?.current ?? "N/A").padStart(10),
-			String((m?.producers?.audio ?? 0) + (m?.producers?.video ?? 0)).padStart(10),
-			String(m?.consumers ?? "N/A").padStart(10),
+			String(m?.producers?.totalActive ?? "N/A").padStart(13),
+			String(m?.consumers?.active ?? "N/A").padStart(13),
+			String(m?.cpu?.usagePercent != null ? `${m.cpu.usagePercent}%` : "N/A").padStart(6),
+			String(m?.memory?.heapUsedMB != null ? `${m.memory.heapUsedMB}` : "N/A").padStart(8),
 			fmtMs(r.latencyByEvent?.joinRoom?.avg).padStart(14),
 		]
 		console.log(row.join(" | "))

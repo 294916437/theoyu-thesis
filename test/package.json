@@ -1,0 +1,16 @@
+{
+	"name": "thesis-tests",
+	"version": "1.0.0",
+	"description": "系统测试套件",
+	"private": true,
+	"scripts": {
+		"test:sfu-concurrent": "node sfu/concurrent-stress.js",
+		"test:sfu-concurrent:quick": "STABLE_MS=10000 LEVELS=2,4 node sfu/concurrent-stress.js"
+	},
+	"dependencies": {
+		"socket.io-client": "^4.8.1"
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	}
+}

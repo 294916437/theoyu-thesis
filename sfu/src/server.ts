@@ -5,6 +5,7 @@ import cors from "cors"
 import config from "./config/config"
 import { MediasoupManager } from "./core/mediasoup-manager"
 import { SocketHandler } from "./features/socket-handler"
+import { MonitoringService } from "./features/monitoring-service"
 import { NacosClient } from "./utils/nacos-client"
 import { GrpcClient } from "./utils/grpc-client"
 import { Logger } from "./utils/logger"
@@ -48,12 +49,7 @@ async function startServer() {
 		})
 		// 统计端点
 		app.get("/metrics", (req, res) => {
-			const handler = (httpServer as any).socketHandler as SocketHandler
-			if (handler && handler["monitoring"]) {
-				res.json(handler["monitoring"].getMetrics())
-			} else {
-				res.status(503).json({ error: "Metrics not available" })
-			}
+			res.json(MonitoringService.getInstance().getMetrics())
 		})
 
 		// 房间统计接口

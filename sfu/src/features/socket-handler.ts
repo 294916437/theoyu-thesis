@@ -27,7 +27,7 @@ export class SocketHandler {
 		this.connectionManager = new ConnectionManager()
 		this.sessionManager = new SessionManager()
 		this.transportManager = new TransportManager()
-		this.monitoring = new MonitoringService()
+		this.monitoring = MonitoringService.getInstance()
 
 		this.setupMiddleware()
 		this.setupSocketHandlers()
@@ -361,6 +361,7 @@ export class SocketHandler {
 		// 监听生产者事件
 		producer.on("transportclose", () => {
 			this.logger.info(`Producer ${producer.id} transport closed`)
+			this.monitoring.recordProducerClosed(producer.kind as "audio" | "video")
 		})
 
 		producer.on("score", (score) => {
@@ -423,12 +424,14 @@ export class SocketHandler {
 		// 监听消费者事件
 		consumer.on("transportclose", () => {
 			this.logger.info(`Consumer ${consumer.id} transport closed`)
+			this.monitoring.recordConsumerClosed()
 		})
 
 		consumer.on("producerclose", () => {
 			// 通知客户端生产者已关闭
 			socket.emit("consumerClosed", { consumerId: consumer.id })
 			peer.removeConsumer(consumer.id)
+			this.monitoring.recordConsumerClosed()
 		})
 
 		consumer.on("score", (score) => {
@@ -595,6 +598,7 @@ export class SocketHandler {
 
 		producer.close()
 		peer.removeProducer(producerId)
+		this.monitoring.recordProducerClosed(producer.kind as "audio" | "video")
 
 		socket.to(roomId).emit("producerClosed", {
 			producerId,

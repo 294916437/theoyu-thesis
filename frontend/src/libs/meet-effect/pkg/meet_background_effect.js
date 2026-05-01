@@ -64,6 +64,13 @@ export class MeetProcessor {
     render_replace() {
         wasm.meetprocessor_render_replace(this.__wbg_ptr);
     }
+    /**
+     * 设置模糊半径（每次 box blur 的半径，默认 15，范围 1..=50）
+     * @param {number} radius
+     */
+    set_blur_radius(radius) {
+        wasm.meetprocessor_set_blur_radius(this.__wbg_ptr, radius);
+    }
 }
 if (Symbol.dispose) MeetProcessor.prototype[Symbol.dispose] = MeetProcessor.prototype.free;
 

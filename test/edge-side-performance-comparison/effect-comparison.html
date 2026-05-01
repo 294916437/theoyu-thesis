@@ -1,0 +1,1122 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Effect Mode Benchmark — None vs Blur vs Replace</title>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: #0a0a0a;
+        color: #e8eaed;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        padding: 20px 24px 48px;
+      }
+
+      /* ── overlay ── */
+      #init-overlay {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,.88);
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        z-index: 999; gap: 14px;
+      }
+      #init-overlay p { color: #888; font-size: 14px; }
+      #init-status { color: #00d4ff; font-family: "Consolas", monospace; font-size: 13px; }
+      .spinner {
+        width: 40px; height: 40px;
+        border: 3px solid #333; border-top-color: #00d4ff;
+        border-radius: 50%;
+        animation: spin .8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* ── headings ── */
+      h1 {
+        text-align: center; font-size: 24px; font-weight: 700; margin-bottom: 4px;
+        background: linear-gradient(135deg, #00d4ff, #a78bfa);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      }
+      .subtitle {
+        text-align: center; color: #555; font-size: 12px; line-height: 1.7;
+        max-width: 880px; margin: 0 auto 18px;
+      }
+
+      /* ── top bar ── */
+      .top-bar {
+        display: flex; align-items: center; gap: 14px; margin-bottom: 14px; flex-wrap: wrap;
+      }
+      .phase-row {
+        display: flex; align-items: center; gap: 10px; flex: 1; min-width: 300px;
+      }
+      .badge {
+        padding: 3px 11px; border-radius: 999px; font-size: 11px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; flex-shrink: 0;
+      }
+      .badge.idle       { background: #1c1c1c; color: #555; }
+      .badge.ready      { background: rgba(0,212,255,.1); color: #00d4ff; border: 1px solid rgba(0,212,255,.3); }
+      .badge.warmup     { background: rgba(255,214,99,.1); color: #ffd663; border: 1px solid rgba(255,214,99,.3); }
+      .badge.collecting { background: rgba(0,255,136,.1); color: #00ff88; border: 1px solid rgba(0,255,136,.3); }
+      .badge.done       { background: rgba(167,139,250,.1); color: #a78bfa; border: 1px solid rgba(167,139,250,.3); }
+      .frame-count { font-family: "Consolas", monospace; font-size: 12px; color: #666; min-width: 160px; }
+      .progress-track { flex: 1; height: 5px; background: #1a1a1a; border-radius: 3px; overflow: hidden; }
+      #progress-bar {
+        height: 100%; width: 0%; border-radius: 3px;
+        background: linear-gradient(90deg, #00d4ff, #a78bfa);
+        transition: width .1s ease;
+      }
+      .controls { display: flex; gap: 8px; }
+      .btn {
+        padding: 7px 18px; border: none; border-radius: 8px;
+        font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+        transition: opacity .2s, transform .1s;
+      }
+      .btn:hover:not(:disabled) { opacity: .85; transform: translateY(-1px); }
+      .btn:disabled { opacity: .3; cursor: not-allowed; transform: none; }
+      .btn-start   { background: linear-gradient(135deg, #00d4ff, #0099cc); color: #0a0a0a; }
+      .btn-reset   { background: #1e1e1e; color: #999; border: 1px solid #2a2a2a; }
+      .btn-export  { background: linear-gradient(135deg, #a78bfa, #7c3aed); color: #fff; }
+
+      /* ── card ── */
+      .card {
+        background: linear-gradient(135deg, #111, #1a1a1a);
+        border: 1px solid rgba(255,255,255,.06);
+        border-radius: 14px; padding: 16px 18px;
+        box-shadow: 0 6px 24px rgba(0,0,0,.5);
+        margin-bottom: 14px;
+      }
+      .card-title {
+        font-size: 10px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .8px;
+        color: #444; margin-bottom: 12px;
+      }
+
+      /* ── main grid ── */
+      .main-grid {
+        display: grid;
+        grid-template-columns: 640px 1fr;
+        gap: 14px; margin-bottom: 14px; align-items: start;
+      }
+      @media (max-width: 1100px) { .main-grid { grid-template-columns: 1fr; } }
+      #canvas-output { display: block; width: 100%; border-radius: 8px; background: #000; }
+      .cam-footer {
+        display: flex; justify-content: space-between;
+        font-size: 11px; color: #444; font-family: "Consolas", monospace; margin-top: 8px;
+      }
+      .cam-footer b { color: #888; }
+
+      /* ── mode dots ── */
+      .mode-indicator { display: flex; gap: 8px; margin-bottom: 12px; }
+      .mode-dot {
+        flex: 1; height: 28px; border-radius: 6px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 10px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+        opacity: .25; transition: opacity .3s; border: 1px solid transparent;
+      }
+      .mode-dot.active { opacity: 1; }
+      .mode-dot.d-none    { background: #1e1e1e; color: #888; border-color: #2a2a2a; }
+      .mode-dot.d-blur    { background: rgba(0,212,255,.12); color: #00d4ff; border-color: rgba(0,212,255,.4); }
+      .mode-dot.d-replace { background: rgba(0,255,136,.1); color: #00ff88; border-color: rgba(0,255,136,.4); }
+
+      /* ── live stat boxes ── */
+      .live-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+      .stat-box { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 9px 12px; }
+      .stat-label { font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 3px; }
+      .stat-value { font-family: "Consolas", monospace; font-size: 17px; font-weight: 700; color: #00d4ff; }
+      .stat-unit  { font-size: 11px; color: #444; font-weight: 400; }
+
+      /* ── mini chart ── */
+      #mini-chart { display: block; width: 100%; border-radius: 6px; background: #0d0d0d; }
+
+      /* ── method note ── */
+      .method-note {
+        font-size: 11px; color: #3a3a3a; line-height: 1.7;
+        padding: 8px 12px; background: #0f0f0f;
+        border-left: 3px solid #252525; border-radius: 4px; margin-top: 10px;
+        font-family: "Consolas", monospace;
+      }
+
+      /* ── results table ── */
+      #result-table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: "Consolas", monospace; }
+      #result-table th {
+        padding: 6px 10px; text-align: left; font-size: 10px;
+        text-transform: uppercase; letter-spacing: .5px; color: #444;
+        border-bottom: 1px solid #1e1e1e;
+      }
+      #result-table td { padding: 7px 10px; border-bottom: 1px solid #161616; color: #bbb; }
+      #result-table td:first-child { color: #444; font-size: 11px; }
+      .col-none    { color: #888 !important; }
+      .col-blur    { color: #00d4ff !important; }
+      .col-replace { color: #00ff88 !important; }
+      .row-hl td   { border-top: 1px solid #252525; padding-top: 10px; }
+
+      /* ── charts ── */
+      #bar-canvas, #series-canvas { display: block; width: 100%; border-radius: 8px; background: #0d0d0d; }
+      .chart-legend {
+        margin-top: 8px; display: flex; gap: 16px;
+        font-size: 11px; color: #555; align-items: center; flex-wrap: wrap;
+      }
+      .leg-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+
+      /* ── final report ── */
+      #final-text {
+        font-family: "Consolas", monospace; font-size: 12px; color: #999;
+        white-space: pre; line-height: 1.65; overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+
+    <!-- Loading overlay -->
+    <div id="init-overlay">
+      <div class="spinner"></div>
+      <p>初始化测试环境，请稍候...</p>
+      <div id="init-status">加载中...</div>
+    </div>
+
+    <h1>Effect Mode Benchmark</h1>
+    <p class="subtitle">
+      在真实摄像头视频流场景下，评估
+      <b style="color:#888">无效果 (None)</b>、
+      <b style="color:#00d4ff">背景模糊 (render_blur)</b>、
+      <b style="color:#00ff88">背景替换 (render_replace)</b>
+      三种模式的端侧处理性能 &nbsp;|&nbsp;
+      热身 30 帧 + 采集 120 帧 / 模式（共 450 帧）&nbsp;|&nbsp;
+      None 模式计时：drawImage；Blur/Replace 计时：getImageData → putImageData 全链路 &nbsp;|&nbsp;
+      ONNX 推理在独立异步循环运行，不纳入帧耗时测量
+    </p>
+
+    <!-- Top bar -->
+    <div class="top-bar">
+      <div class="phase-row">
+        <span class="badge idle" id="phase-badge">初始化</span>
+        <span class="frame-count" id="frame-count">— / —</span>
+        <div class="progress-track"><div id="progress-bar"></div></div>
+      </div>
+      <div class="controls">
+        <button class="btn btn-start"  id="btn-start"  disabled>▶ 开始测试</button>
+        <button class="btn btn-reset"  id="btn-reset"  disabled>↺ 重置</button>
+        <button class="btn btn-export" id="btn-export" disabled>⬇ CSV</button>
+      </div>
+    </div>
+
+    <!-- Main grid -->
+    <div class="main-grid">
+      <!-- Canvas preview -->
+      <div class="card">
+        <div class="card-title">实时输出预览（当前模式渲染结果）</div>
+        <canvas id="canvas-output" width="640" height="480"></canvas>
+        <div class="cam-footer">
+          <span>ONNX 推理: <b id="onnx-ms">--</b></span>
+          <span>captureStream(30) 实测: <b id="stream-fps">--</b> fps</span>
+          <span>rAF 循环: <b id="raf-fps">--</b> fps</span>
+        </div>
+        <div class="method-note">
+          计时方法（None）: performance.now() 前后包裹 ctx.drawImage(video)。<br>
+          计时方法（Blur/Replace）: t₀ = getImageData 之前，t₁ = putImageData 之后，含 Wasm 内存写入 + prepare_mask() + render_*()。<br>
+          captureStream(30) 实际帧率通过 requestVideoFrameCallback 逐帧计数，每阶段独立统计。<br>
+          长任务（≥50ms）通过 PerformanceObserver longtask 类型逐模式累计。
+        </div>
+      </div>
+
+      <!-- Live stats -->
+      <div class="card">
+        <div class="card-title">当前阶段实时统计</div>
+        <div class="mode-indicator">
+          <div class="mode-dot d-none"    id="dot-none">None</div>
+          <div class="mode-dot d-blur"    id="dot-blur">Blur</div>
+          <div class="mode-dot d-replace" id="dot-replace">Replace</div>
+        </div>
+        <div class="live-grid">
+          <div class="stat-box">
+            <div class="stat-label">帧处理耗时</div>
+            <div class="stat-value" id="live-ms">--<span class="stat-unit"> ms</span></div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">帧预算占用 (÷33.33ms)</div>
+            <div class="stat-value" id="live-budget">--<span class="stat-unit"> %</span></div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">已采集帧</div>
+            <div class="stat-value" id="live-n">--</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">长任务 ≥50ms</div>
+            <div class="stat-value" id="live-lt">0</div>
+          </div>
+        </div>
+        <div class="card-title" style="margin-bottom:6px">滚动处理耗时 (最近 30 帧)</div>
+        <canvas id="mini-chart" width="420" height="90"></canvas>
+      </div>
+    </div>
+
+    <!-- Results (hidden until done) -->
+    <div id="results-section" style="display:none">
+
+      <!-- Summary table -->
+      <div class="card">
+        <div class="card-title">三模式性能对比汇总 (各 120 帧)</div>
+        <table id="result-table">
+          <thead>
+            <tr>
+              <th>指标</th>
+              <th class="col-none">无效果 (None)</th>
+              <th class="col-blur">背景模糊 (Blur)</th>
+              <th class="col-replace">背景替换 (Replace)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>采集帧数</td>          <td id="r-none-n">--</td>   <td id="r-blur-n">--</td>   <td id="r-replace-n">--</td></tr>
+            <tr><td>均值 Mean</td>         <td id="r-none-mean">--</td><td id="r-blur-mean">--</td><td id="r-replace-mean">--</td></tr>
+            <tr><td>标准差 StdDev</td>     <td id="r-none-std">--</td> <td id="r-blur-std">--</td> <td id="r-replace-std">--</td></tr>
+            <tr><td>中位数 Median</td>     <td id="r-none-med">--</td> <td id="r-blur-med">--</td> <td id="r-replace-med">--</td></tr>
+            <tr><td>最小值 Min</td>        <td id="r-none-min">--</td> <td id="r-blur-min">--</td> <td id="r-replace-min">--</td></tr>
+            <tr><td>最大值 Max</td>        <td id="r-none-max">--</td> <td id="r-blur-max">--</td> <td id="r-replace-max">--</td></tr>
+            <tr><td>P95 延迟</td>          <td id="r-none-p95">--</td> <td id="r-blur-p95">--</td> <td id="r-replace-p95">--</td></tr>
+            <tr class="row-hl">
+              <td>帧预算占用 (%)</td>      <td id="r-none-bud">--</td> <td id="r-blur-bud">--</td> <td id="r-replace-bud">--</td>
+            </tr>
+            <tr><td>captureStream FPS</td><td id="r-none-sfps">--</td><td id="r-blur-sfps">--</td><td id="r-replace-sfps">--</td></tr>
+            <tr><td>rAF 达成 FPS</td>     <td id="r-none-rfps">--</td><td id="r-blur-rfps">--</td><td id="r-replace-rfps">--</td></tr>
+            <tr><td>长任务次数</td>        <td id="r-none-lt">--</td>  <td id="r-blur-lt">--</td>  <td id="r-replace-lt">--</td></tr>
+            <tr class="row-hl">
+              <td>相对 None 开销倍数</td>  <td class="col-none">1.000×</td><td id="r-blur-rel">--</td><td id="r-replace-rel">--</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Bar chart -->
+      <div class="card">
+        <div class="card-title">帧处理均值对比 (误差棒 = ±1σ，黄虚线 = 30fps 帧预算 33.33ms)</div>
+        <canvas id="bar-canvas" width="900" height="260"></canvas>
+        <div class="chart-legend">
+          <span><span class="leg-dot" style="background:#888"></span>None</span>
+          <span><span class="leg-dot" style="background:#00d4ff"></span>Blur</span>
+          <span><span class="leg-dot" style="background:#00ff88"></span>Replace</span>
+          <span style="margin-left:auto;font-size:11px;color:#333">Y轴: 耗时 (ms)</span>
+        </div>
+      </div>
+
+      <!-- Time-series chart -->
+      <div class="card">
+        <div class="card-title">逐帧处理耗时 — 三模式各 120 帧（虚线=各模式均值，黄实线=帧预算）</div>
+        <canvas id="series-canvas" width="1100" height="300"></canvas>
+        <div class="chart-legend">
+          <span><span class="leg-dot" style="background:#888"></span>None</span>
+          <span><span class="leg-dot" style="background:#00d4ff"></span>Blur</span>
+          <span><span class="leg-dot" style="background:#00ff88"></span>Replace</span>
+          <span style="color:#333;font-size:11px">虚线=均值 &nbsp;|&nbsp; 黄线=33.33ms</span>
+          <span style="color:#333;font-size:11px;margin-left:auto">X轴: 帧序 &nbsp;|&nbsp; Y轴: ms</span>
+        </div>
+      </div>
+
+      <!-- Text summary -->
+      <div class="card">
+        <div class="card-title">✅ 测试完成 — 文本摘要（可复制）</div>
+        <pre id="final-text"></pre>
+        <div style="margin-top:10px;font-size:11px;color:#333;font-family:'Consolas',monospace" id="env-info"></div>
+      </div>
+    </div>
+
+    <video id="video" style="display:none" playsinline autoplay muted></video>
+
+    <script type="module">
+      import init, { MeetProcessor, init_panic_hook } from "../../demos/pkg/meet_background_effect.js"
+
+      // ── Constants ────────────────────────────────────────────────────────────
+      const WIDTH  = 640,  HEIGHT  = 480
+      const MASK_W = 256,  MASK_H  = 144
+      const WARMUP  = 30
+      const COLLECT = 120
+      const TARGET_FPS   = 30
+      const FRAME_BUDGET = 1000 / TARGET_FPS   // 33.333... ms
+      const MODES = ['none', 'blur', 'replace']
+
+      // PHASES: sequential warmup → collect for each mode
+      const PHASES = [
+        { mode: 'none',    warmup: true  },
+        { mode: 'none',    warmup: false },
+        { mode: 'blur',    warmup: true  },
+        { mode: 'blur',    warmup: false },
+        { mode: 'replace', warmup: true  },
+        { mode: 'replace', warmup: false },
+      ]
+      const TOTAL_FRAMES = PHASES.length / 2 * (WARMUP + COLLECT) // 450
+
+      // ── Module-scope state (needed by PerformanceObserver) ────────────────────
+      let currentMode  = 'none'
+      let collectPhase = false    // true only during collect sub-phases
+      const longTasks  = { none: 0, blur: 0, replace: 0 }
+
+      // ── PerformanceObserver: long tasks (≥50ms) ───────────────────────────────
+      try {
+        const po = new PerformanceObserver((list) => {
+          if (!collectPhase) return
+          for (const e of list.getEntries()) {
+            if (e.duration >= 50) longTasks[currentMode]++
+          }
+        })
+        po.observe({ entryTypes: ['longtask'] })
+      } catch (_) { /* longtask not supported in all browsers */ }
+
+      // ── Stats helper ──────────────────────────────────────────────────────────
+      function calcStats(arr) {
+        const n = arr.length
+        if (!n) return null
+        const mean = arr.reduce((a, b) => a + b) / n
+        const variance = arr.reduce((a, b) => a + (b - mean) ** 2, 0) / n
+        const std  = Math.sqrt(variance)
+        const sorted = [...arr].sort((a, b) => a - b)
+        const med  = n & 1 ? sorted[n >> 1] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2
+        const p95  = sorted[Math.min(Math.ceil(n * 0.95) - 1, n - 1)]
+        return { n, mean, std, median: med, min: sorted[0], max: sorted[n - 1], p95 }
+      }
+
+      // ── DOM helpers ───────────────────────────────────────────────────────────
+      const $   = (id) => document.getElementById(id)
+      const set = (id, v) => { const el = $(id); if (el) el.textContent = v }
+
+      // ── Main ──────────────────────────────────────────────────────────────────
+      async function main() {
+        // 1. Init Wasm
+        $('init-status').textContent = '① 加载 Wasm 模块...'
+        let wasmExports
+        try {
+          wasmExports = await init()
+          init_panic_hook()
+        } catch (e) {
+          $('init-status').textContent = '❌ Wasm 加载失败: ' + e.message
+          return
+        }
+        const processor = MeetProcessor.new(WIDTH, HEIGHT)
+
+        // 2. Load background image for Replace mode
+        $('init-status').textContent = '② 加载背景图...'
+        try {
+          await loadBackgroundIntoWasm('../../demos/assets/stylish_home_office.jpg', processor, wasmExports)
+        } catch (_) {
+          // Fallback: programmatic gradient background
+          genSyntheticBackground(processor, wasmExports)
+        }
+
+        // 3. Load ONNX model
+        $('init-status').textContent = '③ 加载 ONNX 模型...'
+        let session = null
+        try {
+          session = await ort.InferenceSession.create('../assets/model_float32_opt.onnx', {
+            executionProviders: ['wasm'],
+            graphOptimizationLevel: 'all',
+          })
+        } catch (e) {
+          console.warn('ONNX 模型加载失败，将使用合成 mask:', e)
+        }
+
+        // 4. Camera
+        $('init-status').textContent = '④ 启动摄像头...'
+        const video = $('video')
+        let cameraOk = false
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: WIDTH }, height: { ideal: HEIGHT }, frameRate: { ideal: 60 } },
+          })
+          video.srcObject = stream
+          await new Promise((r) => { video.onloadedmetadata = r })
+          video.play()
+          cameraOk = true
+        } catch (e) {
+          console.warn('摄像头不可用:', e)
+        }
+
+        // 5. Setup canvases
+        const outputCanvas = $('canvas-output')
+        outputCanvas.width  = WIDTH
+        outputCanvas.height = HEIGHT
+        const ctx = outputCanvas.getContext('2d', { willReadFrequently: true, alpha: false })
+
+        // Offscreen for full-res frame capture (Blur/Replace)
+        const offLarge    = new OffscreenCanvas(WIDTH, HEIGHT)
+        const offLargeCtx = offLarge.getContext('2d', { willReadFrequently: true })
+
+        // Offscreen for ONNX inference (mask resolution)
+        const offSmall    = new OffscreenCanvas(MASK_W, MASK_H)
+        const offSmallCtx = offSmall.getContext('2d', { willReadFrequently: true })
+        const onnxInput   = new Float32Array(MASK_W * MASK_H * 3)
+
+        // Synthetic frame buffer (fallback if no camera)
+        const synthFrame = makeSyntheticFrame(WIDTH, HEIGHT)
+
+        // 6. captureStream(30) → monitor actual delivered FPS via requestVideoFrameCallback
+        // Each collect phase independently counts frames and measures elapsed time.
+        let streamFrameCount = 0   // reset at start of each collect phase
+        const achievedStreamFPS = { none: 0, blur: 0, replace: 0 }
+
+        const outputStream = outputCanvas.captureStream(TARGET_FPS)
+        const monitorVideo = document.createElement('video')
+        monitorVideo.muted = true
+        monitorVideo.srcObject = outputStream
+        monitorVideo.style.display = 'none'
+        document.body.appendChild(monitorVideo)
+        monitorVideo.play().catch(() => {})
+
+        // requestVideoFrameCallback: most accurate stream-frame counting
+        if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+          ;(function countStreamFrame() {
+            monitorVideo.requestVideoFrameCallback(() => {
+              if (collectPhase) streamFrameCount++
+              countStreamFrame()
+            })
+          })()
+        }
+
+        // 7. ONNX inference loop (async, independent of render loop)
+        let currentMask  = null
+        let isInferring  = false
+
+        async function inferenceLoop() {
+          if (isInferring) { setTimeout(inferenceLoop, 33); return }
+          isInferring = true
+          const t0 = performance.now()
+
+          try {
+            const videoReady = cameraOk && (video.readyState || 0) >= 2
+            if (session && videoReady) {
+              offSmallCtx.drawImage(video, 0, 0, MASK_W, MASK_H)
+              const imgData = offSmallCtx.getImageData(0, 0, MASK_W, MASK_H).data
+              for (let i = 0, j = 0; i < imgData.length; i += 4, j += 3) {
+                onnxInput[j]     = imgData[i]     / 255
+                onnxInput[j + 1] = imgData[i + 1] / 255
+                onnxInput[j + 2] = imgData[i + 2] / 255
+              }
+              const tensor  = new ort.Tensor('float32', onnxInput, [1, MASK_H, MASK_W, 3])
+              const results = await session.run({ 'input_1:0': tensor })
+              const raw     = results[Object.keys(results)[0]].data
+              const mask    = new Float32Array(MASK_W * MASK_H)
+              for (let i = 0; i < MASK_W * MASK_H; i++) {
+                // Stable softmax for 2-class: σ(fg - bg)
+                mask[i] = 1.0 / (1.0 + Math.exp(raw[i * 2] - raw[i * 2 + 1]))
+              }
+              currentMask = mask
+              set('onnx-ms', (performance.now() - t0).toFixed(1) + ' ms')
+            } else {
+              // Synthetic mask: central ellipse as foreground proxy
+              if (!currentMask) {
+                currentMask = new Float32Array(MASK_W * MASK_H)
+                for (let y = 0; y < MASK_H; y++) {
+                  for (let x = 0; x < MASK_W; x++) {
+                    const cx = x / MASK_W - 0.5, cy = y / MASK_H - 0.5
+                    currentMask[y * MASK_W + x] = Math.max(0, 1 - Math.sqrt(cx * cx + cy * cy) * 3)
+                  }
+                }
+              }
+            }
+          } catch (e) { console.warn('推理异常:', e) }
+
+          isInferring = false
+          setTimeout(inferenceLoop, 33)
+        }
+
+        // 8. Benchmark state
+        let benchRunning    = false
+        let phaseIdx        = 0
+        let phaseFrameCount = 0
+        let overallFrames   = 0
+
+        // Per-phase rAF FPS tracking
+        let phaseRafFrames  = 0
+        let phaseStartTime  = 0
+        const achievedRafFPS = { none: 0, blur: 0, replace: 0 }
+
+        // Collected frame times
+        const times = { none: [], blur: [], replace: [] }
+
+        // Mini-chart rolling buffer (last 30 frames of current mode)
+        const miniRoll = []
+
+        // Rolling rAF FPS for live display
+        const rafDeltas = []
+        let lastRafT    = performance.now()
+
+        // 9. Render loop (requestAnimationFrame)
+        function renderLoop() {
+          // rAF FPS (rolling 60-frame window)
+          const nowT   = performance.now()
+          const delta  = nowT - lastRafT
+          lastRafT     = nowT
+          rafDeltas.push(delta)
+          if (rafDeltas.length > 60) rafDeltas.shift()
+          const avgDelta = rafDeltas.reduce((a, b) => a + b) / rafDeltas.length
+          const rafFPS   = 1000 / avgDelta
+          set('raf-fps', rafFPS.toFixed(1))
+
+          // If not running, just render camera preview and return
+          if (!benchRunning) {
+            if (cameraOk && (video.readyState || 0) >= 2) {
+              ctx.drawImage(video, 0, 0, WIDTH, HEIGHT)
+            }
+            requestAnimationFrame(renderLoop)
+            return
+          }
+
+          const phase = PHASES[phaseIdx]
+          currentMode  = phase.mode
+          collectPhase = !phase.warmup
+
+          // ── Update mode dots ──────────────────────────────────────────────
+          MODES.forEach((m) => {
+            const el = $(`dot-${m}`)
+            if (el) el.classList.toggle('active', m === phase.mode)
+          })
+
+          // ── Mode-specific frame timing ────────────────────────────────────
+          const videoReady = cameraOk && (video.readyState || 0) >= 2
+          let frametime
+
+          if (phase.mode === 'none') {
+            // Baseline: direct drawImage — no Wasm, no getImageData/putImageData
+            const t0 = performance.now()
+            if (videoReady) {
+              ctx.drawImage(video, 0, 0, WIDTH, HEIGHT)
+            } else {
+              ctx.putImageData(new ImageData(synthFrame.slice(), WIDTH, HEIGHT), 0, 0)
+            }
+            frametime = performance.now() - t0
+
+          } else {
+            // Blur / Replace: full getImageData → Wasm → putImageData pipeline
+            // Wait for at least one ONNX mask before starting any work
+            if (!currentMask) {
+              requestAnimationFrame(renderLoop)
+              return
+            }
+
+            // Capture current frame (outside timing window — matches production pipeline
+            // where this would be done asynchronously)
+            const imgData = videoReady
+              ? (() => { offLargeCtx.drawImage(video, 0, 0, WIDTH, HEIGHT); return offLargeCtx.getImageData(0, 0, WIDTH, HEIGHT) })()
+              : { data: synthFrame }
+
+            // ── Timed region: getImageData usage → putImageData ──────────────
+            const t0 = performance.now()
+
+            // Write RGBA pixels into Wasm input buffer
+            const memBuf   = wasmExports.memory.buffer
+            const inputView = new Uint8Array(memBuf, processor.input_ptr(), WIDTH * HEIGHT * 4)
+            const maskView  = new Float32Array(memBuf, processor.mask_ptr(), MASK_W * MASK_H)
+            inputView.set(imgData.data)
+            maskView.set(currentMask)
+
+            // Wasm processing
+            processor.prepare_mask()
+            if (phase.mode === 'blur') {
+              processor.render_blur()
+            } else {
+              processor.render_replace()
+            }
+
+            // Read output from Wasm memory and blit to canvas
+            const outputView = new Uint8ClampedArray(
+              wasmExports.memory.buffer,
+              processor.output_ptr(),
+              WIDTH * HEIGHT * 4
+            )
+            ctx.putImageData(new ImageData(outputView.slice(), WIDTH, HEIGHT), 0, 0)
+
+            frametime = performance.now() - t0
+            // ── End timed region ─────────────────────────────────────────────
+          }
+
+          // ── Count rAF frames within collect phase ─────────────────────────
+          if (collectPhase) {
+            phaseRafFrames++
+            streamFrameCount  // already incremented by requestVideoFrameCallback
+          }
+
+          // ── Phase bookkeeping ─────────────────────────────────────────────
+          if (collectPhase) {
+            times[phase.mode].push(frametime)
+            miniRoll.push(frametime)
+            if (miniRoll.length > 30) miniRoll.shift()
+
+            // Live stats
+            set('live-ms',     frametime.toFixed(3))
+            set('live-budget', ((frametime / FRAME_BUDGET) * 100).toFixed(1))
+            set('live-n',      times[phase.mode].length + ' / ' + COLLECT)
+            set('live-lt',     longTasks[phase.mode])
+
+            drawMiniChart(miniRoll, phase.mode)
+          }
+
+          phaseFrameCount++
+          overallFrames++
+
+          // Overall progress bar
+          const totalPhaseLen  = phase.warmup ? WARMUP : COLLECT
+          const phaseDoneFrames = (phaseIdx >> 1) * (WARMUP + COLLECT) +
+                                  (phase.warmup ? 0 : WARMUP) +
+                                  phaseFrameCount
+          $('progress-bar').style.width = Math.min(100, (phaseDoneFrames / TOTAL_FRAMES) * 100).toFixed(2) + '%'
+          set('frame-count', `${phase.mode.toUpperCase()} · ${phase.warmup ? '热身' : '采集'} ${phaseFrameCount} / ${totalPhaseLen}`)
+
+          // Update captureStream FPS display periodically
+          if (phaseFrameCount % 15 === 0 && phase.mode !== 'none') {
+            const elapsed = performance.now() - phaseStartTime
+            if (elapsed > 0) set('stream-fps', ((streamFrameCount / elapsed) * 1000).toFixed(1))
+          }
+
+          // Advance phase if this phase is complete
+          if (phaseFrameCount >= totalPhaseLen) {
+            if (collectPhase) {
+              // Record per-phase metrics
+              const elapsed = performance.now() - phaseStartTime
+              achievedStreamFPS[phase.mode] = (streamFrameCount / elapsed) * 1000
+              achievedRafFPS[phase.mode]    = (phaseRafFrames  / elapsed) * 1000
+            }
+
+            phaseFrameCount   = 0
+            phaseRafFrames    = 0
+            streamFrameCount  = 0
+            miniRoll.length   = 0
+            phaseIdx++
+
+            if (phaseIdx >= PHASES.length) {
+              // All phases done
+              benchRunning = false
+              collectPhase = false
+              const badge = $('phase-badge')
+              badge.textContent = '完成'
+              badge.className   = 'badge done'
+              set('frame-count', '所有阶段已完成')
+              $('progress-bar').style.width = '100%'
+              $('btn-reset').disabled  = false
+              $('btn-export').disabled = false
+              showResults()
+              requestAnimationFrame(renderLoop)
+              return
+            }
+
+            // Update badge for next phase
+            const next  = PHASES[phaseIdx]
+            const badge = $('phase-badge')
+            badge.textContent = `${next.mode.toUpperCase()} · ${next.warmup ? '热身' : '采集'}`
+            badge.className   = `badge ${next.warmup ? 'warmup' : 'collecting'}`
+
+            // If next phase is a collect phase, reset its per-phase timer
+            if (!next.warmup) phaseStartTime = performance.now()
+          }
+
+          // Start of first collect phase in each mode: record start time
+          if (collectPhase && phaseFrameCount === 1) {
+            phaseStartTime = performance.now()
+          }
+
+          requestAnimationFrame(renderLoop)
+        }
+
+        // ── Mini rolling chart ────────────────────────────────────────────────
+        function drawMiniChart(history, mode) {
+          const canvas = $('mini-chart')
+          const c = canvas.getContext('2d')
+          const W = canvas.width, H = canvas.height
+          const pad = { l: 6, r: 6, t: 8, b: 6 }
+          c.fillStyle = '#0d0d0d'
+          c.fillRect(0, 0, W, H)
+          if (history.length < 2) return
+
+          const maxVal = Math.max(...history, FRAME_BUDGET * 1.4)
+          const color  = mode === 'none' ? '#888' : mode === 'blur' ? '#00d4ff' : '#00ff88'
+          const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b
+
+          // Budget reference line
+          const budY = pad.t + cH * (1 - FRAME_BUDGET / maxVal)
+          c.setLineDash([4, 3])
+          c.strokeStyle = 'rgba(255,214,99,.45)'
+          c.lineWidth = 1
+          c.beginPath(); c.moveTo(pad.l, budY); c.lineTo(W - pad.r, budY); c.stroke()
+          c.setLineDash([])
+
+          // Series
+          c.strokeStyle = color
+          c.lineWidth   = 1.6
+          c.globalAlpha = 0.9
+          c.beginPath()
+          for (let i = 0; i < history.length; i++) {
+            const x = pad.l + (i / (history.length - 1)) * cW
+            const y = pad.t + cH * (1 - Math.min(history[i] / maxVal, 1))
+            i === 0 ? c.moveTo(x, y) : c.lineTo(x, y)
+          }
+          c.stroke()
+          c.globalAlpha = 1
+        }
+
+        // ── Final results ────────────────────────────────────────────────────
+        function showResults() {
+          $('results-section').style.display = 'block'
+
+          const s = {}
+          MODES.forEach((m) => { s[m] = calcStats(times[m]) })
+
+          // Fill stats table
+          MODES.forEach((m) => {
+            const st = s[m]
+            if (!st) return
+            const f = (v) => v.toFixed(4) + ' ms'
+            set(`r-${m}-n`,    st.n)
+            set(`r-${m}-mean`, f(st.mean))
+            set(`r-${m}-std`,  f(st.std))
+            set(`r-${m}-med`,  f(st.median))
+            set(`r-${m}-min`,  f(st.min))
+            set(`r-${m}-max`,  f(st.max))
+            set(`r-${m}-p95`,  f(st.p95))
+            set(`r-${m}-bud`,  ((st.mean / FRAME_BUDGET) * 100).toFixed(2) + ' %')
+            set(`r-${m}-sfps`, achievedStreamFPS[m].toFixed(2) + ' fps')
+            set(`r-${m}-rfps`, achievedRafFPS[m].toFixed(2) + ' fps')
+            set(`r-${m}-lt`,   longTasks[m])
+          })
+          if (s.none) {
+            ;['blur', 'replace'].forEach((m) => {
+              if (s[m]) set(`r-${m}-rel`, (s[m].mean / s.none.mean).toFixed(3) + '×')
+            })
+          }
+
+          drawBarChart(s)
+          drawSeriesChart()
+          showFinalReport(s)
+
+          $('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+
+        // ── Bar chart ──────────────────────────────────────────────────────────
+        function drawBarChart(s) {
+          const canvas = $('bar-canvas')
+          const c = canvas.getContext('2d')
+          const W = canvas.width, H = canvas.height
+          const pad = { top: 32, right: 32, bottom: 56, left: 64 }
+          const cW = W - pad.left - pad.right, cH = H - pad.top - pad.bottom
+
+          c.fillStyle = '#0d0d0d'; c.fillRect(0, 0, W, H)
+
+          const colors  = { none: '#888', blur: '#00d4ff', replace: '#00ff88' }
+          const labels  = { none: 'None\n(drawImage)', blur: 'Blur\n(render_blur)', replace: 'Replace\n(render_replace)' }
+          const maxMean = Math.max(...MODES.map((m) => s[m] ? s[m].mean + s[m].std : 0), FRAME_BUDGET)
+          const maxVal  = maxMean * 1.28 || 1
+
+          // Y grid + ticks
+          c.font = '11px Consolas, monospace'; c.textAlign = 'right'
+          for (let i = 0; i <= 5; i++) {
+            const frac = i / 5, y = pad.top + cH - frac * cH, v = frac * maxVal
+            c.strokeStyle = i === 0 ? '#333' : '#1a1a1a'; c.lineWidth = i === 0 ? 1.5 : 1
+            c.beginPath(); c.moveTo(pad.left, y); c.lineTo(pad.left + cW, y); c.stroke()
+            c.fillStyle = '#555'
+            c.fillText(v.toFixed(v < 10 ? 2 : 1) + ' ms', pad.left - 6, y + 4)
+          }
+          // Y axis label
+          c.save(); c.rotate(-Math.PI / 2); c.textAlign = 'center'
+          c.fillStyle = '#444'; c.font = '12px Segoe UI, sans-serif'
+          c.fillText('Frame Time (ms)', -(pad.top + cH / 2), 18)
+          c.restore()
+
+          // Budget line
+          const budY = pad.top + cH - (FRAME_BUDGET / maxVal) * cH
+          c.setLineDash([6, 4]); c.strokeStyle = 'rgba(255,214,99,.65)'; c.lineWidth = 1.5
+          c.beginPath(); c.moveTo(pad.left, budY); c.lineTo(pad.left + cW, budY); c.stroke()
+          c.setLineDash([])
+          c.fillStyle = 'rgba(255,214,99,.7)'; c.font = '10px Consolas, monospace'; c.textAlign = 'right'
+          c.fillText('33.33ms (30fps budget)', pad.left + cW, budY - 5)
+
+          // Bars
+          const barW = (cW * 0.55) / MODES.length
+          MODES.forEach((m, i) => {
+            const st = s[m]; if (!st) return
+            const x = pad.left + cW * (0.225 + i * 0.275)
+            const bH = (st.mean / maxVal) * cH
+            const y  = pad.top + cH - bH
+
+            // Bar
+            c.fillStyle = colors[m]; c.globalAlpha = 0.82
+            c.fillRect(x - barW / 2, y, barW, bH)
+            c.globalAlpha = 1
+
+            // Error bar ±1σ
+            const topE = pad.top + cH - ((st.mean + st.std) / maxVal) * cH
+            const botE = pad.top + cH - (Math.max(st.mean - st.std, 0) / maxVal) * cH
+            c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.globalAlpha = 0.5
+            c.beginPath(); c.moveTo(x, topE); c.lineTo(x, botE); c.stroke()
+            c.beginPath(); c.moveTo(x - 5, topE); c.lineTo(x + 5, topE); c.stroke()
+            c.beginPath(); c.moveTo(x - 5, botE); c.lineTo(x + 5, botE); c.stroke()
+            c.globalAlpha = 1
+
+            // Value label
+            c.fillStyle = colors[m]; c.font = 'bold 12px Consolas, monospace'; c.textAlign = 'center'
+            c.fillText(st.mean.toFixed(3) + ' ms', x, y - 8)
+
+            // X-axis label (two rows)
+            c.fillStyle = '#666'; c.font = '11px Segoe UI, sans-serif'
+            labels[m].split('\n').forEach((line, li) => {
+              c.fillText(line, x, pad.top + cH + 18 + li * 16)
+            })
+          })
+        }
+
+        // ── Time-series chart ──────────────────────────────────────────────────
+        function drawSeriesChart() {
+          const canvas = $('series-canvas')
+          const c = canvas.getContext('2d')
+          const W = canvas.width, H = canvas.height
+          const pad = { top: 24, right: 80, bottom: 46, left: 64 }
+          const cW = W - pad.left - pad.right, cH = H - pad.top - pad.bottom
+
+          c.fillStyle = '#0d0d0d'; c.fillRect(0, 0, W, H)
+
+          const allVals = MODES.flatMap((m) => times[m])
+          if (!allVals.length) return
+          const maxVal = Math.max(...allVals, FRAME_BUDGET) * 1.18
+
+          // Y grid
+          c.font = '11px Consolas, monospace'; c.textAlign = 'right'
+          for (let i = 0; i <= 5; i++) {
+            const frac = i / 5, y = pad.top + cH - frac * cH, v = frac * maxVal
+            c.strokeStyle = i === 0 ? '#333' : '#191919'; c.lineWidth = i === 0 ? 1.5 : 1
+            c.beginPath(); c.moveTo(pad.left, y); c.lineTo(pad.left + cW, y); c.stroke()
+            c.fillStyle = '#555'
+            c.fillText(v.toFixed(v < 10 ? 2 : 1), pad.left - 6, y + 4)
+          }
+          c.save(); c.rotate(-Math.PI / 2); c.textAlign = 'center'
+          c.fillStyle = '#444'; c.font = '12px Segoe UI, sans-serif'
+          c.fillText('Time (ms)', -(pad.top + cH / 2), 18)
+          c.restore()
+
+          // X ticks
+          c.textAlign = 'center'; c.fillStyle = '#444'; c.font = '11px Consolas, monospace'
+          for (let i = 0; i <= 10; i++) {
+            const x  = pad.left + (i / 10) * cW
+            c.fillText(Math.round(i / 10 * COLLECT), x, H - 12)
+          }
+          c.fillStyle = '#3a3a3a'; c.font = '11px Segoe UI, sans-serif'
+          c.fillText('Frame Index', pad.left + cW / 2, H - 28)
+
+          // Budget line
+          const budY = pad.top + cH - (FRAME_BUDGET / maxVal) * cH
+          c.strokeStyle = 'rgba(255,214,99,.5)'; c.lineWidth = 1.5
+          c.beginPath(); c.moveTo(pad.left, budY); c.lineTo(pad.left + cW, budY); c.stroke()
+          c.fillStyle = 'rgba(255,214,99,.6)'; c.font = '10px Consolas, monospace'; c.textAlign = 'left'
+          c.fillText('33.33ms', pad.left + cW + 4, budY + 4)
+
+          // Series + mean lines
+          const colors = { none: '#888', blur: '#00d4ff', replace: '#00ff88' }
+          MODES.forEach((m) => {
+            const data = times[m]
+            if (data.length < 2) return
+            const st  = calcStats(data)
+            const col = colors[m]
+
+            // Series line
+            c.strokeStyle = col; c.lineWidth = 1.3; c.globalAlpha = 0.82
+            c.beginPath()
+            for (let i = 0; i < data.length; i++) {
+              const x = pad.left + (i / (COLLECT - 1)) * cW
+              const y = pad.top  + cH - Math.min(data[i] / maxVal, 1) * cH
+              i === 0 ? c.moveTo(x, y) : c.lineTo(x, y)
+            }
+            c.stroke(); c.globalAlpha = 1
+
+            // Mean dashed line
+            const meanY = pad.top + cH - (st.mean / maxVal) * cH
+            c.setLineDash([5, 4]); c.strokeStyle = col; c.lineWidth = 1; c.globalAlpha = 0.5
+            c.beginPath(); c.moveTo(pad.left, meanY); c.lineTo(pad.left + cW, meanY); c.stroke()
+            c.setLineDash([]); c.globalAlpha = 1
+            c.fillStyle = col; c.font = '10px Consolas, monospace'; c.textAlign = 'left'
+            c.fillText(`μ=${st.mean.toFixed(2)}`, pad.left + cW + 4, meanY + 4)
+          })
+        }
+
+        // ── Final text report ──────────────────────────────────────────────────
+        function showFinalReport(s) {
+          const sep = '══════════════════════════════════════════════════════════════'
+          const div = '──────────────────────────────────────────────────────────────'
+          const mLabels = { none: '无效果 (None)   ', blur: '背景模糊 (Blur)  ', replace: '背景替换 (Replace)' }
+          const lines = [
+            sep,
+            '  Effect Mode Benchmark — 端侧背景效果模式性能对比报告',
+            `  分辨率: ${WIDTH}×${HEIGHT}  |  目标帧率: ${TARGET_FPS} fps  |  帧预算: ${FRAME_BUDGET.toFixed(4)} ms`,
+            `  热身: ${WARMUP} 帧/模式  |  采集: ${COLLECT} 帧/模式`,
+            '  None 计时: drawImage(video)；Blur/Replace 计时: getImageData → putImageData',
+            div,
+          ]
+
+          MODES.forEach((m) => {
+            const st = s[m]; if (!st) return
+            lines.push('')
+            lines.push(`  ${mLabels[m]}`)
+            lines.push(`    Mean          : ${st.mean.toFixed(4)} ms`)
+            lines.push(`    StdDev        : ${st.std.toFixed(4)} ms`)
+            lines.push(`    Median        : ${st.median.toFixed(4)} ms`)
+            lines.push(`    Min           : ${st.min.toFixed(4)} ms`)
+            lines.push(`    Max           : ${st.max.toFixed(4)} ms`)
+            lines.push(`    P95           : ${st.p95.toFixed(4)} ms`)
+            lines.push(`    帧预算占用    : ${((st.mean / FRAME_BUDGET) * 100).toFixed(2)} %`)
+            lines.push(`    captureStream : ${achievedStreamFPS[m].toFixed(2)} fps (目标 ${TARGET_FPS} fps)`)
+            lines.push(`    rAF FPS       : ${achievedRafFPS[m].toFixed(2)} fps`)
+            lines.push(`    长任务 ≥50ms  : ${longTasks[m]} 次`)
+          })
+
+          if (s.none && s.blur && s.replace) {
+            lines.push(''); lines.push(div)
+            lines.push('  相对性能对比 (基准: None)')
+            lines.push(`    Blur    overhead  : +${(s.blur.mean    - s.none.mean).toFixed(4)} ms  (${(s.blur.mean    / s.none.mean).toFixed(3)}×)`)
+            lines.push(`    Replace overhead  : +${(s.replace.mean - s.none.mean).toFixed(4)} ms  (${(s.replace.mean / s.none.mean).toFixed(3)}×)`)
+            lines.push(`    Blur vs Replace   : ${Math.abs(s.blur.mean - s.replace.mean).toFixed(4)} ms 差异`)
+            const blurFPSDrop    = TARGET_FPS - achievedRafFPS['blur']
+            const replaceFPSDrop = TARGET_FPS - achievedRafFPS['replace']
+            lines.push(`    Blur rAF FPS drop : ${blurFPSDrop.toFixed(2)} fps vs ${TARGET_FPS} fps 目标`)
+            lines.push(`    Replace FPS drop  : ${replaceFPSDrop.toFixed(2)} fps vs ${TARGET_FPS} fps 目标`)
+          }
+          lines.push(''); lines.push(sep)
+
+          $('final-text').textContent = lines.join('\n')
+          $('env-info').textContent   = 'UA: ' + navigator.userAgent
+        }
+
+        // ── CSV export ─────────────────────────────────────────────────────────
+        $('btn-export').addEventListener('click', () => {
+          const header = 'frame,none_ms,blur_ms,replace_ms'
+          const rows   = [header]
+          for (let i = 0; i < COLLECT; i++) {
+            rows.push([
+              i + 1,
+              times.none[i]    != null ? times.none[i].toFixed(6)    : '',
+              times.blur[i]    != null ? times.blur[i].toFixed(6)    : '',
+              times.replace[i] != null ? times.replace[i].toFixed(6) : '',
+            ].join(','))
+          }
+          const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+          const url  = URL.createObjectURL(blob)
+          const a    = document.createElement('a')
+          a.href = url; a.download = `effect-benchmark-${WIDTH}x${HEIGHT}-${Date.now()}.csv`
+          document.body.appendChild(a); a.click()
+          document.body.removeChild(a); URL.revokeObjectURL(url)
+        })
+
+        // ── Start button ───────────────────────────────────────────────────────
+        $('btn-start').addEventListener('click', () => {
+          if (benchRunning) return
+          benchRunning    = true
+          phaseIdx        = 0
+          phaseFrameCount = 0
+          overallFrames   = 0
+          phaseRafFrames  = 0
+          streamFrameCount = 0
+          miniRoll.length = 0
+          MODES.forEach((m) => { times[m] = []; longTasks[m] = 0 })
+          MODES.forEach((m) => { achievedStreamFPS[m] = 0; achievedRafFPS[m] = 0 })
+          const phase = PHASES[0]
+          const badge = $('phase-badge')
+          badge.textContent = `${phase.mode.toUpperCase()} · 热身`
+          badge.className   = 'badge warmup'
+          $('btn-start').disabled  = true
+          $('btn-reset').disabled  = true
+          set('frame-count', `热身 0 / ${WARMUP}`)
+          $('progress-bar').style.width = '0%'
+        })
+
+        // ── Reset button ───────────────────────────────────────────────────────
+        $('btn-reset').addEventListener('click', () => {
+          benchRunning    = false
+          collectPhase    = false
+          phaseIdx        = 0
+          phaseFrameCount = 0
+          overallFrames   = 0
+          MODES.forEach((m) => { times[m] = []; longTasks[m] = 0 })
+          miniRoll.length = 0
+          MODES.forEach((m) => $(`dot-${m}`).classList.remove('active'))
+
+          const badge = $('phase-badge')
+          badge.textContent = '就绪'; badge.className = 'badge ready'
+          $('btn-start').disabled  = false
+          $('btn-reset').disabled  = true
+          $('btn-export').disabled = true
+          $('progress-bar').style.width = '0%'
+          set('frame-count', '— / —')
+          $('results-section').style.display = 'none'
+
+          // Clear charts
+          ;['bar-canvas', 'series-canvas', 'mini-chart'].forEach((id) => {
+            const el = $(id)
+            if (el) { const c = el.getContext('2d'); c.fillStyle = '#0d0d0d'; c.fillRect(0, 0, el.width, el.height) }
+          })
+        })
+
+        // ── Ready ──────────────────────────────────────────────────────────────
+        $('init-overlay').style.display = 'none'
+        const badge = $('phase-badge')
+        badge.textContent = '就绪'; badge.className = 'badge ready'
+        $('btn-start').disabled = false
+        set('frame-count', '— / —')
+
+        // ── Start async inference and render loops ─────────────────────────────
+        inferenceLoop()
+        requestAnimationFrame(renderLoop)
+      }
+
+      // ── Helpers ───────────────────────────────────────────────────────────────
+      async function loadBackgroundIntoWasm(url, processor, wasmExports) {
+        return new Promise((resolve, reject) => {
+          const img = new Image()
+          img.crossOrigin = 'anonymous'
+          img.onload = () => {
+            const canvas = new OffscreenCanvas(WIDTH, HEIGHT)
+            const c = canvas.getContext('2d')
+            const scale = Math.max(WIDTH / img.width, HEIGHT / img.height)
+            const ox = (WIDTH  - img.width  * scale) / 2
+            const oy = (HEIGHT - img.height * scale) / 2
+            c.drawImage(img, ox, oy, img.width * scale, img.height * scale)
+            const imgData = c.getImageData(0, 0, WIDTH, HEIGHT)
+            const bgView  = new Uint8Array(wasmExports.memory.buffer, processor.background_ptr(), WIDTH * HEIGHT * 4)
+            bgView.set(imgData.data)
+            resolve()
+          }
+          img.onerror = reject
+          img.src = url
+        })
+      }
+
+      function genSyntheticBackground(processor, wasmExports) {
+        const buf = new Uint8Array(WIDTH * HEIGHT * 4)
+        for (let y = 0; y < HEIGHT; y++) {
+          for (let x = 0; x < WIDTH; x++) {
+            const i = (y * WIDTH + x) * 4
+            buf[i]     = Math.round(10 + (x / WIDTH) * 40)
+            buf[i + 1] = Math.round(50 + (y / HEIGHT) * 90)
+            buf[i + 2] = Math.round(110 + (x / WIDTH) * 80)
+            buf[i + 3] = 255
+          }
+        }
+        const bgView = new Uint8Array(wasmExports.memory.buffer, processor.background_ptr(), WIDTH * HEIGHT * 4)
+        bgView.set(buf)
+      }
+
+      function makeSyntheticFrame(w, h) {
+        // Deterministic checkerboard pattern — provides non-trivial pixel values for JBF
+        const buf = new Uint8ClampedArray(w * h * 4)
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4
+            const v = ((x ^ y) & 0xff) | 64
+            buf[i]     = v
+            buf[i + 1] = (v + 85)  & 0xff
+            buf[i + 2] = (v + 170) & 0xff
+            buf[i + 3] = 255
+          }
+        }
+        return buf
+      }
+
+      main().catch((err) => {
+        console.error(err)
+        $('init-status').textContent = '❌ 初始化失败: ' + err.message
+        const p = document.querySelector('#init-overlay p')
+        if (p) p.textContent = '请检查 Wasm / ONNX 文件路径是否正确'
+      })
+    </script>
+  </body>
+</html>

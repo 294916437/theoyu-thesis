@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="UTF-8" />
+		<title>ONNX 模型推理性能对比 — model_float32 vs model_float32_opt</title>
+		<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+		<style>
+			* {
+				margin: 0;
+				padding: 0;
+				box-sizing: border-box;
+			}
+			body {
+				background: #0d1117;
+				color: #c9d1d9;
+				font-family: "Segoe UI", system-ui, sans-serif;
+				padding: 32px;
+				min-height: 100vh;
+			}
+			h1 {
+				text-align: center;
+				font-size: 26px;
+				margin-bottom: 6px;
+				background: linear-gradient(135deg, #58a6ff, #3fb950);
+				-webkit-background-clip: text;
+				-webkit-text-fill-color: transparent;
+			}
+			.subtitle {
+				text-align: center;
+				color: #8b949e;
+				font-size: 13px;
+				margin-bottom: 32px;
+			}
+			/* ---- 配置区 ---- */
+			.config-panel {
+				background: #161b22;
+				border: 1px solid #30363d;
+				border-radius: 12px;
+				padding: 20px 24px;
+				display: flex;
+				flex-wrap: wrap;
+				gap: 20px;
+				align-items: flex-end;
+				margin-bottom: 28px;
+			}
+			.config-item {
+				display: flex;
+				flex-direction: column;
+				gap: 6px;
+			}
+			.config-item label {
+				font-size: 12px;
+				color: #8b949e;
+				font-weight: 600;
+				text-transform: uppercase;
+				letter-spacing: 0.6px;
+			}
+			.config-item input {
+				background: #0d1117;
+				border: 1px solid #30363d;
+				border-radius: 6px;
+				color: #c9d1d9;
+				padding: 6px 10px;
+				font-size: 14px;
+				width: 80px;
+			}
+			/* ---- 按钮 ---- */
+			.btn {
+				padding: 10px 24px;
+				border: none;
+				border-radius: 8px;
+				font-size: 14px;
+				font-weight: 700;
+				cursor: pointer;
+				transition:
+					opacity 0.2s,
+					transform 0.1s;
+			}
+			.btn:active {
+				transform: scale(0.97);
+			}
+			.btn:disabled {
+				opacity: 0.35;
+				cursor: not-allowed;
+			}
+			.btn-start {
+				background: linear-gradient(135deg, #238636, #2ea043);
+				color: #fff;
+			}
+			.btn-stop {
+				background: linear-gradient(135deg, #da3633, #b91c1c);
+				color: #fff;
+			}
+			.btn-export {
+				background: linear-gradient(135deg, #1f6feb, #388bfd);
+				color: #fff;
+			}
+			/* ---- 视频 ---- */
+			#video {
+				display: none;
+			}
+			.video-preview {
+				width: 256px;
+				height: 144px;
+				border-radius: 8px;
+				border: 1px solid #30363d;
+				background: #000;
+				display: block;
+			}
+			/* ---- 进度 ---- */
+			.progress-section {
+				background: #161b22;
+				border: 1px solid #30363d;
+				border-radius: 12px;
+				padding: 20px 24px;
+				margin-bottom: 28px;
+			}
+			.progress-title {
+				font-size: 14px;
+				font-weight: 700;
+				color: #58a6ff;
+				margin-bottom: 14px;
+			}
+			.model-row {
+				display: flex;
+				align-items: center;
+				gap: 14px;
+				margin-bottom: 12px;
+			}
+			.model-label {
+				font-size: 13px;
+				font-family: "Consolas", monospace;
+				color: #e6edf3;
+				width: 220px;
+				flex-shrink: 0;
+			}
+			.progress-bar-bg {
+				flex: 1;
+				height: 10px;
+				background: #21262d;
+				border-radius: 5px;
+				overflow: hidden;
+			}
+			.progress-bar-fill {
+				height: 100%;
+				border-radius: 5px;
+				transition: width 0.15s ease;
+				background: linear-gradient(90deg, #1f6feb, #58a6ff);
+			}
+			.progress-bar-fill.done {
+				background: linear-gradient(90deg, #238636, #3fb950);
+			}
+			.progress-pct {
+				font-size: 12px;
+				font-family: "Consolas", monospace;
+				color: #8b949e;
+				width: 42px;
+				text-align: right;
+			}
+			.status-badge {
+				display: inline-block;
+				padding: 2px 8px;
+				border-radius: 6px;
+				font-size: 11px;
+				font-weight: 700;
+				letter-spacing: 0.4px;
+			}
+			.badge-waiting {
+				background: #21262d;
+				color: #8b949e;
+			}
+			.badge-running {
+				background: rgba(88, 166, 255, 0.15);
+				color: #58a6ff;
+				border: 1px solid #1f6feb;
+				animation: pulse 0.8s step-start infinite;
+			}
+			.badge-done {
+				background: rgba(63, 185, 80, 0.15);
+				color: #3fb950;
+				border: 1px solid #238636;
+			}
+			@keyframes pulse {
+				50% {
+					opacity: 0.5;
+				}
+			}
+			/* ---- 实时数据卡片 ---- */
+			.live-section {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 20px;
+				margin-bottom: 28px;
+			}
+			.live-card {
+				background: #161b22;
+				border: 1px solid #30363d;
+				border-radius: 12px;
+				padding: 18px 20px;
+			}
+			.live-card-title {
+				font-size: 13px;
+				font-weight: 700;
+				margin-bottom: 14px;
+				display: flex;
+				align-items: center;
+				gap: 8px;
+			}
+			.dot {
+				width: 8px;
+				height: 8px;
+				border-radius: 50%;
+				flex-shrink: 0;
+			}
+			.dot-orig {
+				background: #ffa657;
+			}
+			.dot-opt {
+				background: #3fb950;
+			}
+			.metric-grid {
+				display: grid;
+				grid-template-columns: 1fr 1fr 1fr;
+				gap: 10px;
+			}
+			.metric-box {
+				background: #0d1117;
+				border: 1px solid #21262d;
+				border-radius: 8px;
+				padding: 10px 12px;
+			}
+			.metric-name {
+				font-size: 11px;
+				color: #8b949e;
+				margin-bottom: 4px;
+				text-transform: uppercase;
+				letter-spacing: 0.5px;
+			}
+			.metric-value {
+				font-size: 20px;
+				font-weight: 700;
+				font-family: "Consolas", monospace;
+				color: #c9d1d9;
+			}
+			.metric-unit {
+				font-size: 11px;
+				color: #8b949e;
+			}
+			/* ---- 汇总结果表格 ---- */
+			.result-section {
+				background: #161b22;
+				border: 1px solid #30363d;
+				border-radius: 12px;
+				padding: 20px 24px;
+				margin-bottom: 28px;
+			}
+			.result-title {
+				font-size: 15px;
+				font-weight: 700;
+				color: #e6edf3;
+				margin-bottom: 16px;
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+			}
+			table {
+				width: 100%;
+				border-collapse: collapse;
+				font-size: 13px;
+			}
+			th {
+				background: #21262d;
+				color: #8b949e;
+				font-weight: 700;
+				padding: 10px 14px;
+				text-align: left;
+				border-bottom: 1px solid #30363d;
+				font-size: 12px;
+				text-transform: uppercase;
+				letter-spacing: 0.5px;
+			}
+			td {
+				padding: 10px 14px;
+				border-bottom: 1px solid #21262d;
+				font-family: "Consolas", monospace;
+				color: #c9d1d9;
+				font-size: 13px;
+			}
+			tr:last-child td {
+				border-bottom: none;
+			}
+			td.highlight-win {
+				color: #3fb950;
+				font-weight: 700;
+			}
+			td.highlight-lose {
+				color: #f78166;
+			}
+			.speedup-row {
+				background: rgba(88, 166, 255, 0.05);
+				border-top: 1px solid #30363d;
+			}
+			.speedup-row td {
+				color: #58a6ff;
+				font-weight: 700;
+			}
+			/* ---- 日志 ---- */
+			.log-section {
+				background: #161b22;
+				border: 1px solid #30363d;
+				border-radius: 12px;
+				padding: 16px 20px;
+			}
+			.log-title {
+				font-size: 13px;
+				font-weight: 700;
+				color: #8b949e;
+				margin-bottom: 10px;
+			}
+			#log {
+				background: #0d1117;
+				border: 1px solid #21262d;
+				border-radius: 6px;
+				padding: 12px 14px;
+				font-family: "Consolas", monospace;
+				font-size: 12px;
+				color: #8b949e;
+				height: 160px;
+				overflow-y: auto;
+				line-height: 1.7;
+			}
+			.log-info {
+				color: #8b949e;
+			}
+			.log-ok {
+				color: #3fb950;
+			}
+			.log-warn {
+				color: #ffa657;
+			}
+			.log-error {
+				color: #f78166;
+			}
+			/* ---- responsive ---- */
+			@media (max-width: 900px) {
+				.live-section {
+					grid-template-columns: 1fr;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<h1>ONNX 推理性能对比测试</h1>
+		<p class="subtitle">model_float32.onnx（原始）vs model_float32_opt.onnx（优化）｜论文级数据采集</p>
+		<video id="video" playsinline autoplay muted></video>
+
+		<!-- ---- 配置区 ---- -->
+		<div class="config-panel">
+			<div class="config-item">
+				<label>预热帧数</label>
+				<input type="number" id="cfg-warmup" value="20" min="5" max="100" />
+			</div>
+			<div class="config-item">
+				<label>采集帧数/轮</label>
+				<input type="number" id="cfg-frames" value="100" min="30" max="500" />
+			</div>
+			<div class="config-item">
+				<label>重复轮数</label>
+				<input type="number" id="cfg-rounds" value="3" min="1" max="10" />
+			</div>
+			<div class="config-item">
+				<label>推理间隔(ms)</label>
+				<input type="number" id="cfg-interval" value="33" min="0" max="200" />
+			</div>
+			<div style="display: flex; gap: 10px; align-items: flex-end">
+				<button class="btn btn-start" id="btn-start" onclick="startBenchmark()">▶ 开始测试</button>
+				<button class="btn btn-stop" id="btn-stop" onclick="stopBenchmark()" disabled>■ 中止</button>
+				<button class="btn btn-export" id="btn-export" onclick="exportJSON()" disabled>⬇ 导出 JSON</button>
+			</div>
+			<div style="display: flex; flex-direction: column; gap: 6px">
+				<label style="font-size: 12px; color: #8b949e; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px">摄像头预览</label>
+				<canvas id="preview-canvas" class="video-preview"></canvas>
+			</div>
+		</div>
+
+		<!-- ---- 进度 ---- -->
+		<div class="progress-section">
+			<div class="progress-title">测试进度</div>
+			<div class="model-row">
+				<span class="model-label">model_float32.onnx（原始）</span>
+				<div class="progress-bar-bg">
+					<div class="progress-bar-fill" id="prog-orig" style="width: 0%"></div>
+				</div>
+				<span class="progress-pct" id="pct-orig">0%</span>
+				<span class="status-badge badge-waiting" id="badge-orig">等待</span>
+			</div>
+			<div class="model-row">
+				<span class="model-label">model_float32_opt.onnx（优化）</span>
+				<div class="progress-bar-bg">
+					<div class="progress-bar-fill" id="prog-opt" style="width: 0%"></div>
+				</div>
+				<span class="progress-pct" id="pct-opt">0%</span>
+				<span class="status-badge badge-waiting" id="badge-opt">等待</span>
+			</div>
+		</div>
+
+		<!-- ---- 实时数据卡片 ---- -->
+		<div class="live-section">
+			<div class="live-card">
+				<div class="live-card-title">
+					<div class="dot dot-orig"></div>
+					<span>model_float32.onnx — 实时</span>
+				</div>
+				<div class="metric-grid">
+					<div class="metric-box">
+						<div class="metric-name">当前延迟</div>
+						<div class="metric-value" id="live-orig-cur">--</div>
+						<div class="metric-unit">ms</div>
+					</div>
+					<div class="metric-box">
+						<div class="metric-name">本轮均值</div>
+						<div class="metric-value" id="live-orig-avg">--</div>
+						<div class="metric-unit">ms</div>
+					</div>
+					<div class="metric-box">
+						<div class="metric-name">已采集</div>
+						<div class="metric-value" id="live-orig-cnt">0</div>
+						<div class="metric-unit">帧</div>
+					</div>
+				</div>
+			</div>
+			<div class="live-card">
+				<div class="live-card-title">
+					<div class="dot dot-opt"></div>
+					<span>model_float32_opt.onnx — 实时</span>
+				</div>
+				<div class="metric-grid">
+					<div class="metric-box">
+						<div class="metric-name">当前延迟</div>
+						<div class="metric-value" id="live-opt-cur">--</div>
+						<div class="metric-unit">ms</div>
+					</div>
+					<div class="metric-box">
+						<div class="metric-name">本轮均值</div>
+						<div class="metric-value" id="live-opt-avg">--</div>
+						<div class="metric-unit">ms</div>
+					</div>
+					<div class="metric-box">
+						<div class="metric-name">已采集</div>
+						<div class="metric-value" id="live-opt-cnt">0</div>
+						<div class="metric-unit">帧</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- ---- 结果表格 ---- -->
+		<div class="result-section">
+			<div class="result-title">
+				<span>汇总统计结果（ms）</span>
+				<span id="result-status" style="font-size: 12px; color: #8b949e; font-weight: 400">尚未完成</span>
+			</div>
+			<table id="result-table">
+				<thead>
+					<tr>
+						<th>模型</th>
+						<th>第1轮 均值</th>
+						<th>第2轮 均值</th>
+						<th>第3轮 均值</th>
+						<th>三轮总均值</th>
+						<th>最大值</th>
+						<th>标准差</th>
+						<th>p95</th>
+					</tr>
+				</thead>
+				<tbody id="result-tbody">
+					<tr>
+						<td colspan="8" style="color: #8b949e; text-align: center; font-family: inherit">等待测试完成…</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+
+		<!-- ---- 日志 ---- -->
+		<div class="log-section">
+			<div class="log-title">运行日志</div>
+			<div id="log"></div>
+		</div>
+
+		<script>
+			// =====================================================================
+			// 配置 & 常量
+			// =====================================================================
+			const MASK_W = 256
+			const MASK_H = 144
+			const MODEL_ORIG = "../../demos/model_float32.onnx"
+			const MODEL_OPT = "../../demos/model_float32_opt.onnx"
+
+			let stopFlag = false
+			let benchmarkData = null // 最终结果，用于导出
+			let videoStream = null
+			let videoEl = null
+
+			// =====================================================================
+			// 工具函数
+			// =====================================================================
+			function log(msg, cls = "log-info") {
+				const el = document.getElementById("log")
+				const ts = performance.now().toFixed(1)
+				el.innerHTML += `<div class="${cls}">[${ts}ms] ${msg}</div>`
+				el.scrollTop = el.scrollHeight
+			}
+
+			function mean(arr) {
+				return arr.reduce((a, b) => a + b, 0) / arr.length
+			}
+
+			function stddev(arr) {
+				const m = mean(arr)
+				return Math.sqrt(arr.reduce((a, b) => a + (b - m) ** 2, 0) / arr.length)
+			}
+
+			function max(arr) {
+				return Math.max(...arr)
+			}
+
+			function percentile(arr, p) {
+				const sorted = [...arr].sort((a, b) => a - b)
+				const idx = Math.ceil((p / 100) * sorted.length) - 1
+				return sorted[Math.max(0, idx)]
+			}
+
+			function setProgress(id, pct, done = false) {
+				const fill = document.getElementById(`prog-${id}`)
+				const label = document.getElementById(`pct-${id}`)
+				fill.style.width = pct + "%"
+				label.textContent = pct + "%"
+				if (done) fill.classList.add("done")
+			}
+
+			function setBadge(id, state) {
+				const badge = document.getElementById(`badge-${id}`)
+				badge.className = "status-badge"
+				if (state === "running") {
+					badge.classList.add("badge-running")
+					badge.textContent = "运行中"
+				} else if (state === "done") {
+					badge.classList.add("badge-done")
+					badge.textContent = "完成"
+				} else {
+					badge.classList.add("badge-waiting")
+					badge.textContent = "等待"
+				}
+			}
+
+			function sleep(ms) {
+				return new Promise((r) => setTimeout(r, ms))
+			}
+
+			// =====================================================================
+			// 初始化摄像头 + 预览
+			// =====================================================================
+			async function initCamera() {
+				videoEl = document.getElementById("video")
+				videoStream = await navigator.mediaDevices.getUserMedia({
+					video: { width: MASK_W, height: MASK_H, frameRate: 30 },
+					audio: false,
+				})
+				videoEl.srcObject = videoStream
+				await new Promise((r) => {
+					videoEl.onloadedmetadata = r
+				})
+				videoEl.play()
+
+				// 在预览 canvas 上实时绘制
+				const preview = document.getElementById("preview-canvas")
+				preview.width = MASK_W
+				preview.height = MASK_H
+				const pCtx = preview.getContext("2d")
+				function drawPreview() {
+					pCtx.drawImage(videoEl, 0, 0, MASK_W, MASK_H)
+					requestAnimationFrame(drawPreview)
+				}
+				drawPreview()
+				log("摄像头初始化完成", "log-ok")
+			}
+
+			// =====================================================================
+			// 构建推理输入（将视频帧转为 ONNX 输入 Tensor）
+			// =====================================================================
+			const offscreen = new OffscreenCanvas(MASK_W, MASK_H)
+			const offCtx = offscreen.getContext("2d")
+			const float32Data = new Float32Array(MASK_W * MASK_H * 3)
+
+			function captureInputTensor() {
+				offCtx.drawImage(videoEl, 0, 0, MASK_W, MASK_H)
+				const imgData = offCtx.getImageData(0, 0, MASK_W, MASK_H).data
+				for (let i = 0, j = 0; i < imgData.length; i += 4, j += 3) {
+					float32Data[j] = imgData[i] / 255
+					float32Data[j + 1] = imgData[i + 1] / 255
+					float32Data[j + 2] = imgData[i + 2] / 255
+				}
+				return new ort.Tensor("float32", float32Data.slice(), [1, MASK_H, MASK_W, 3])
+			}
+
+			// =====================================================================
+			// 核心：针对单个模型运行一轮基准测试
+			// 返回 { times: Float64Array(framesPerRound) }
+			// =====================================================================
+			async function runOneSingleRound(session, framesPerRound, intervalMs, liveKey) {
+				const times = []
+				for (let i = 0; i < framesPerRound; i++) {
+					if (stopFlag) return null
+
+					const inputTensor = captureInputTensor()
+
+					// ---- 核心计时：仅包含 session.run() 本身 ----
+					const t0 = performance.now()
+					await session.run({ "input_1:0": inputTensor })
+					const t1 = performance.now()
+
+					times.push(t1 - t0)
+
+					// 更新实时 UI（每帧更新）
+					const cur = (t1 - t0).toFixed(2)
+					const avg = mean(times).toFixed(2)
+					document.getElementById(`live-${liveKey}-cur`).textContent = cur
+					document.getElementById(`live-${liveKey}-avg`).textContent = avg
+					document.getElementById(`live-${liveKey}-cnt`).textContent = times.length
+
+					if (intervalMs > 0) await sleep(intervalMs)
+				}
+				return times
+			}
+
+			// =====================================================================
+			// 针对单个模型运行 N 轮（含预热）
+			// =====================================================================
+			async function benchmarkModel({ modelPath, modelKey, liveKey, progKey }) {
+				const warmupFrames = parseInt(document.getElementById("cfg-warmup").value)
+				const framesPerRound = parseInt(document.getElementById("cfg-frames").value)
+				const rounds = parseInt(document.getElementById("cfg-rounds").value)
+				const intervalMs = parseInt(document.getElementById("cfg-interval").value)
+
+				log(`加载模型: ${modelPath}`, "log-info")
+				setBadge(progKey, "running")
+
+				// 加载 session
+				const session = await ort.InferenceSession.create(modelPath, {
+					executionProviders: ["wasm"],
+					graphOptimizationLevel: "all",
+				})
+				log(`模型加载完毕: ${modelPath}`, "log-ok")
+
+				// ---- 预热 ----
+				log(`预热 ${warmupFrames} 帧…`, "log-info")
+				for (let i = 0; i < warmupFrames; i++) {
+					if (stopFlag) return null
+					const tensor = captureInputTensor()
+					await session.run({ "input_1:0": tensor })
+					setProgress(progKey, Math.round(((i + 1) / warmupFrames) * 10))
+					if (intervalMs > 0) await sleep(intervalMs)
+				}
+				log(`预热完毕`, "log-ok")
+
+				// ---- 采集 ----
+				const allTimes = [] // 所有轮次汇总
+				const roundMeans = []
+				const totalSteps = rounds * framesPerRound
+
+				for (let r = 0; r < rounds; r++) {
+					if (stopFlag) return null
+					log(`${modelKey} — 第 ${r + 1}/${rounds} 轮开始`, "log-info")
+
+					const roundTimes = await runOneSingleRound(session, framesPerRound, intervalMs, liveKey)
+					if (!roundTimes) return null
+
+					allTimes.push(...roundTimes)
+					const rm = mean(roundTimes)
+					roundMeans.push(rm)
+					log(`第 ${r + 1} 轮均值: ${rm.toFixed(3)} ms  std: ${stddev(roundTimes).toFixed(3)} ms  max: ${max(roundTimes).toFixed(3)} ms`, "log-ok")
+
+					// 更新进度（预热占 10%，采集占 90%）
+					const doneFrames = (r + 1) * framesPerRound
+					setProgress(progKey, Math.round(10 + (doneFrames / totalSteps) * 90))
+				}
+
+				setProgress(progKey, 100, true)
+				setBadge(progKey, "done")
+				log(`${modelKey} 全部轮次完成`, "log-ok")
+
+				return {
+					model: modelKey,
+					rounds,
+					framesPerRound,
+					warmupFrames,
+					roundMeans,
+					overallMean: mean(allTimes),
+					overallMax: max(allTimes),
+					overallStd: stddev(allTimes),
+					p95: percentile(allTimes, 95),
+					rawTimes: allTimes,
+				}
+			}
+
+			// =====================================================================
+			// 渲染汇总表格
+			// =====================================================================
+			function renderTable(orig, opt) {
+				const tbody = document.getElementById("result-tbody")
+				const rounds = orig.rounds
+
+				// 判断每列胜者
+				function fmtRound(a, b, i) {
+					const av = a.roundMeans[i].toFixed(3)
+					const bv = b.roundMeans[i].toFixed(3)
+					const aWin = a.roundMeans[i] <= b.roundMeans[i]
+					return [`<td class="${aWin ? "highlight-win" : "highlight-lose"}">${av}</td>`, `<td class="${!aWin ? "highlight-win" : "highlight-lose"}">${bv}</td>`]
+				}
+
+				let origRoundCells = [],
+					optRoundCells = []
+				for (let r = 0; r < rounds; r++) {
+					const [oc, pc] = fmtRound(orig, opt, r)
+					origRoundCells.push(oc)
+					optRoundCells.push(pc)
+				}
+				// 补齐到3列
+				while (origRoundCells.length < 3) origRoundCells.push("<td>—</td>")
+				while (optRoundCells.length < 3) optRoundCells.push("<td>—</td>")
+
+				const origWinsOverall = orig.overallMean <= opt.overallMean
+
+				tbody.innerHTML = `
+          <tr>
+            <td style="color:#ffa657;font-weight:700">model_float32（原始）</td>
+            ${origRoundCells.join("")}
+            <td class="${origWinsOverall ? "highlight-win" : "highlight-lose"}">${orig.overallMean.toFixed(3)}</td>
+            <td>${orig.overallMax.toFixed(3)}</td>
+            <td>${orig.overallStd.toFixed(3)}</td>
+            <td>${orig.p95.toFixed(3)}</td>
+          </tr>
+          <tr>
+            <td style="color:#3fb950;font-weight:700">model_float32_opt（优化）</td>
+            ${optRoundCells.join("")}
+            <td class="${!origWinsOverall ? "highlight-win" : "highlight-lose"}">${opt.overallMean.toFixed(3)}</td>
+            <td>${opt.overallMax.toFixed(3)}</td>
+            <td>${opt.overallStd.toFixed(3)}</td>
+            <td>${opt.p95.toFixed(3)}</td>
+          </tr>
+          <tr class="speedup-row">
+            <td colspan="4" style="font-family:inherit">加速比（原始 / 优化）</td>
+            <td colspan="4">
+              总均值加速: <strong>${(orig.overallMean / opt.overallMean).toFixed(3)}×</strong>
+              &nbsp;|&nbsp; Max 降低: ${((1 - opt.overallMax / orig.overallMax) * 100).toFixed(1)}%
+              &nbsp;|&nbsp; Std 降低: ${((1 - opt.overallStd / orig.overallStd) * 100).toFixed(1)}%
+              &nbsp;|&nbsp; p95 加速: ${(orig.p95 / opt.p95).toFixed(3)}×
+            </td>
+          </tr>
+        `
+				document.getElementById("result-status").textContent = `测试完成 ✓  ${new Date().toLocaleTimeString()}`
+			}
+
+			// =====================================================================
+			// 导出 JSON
+			// =====================================================================
+			function exportJSON() {
+				if (!benchmarkData) return
+				const blob = new Blob([JSON.stringify(benchmarkData, null, 2)], { type: "application/json" })
+				const url = URL.createObjectURL(blob)
+				const a = document.createElement("a")
+				a.href = url
+				a.download = `onnx-benchmark-${Date.now()}.json`
+				a.click()
+				URL.revokeObjectURL(url)
+			}
+
+			// =====================================================================
+			// 控制入口
+			// =====================================================================
+			async function startBenchmark() {
+				stopFlag = false
+				document.getElementById("btn-start").disabled = true
+				document.getElementById("btn-stop").disabled = false
+				document.getElementById("btn-export").disabled = true
+
+				// 重置进度
+				;["orig", "opt"].forEach((k) => {
+					setProgress(k, 0)
+					setBadge(k, "waiting")
+					document.getElementById(`prog-${k}`).classList.remove("done")
+				})
+				document.getElementById("result-tbody").innerHTML = '<tr><td colspan="8" style="color:#8b949e;text-align:center;font-family:inherit">测试进行中…</td></tr>'
+				document.getElementById("log").innerHTML = ""
+
+				// 确保摄像头就绪
+				if (!videoStream) {
+					try {
+						await initCamera()
+					} catch (e) {
+						log("摄像头获取失败: " + e, "log-error")
+						return
+					}
+				}
+
+				// ---- 顺序测试两个模型 ----
+				const origResult = await benchmarkModel({
+					modelPath: MODEL_ORIG,
+					modelKey: "model_float32",
+					liveKey: "orig",
+					progKey: "orig",
+				})
+				if (!origResult || stopFlag) {
+					log("已中止", "log-warn")
+					resetControls()
+					return
+				}
+
+				const optResult = await benchmarkModel({
+					modelPath: MODEL_OPT,
+					modelKey: "model_float32_opt",
+					liveKey: "opt",
+					progKey: "opt",
+				})
+				if (!optResult || stopFlag) {
+					log("已中止", "log-warn")
+					resetControls()
+					return
+				}
+
+				// ---- 汇总 ----
+				benchmarkData = {
+					timestamp: new Date().toISOString(),
+					config: {
+						warmupFrames: parseInt(document.getElementById("cfg-warmup").value),
+						framesPerRound: parseInt(document.getElementById("cfg-frames").value),
+						rounds: parseInt(document.getElementById("cfg-rounds").value),
+						intervalMs: parseInt(document.getElementById("cfg-interval").value),
+					},
+					original: origResult,
+					optimized: optResult,
+				}
+
+				renderTable(origResult, optResult)
+				document.getElementById("btn-export").disabled = false
+				log("所有测试完成，可导出 JSON 数据", "log-ok")
+				resetControls()
+			}
+
+			function stopBenchmark() {
+				stopFlag = true
+				log("用户请求中止", "log-warn")
+			}
+
+			function resetControls() {
+				document.getElementById("btn-start").disabled = false
+				document.getElementById("btn-stop").disabled = true
+			}
+
+			// =====================================================================
+			// 页面加载后立即初始化摄像头
+			// =====================================================================
+			window.addEventListener("load", async () => {
+				try {
+					await initCamera()
+				} catch (e) {
+					log("自动摄像头初始化失败，将在测试开始时重试: " + e, "log-warn")
+				}
+			})
+		</script>
+	</body>
+</html>

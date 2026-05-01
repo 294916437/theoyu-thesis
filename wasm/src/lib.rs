@@ -22,6 +22,9 @@ pub struct MeetProcessor {
     filtered_buffer: Vec<f32>,
     prev_mask: Vec<f32>,
     alpha_temporal: f32,
+    blur_buffer: Vec<u8>,
+    blur_temp: Vec<u8>,
+    blur_radius: usize,
 }
 
 #[wasm_bindgen]
@@ -67,7 +70,15 @@ impl MeetProcessor {
             mask_width,
             mask_height,
             alpha_temporal: 0.7,
+            blur_buffer: vec![0u8; width * height * 4],
+            blur_temp: vec![0u8; width * height * 4],
+            blur_radius: 15,
         }
+    }
+
+    /// 设置模糊半径（每次 box blur 的半径，默认 15，范围 1..=50）
+    pub fn set_blur_radius(&mut self, radius: usize) {
+        self.blur_radius = radius.clamp(1, 50);
     }
 
     pub fn input_ptr(&self) -> *mut u8 {
@@ -95,75 +106,47 @@ impl MeetProcessor {
         self.joint_bilateral_filter_opt();
     }
 
-    // 阶段 2: 渲染虚化/压暗效果
+    // 阶段 2: 渲染背景高斯模糊效果（3次可分离盒型模糊逼近高斯模糊）
     pub fn render_blur(&mut self) {
-        let bg_factor = 0.25;
+        // 对 input_buffer 应用可分离盒型模糊，结果写入 blur_buffer
+        self.apply_separable_box_blur();
+
         let len = self.width * self.height;
-
-        // 批处理优化：循环展开以提升性能
-        let chunks = len / 4;
-        let remainder = len % 4;
-
-        // 使用 unsafe 指针遍历以获得最大性能
-        // 使用 unsafe 指针遍历以获得最大性能
         unsafe {
-            let mut p_in = self.input_buffer.as_ptr();
-            let mut p_out = self.output_buffer.as_mut_ptr();
-            let mut p_mask = self.upsampled_mask.as_ptr();
+            let p_in = self.input_buffer.as_ptr();
+            let p_blurred = self.blur_buffer.as_ptr();
+            let p_out = self.output_buffer.as_mut_ptr();
+            let p_mask = self.upsampled_mask.as_ptr();
 
-            // 4x 循环展开
-            for _ in 0..chunks {
-                // Pixel 0
-                let a0 = (*p_mask).clamp(0.0, 1.0);
-                let b0 = a0 + (1.0 - a0) * bg_factor;
-                *p_out.add(0) = (*p_in.add(0) as f32 * b0) as u8;
-                *p_out.add(1) = (*p_in.add(1) as f32 * b0) as u8;
-                *p_out.add(2) = (*p_in.add(2) as f32 * b0) as u8;
-                *p_out.add(3) = 255;
+            for i in 0..len {
+                // alpha=1 表示前景（保留原图），alpha=0 表示背景（显示模糊）
+                let alpha = (*p_mask.add(i)).clamp(0.0, 1.0);
+                let inv_alpha = 1.0 - alpha;
+                let pi = i * 4;
 
-                // Pixel 1
-                let a1 = (*p_mask.add(1)).clamp(0.0, 1.0);
-                let b1 = a1 + (1.0 - a1) * bg_factor;
-                *p_out.add(4) = (*p_in.add(4) as f32 * b1) as u8;
-                *p_out.add(5) = (*p_in.add(5) as f32 * b1) as u8;
-                *p_out.add(6) = (*p_in.add(6) as f32 * b1) as u8;
-                *p_out.add(7) = 255;
-
-                // Pixel 2
-                let a2 = (*p_mask.add(2)).clamp(0.0, 1.0);
-                let b2 = a2 + (1.0 - a2) * bg_factor;
-                *p_out.add(8) = (*p_in.add(8) as f32 * b2) as u8;
-                *p_out.add(9) = (*p_in.add(9) as f32 * b2) as u8;
-                *p_out.add(10) = (*p_in.add(10) as f32 * b2) as u8;
-                *p_out.add(11) = 255;
-
-                // Pixel 3
-                let a3 = (*p_mask.add(3)).clamp(0.0, 1.0);
-                let b3 = a3 + (1.0 - a3) * bg_factor;
-                *p_out.add(12) = (*p_in.add(12) as f32 * b3) as u8;
-                *p_out.add(13) = (*p_in.add(13) as f32 * b3) as u8;
-                *p_out.add(14) = (*p_in.add(14) as f32 * b3) as u8;
-                *p_out.add(15) = 255;
-
-                p_in = p_in.add(16);
-                p_out = p_out.add(16);
-                p_mask = p_mask.add(4);
+                *p_out.add(pi)     = (*p_in.add(pi)     as f32 * alpha + *p_blurred.add(pi)     as f32 * inv_alpha) as u8;
+                *p_out.add(pi + 1) = (*p_in.add(pi + 1) as f32 * alpha + *p_blurred.add(pi + 1) as f32 * inv_alpha) as u8;
+                *p_out.add(pi + 2) = (*p_in.add(pi + 2) as f32 * alpha + *p_blurred.add(pi + 2) as f32 * inv_alpha) as u8;
+                *p_out.add(pi + 3) = 255;
             }
+        }
+    }
 
-            // 处理剩余部分
-            for _ in 0..remainder {
-                let alpha = (*p_mask).clamp(0.0, 1.0);
-                let blend = alpha + (1.0 - alpha) * bg_factor;
+    /// 3 次可分离盒型模糊（水平 + 垂直各一次为一轮），3 轮叠加逼近高斯模糊
+    /// 结果存入 self.blur_buffer
+    fn apply_separable_box_blur(&mut self) {
+        let w = self.width;
+        let h = self.height;
+        let r = self.blur_radius;
 
-                *p_out.add(0) = (*p_in.add(0) as f32 * blend) as u8;
-                *p_out.add(1) = (*p_in.add(1) as f32 * blend) as u8;
-                *p_out.add(2) = (*p_in.add(2) as f32 * blend) as u8;
-                *p_out.add(3) = 255;
+        // 将原始帧复制到 blur_buffer 作为第一轮输入
+        self.blur_buffer.copy_from_slice(&self.input_buffer);
 
-                p_in = p_in.add(4);
-                p_out = p_out.add(4);
-                p_mask = p_mask.add(1);
-            }
+        for _ in 0..3 {
+            // 水平方向模糊: blur_buffer -> blur_temp
+            box_blur_h_pass(&self.blur_buffer, &mut self.blur_temp, w, h, r);
+            // 垂直方向模糊: blur_temp -> blur_buffer
+            box_blur_v_pass(&self.blur_temp, &mut self.blur_buffer, w, h, r);
         }
     }
 
@@ -348,6 +331,95 @@ impl MeetProcessor {
         }
 
         std::mem::swap(&mut self.upsampled_mask, &mut self.filtered_buffer);
+    }
+}
+
+/// 水平方向盒型模糊（逐行前缀和法，O(n)，边界自动 clamp）
+fn box_blur_h_pass(src: &[u8], dst: &mut [u8], width: usize, height: usize, radius: usize) {
+    let w1 = width + 1;
+    let mut pr = vec![0u32; w1];
+    let mut pg = vec![0u32; w1];
+    let mut pb = vec![0u32; w1];
+
+    for y in 0..height {
+        let row_base = y * width * 4;
+
+        // 构建当前行的前缀和
+        pr[0] = 0;
+        pg[0] = 0;
+        pb[0] = 0;
+        for x in 0..width {
+            let s = row_base + x * 4;
+            pr[x + 1] = pr[x] + src[s] as u32;
+            pg[x + 1] = pg[x] + src[s + 1] as u32;
+            pb[x + 1] = pb[x] + src[s + 2] as u32;
+        }
+
+        // 利用前缀和采样 [x-r, x+r] 邻域均值
+        for x in 0..width {
+            let x0 = x.saturating_sub(radius);
+            let x1 = (x + radius + 1).min(width);
+            let inv = 1.0 / (x1 - x0) as f32;
+            let o = row_base + x * 4;
+            dst[o]     = ((pr[x1] - pr[x0]) as f32 * inv) as u8;
+            dst[o + 1] = ((pg[x1] - pg[x0]) as f32 * inv) as u8;
+            dst[o + 2] = ((pb[x1] - pb[x0]) as f32 * inv) as u8;
+            dst[o + 3] = 255;
+        }
+    }
+}
+
+/// 垂直方向盒型模糊（滑动窗口法，行主序访问，O(n)，边界自动 clamp）
+fn box_blur_v_pass(src: &[u8], dst: &mut [u8], width: usize, height: usize, radius: usize) {
+    // 每列的当前垂直窗口累加和及有效像素计数
+    let mut sr = vec![0u32; width];
+    let mut sg = vec![0u32; width];
+    let mut sb = vec![0u32; width];
+    let mut cnt = vec![0u32; width];
+
+    // 初始化：累加前 min(radius+1, height) 行
+    let init_end = (radius + 1).min(height);
+    for y in 0..init_end {
+        let row = y * width * 4;
+        for x in 0..width {
+            sr[x]  += src[row + x * 4] as u32;
+            sg[x]  += src[row + x * 4 + 1] as u32;
+            sb[x]  += src[row + x * 4 + 2] as u32;
+            cnt[x] += 1;
+        }
+    }
+
+    for y in 0..height {
+        let out_row = y * width * 4;
+        // 输出当前行
+        for x in 0..width {
+            let inv = 1.0 / cnt[x] as f32;
+            dst[out_row + x * 4]     = (sr[x] as f32 * inv) as u8;
+            dst[out_row + x * 4 + 1] = (sg[x] as f32 * inv) as u8;
+            dst[out_row + x * 4 + 2] = (sb[x] as f32 * inv) as u8;
+            dst[out_row + x * 4 + 3] = 255;
+        }
+        // 移除窗口顶部行（y - radius）
+        if y >= radius {
+            let rem_row = (y - radius) * width * 4;
+            for x in 0..width {
+                sr[x]  -= src[rem_row + x * 4] as u32;
+                sg[x]  -= src[rem_row + x * 4 + 1] as u32;
+                sb[x]  -= src[rem_row + x * 4 + 2] as u32;
+                cnt[x] -= 1;
+            }
+        }
+        // 添加窗口底部行（y + radius + 1）
+        let add_y = y + radius + 1;
+        if add_y < height {
+            let add_row = add_y * width * 4;
+            for x in 0..width {
+                sr[x]  += src[add_row + x * 4] as u32;
+                sg[x]  += src[add_row + x * 4 + 1] as u32;
+                sb[x]  += src[add_row + x * 4 + 2] as u32;
+                cnt[x] += 1;
+            }
+        }
     }
 }
 

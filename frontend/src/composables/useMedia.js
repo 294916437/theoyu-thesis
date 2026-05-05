@@ -87,12 +87,20 @@ export function useMedia() {
 	// 维护全局视频码率 (默认 2: 高清)
 	const currentSpatialLayer = ref(2)
 
-	// Simulcast 编码参数配置 (低、中、高三层)
-	const SIMULCAST_ENCODINGS = [
-		{ rid: 'r0', scaleResolutionDownBy: 4, maxBitrate: 100000 },
-		{ rid: 'r1', scaleResolutionDownBy: 2, maxBitrate: 300000 },
-		{ rid: 'r2', scaleResolutionDownBy: 1, maxBitrate: 900000 },
-	]
+	// ========== 延迟测试配置 ==========
+	// true  → 单层编码，禁用 Simulcast（用于 RTCP RTT 延迟测量，消除多 SSRC stale 干扰）
+	// false → 正常 Simulcast 三层编码（正式业务模式）
+	// 完成延迟数据采集后将此值改回 false
+	const LATENCY_TEST_MODE = true
+
+	// Simulcast 编码参数配置
+	const SIMULCAST_ENCODINGS = LATENCY_TEST_MODE
+		? [{ maxBitrate: 900000 }] // 测试模式：单层，无 rid，单一 SSRC
+		: [
+				{ rid: 'r0', scaleResolutionDownBy: 4, maxBitrate: 100000 },
+				{ rid: 'r1', scaleResolutionDownBy: 2, maxBitrate: 300000 },
+				{ rid: 'r2', scaleResolutionDownBy: 1, maxBitrate: 900000 },
+			]
 
 	// 网络不佳提示的节流函数，避免频繁弹窗 (10秒内最多提示一次)
 	const notifyPoorNetwork = useThrottleFn(username => {
@@ -968,8 +976,8 @@ export function useMedia() {
 
 			const consumer = await mediasoupClient.consume(roomId.value, producerId, remotePeerId)
 
-			// 继承全局首选层设置
-			if (consumer.track.kind === 'video' && currentSpatialLayer.value !== 2) {
+			// 继承全局首选层设置（Simulcast 模式才有层级概念）
+			if (!LATENCY_TEST_MODE && consumer.track.kind === 'video' && currentSpatialLayer.value !== 2) {
 				await setPreferredLayers(consumer.id, currentSpatialLayer.value)
 			}
 
@@ -1700,6 +1708,8 @@ export function useMedia() {
 	 * 全局设置所有视频消费者的首选层级 (用于 UI 设置)
 	 */
 	async function setAllConsumersPreferredLayers(spatialLayer) {
+		// 单层测试模式下无 Simulcast，无层级可设置
+		if (LATENCY_TEST_MODE) return
 		try {
 			// 更新全局状态，确保后续新加入的流也能继承此设置
 			currentSpatialLayer.value = spatialLayer

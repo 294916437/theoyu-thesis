@@ -15,10 +15,12 @@
  *   E2E ≈ producerRTT/2 + consumerRTT/2
  *
  * RTT 数据来源：
- *   - producerRTT：mediasoup 通过 RTCP SR/XR 测量，由 Producer.getStats() 中
- *     type="inbound-rtp" 的 roundTripTime 字段暴露（单位：秒）
- *   - consumerRTT：mediasoup 向接收端发送 RTCP SR，接收端回复 RTCP RR，
- *     由 Consumer.getStats() 中 type="outbound-rtp" 的 roundTripTime 字段暴露（单位：秒）
+ *   - producerRTT：mediasoup Worker 基于 RTCP XR/DLRR（RFC 3611）测量
+ *     由 Producer.getStats() 中 roundTripTime 字段暴露（单位：秒）
+ *     注意：Simulcast 有多个 SSRC，取「活跃 SSRC 中的最小值」排除 stale 层
+ *   - consumerRTT：mediasoup 向接收端发送 RTCP SR，接收端回复 RTCP RR（标准机制）
+ *     由 Consumer.getStats() 中 roundTripTime 字段暴露（单位：秒）
+ *     比 producerRTT 更可靠（不依赖 RTCP XR 扩展）
  *
  * 性能影响
  * ──────────────────────────────────────────────────────────────────────────
@@ -261,32 +263,61 @@ export class LatencyCollector {
 			if (this.samples.length > this.WINDOW_SIZE) {
 				this.samples = this.samples.slice(this.samples.length - this.WINDOW_SIZE)
 			}
-			this.logger.debug(`[LatencyCollector] Collected ${newSamples.length} samples. Total=${this.samples.length}`)
+			// 输出新增数据
+			this.logger.info(`[LatencyCollector] +${newSamples.length} samples`)
 		}
 	}
 
 	/**
 	 * 从 mediasoup getStats() 返回的数组中提取 roundTripTime（秒）。
 	 *
-	 * mediasoup Producer.getStats() 返回 ProducerStat[]，每条记录是一个 SSRC 的统计。
-	 * roundTripTime 可能出现在以下 type 中：
-	 *   - "inbound-rtp"（Producer 侧，SFU 收到 RTCP XR/DLRR 后计算）
-	 *   - "outbound-rtp"（Consumer 侧，SFU 发送 RTCP SR，收到接收方 RTCP RR 后计算）
-	 * 取所有 SSRC 中最大的 RTT（悲观估计）作为该 producer/consumer 的代表值。
+	 * ── 数据来源 ──────────────────────────────────────────────────────────────
+	 * mediasoup getStats() 返回每个 SSRC 的独立统计记录（ProducerStat / ConsumerStat）。
+	 * 单层（LATENCY_TEST_MODE）模式下视频有 1 个主 SSRC + 1 个低频 RTX SSRC；
+	 * 音频为 1 条。
+	 *
+	 * ── 选"流量最大"的 SSRC ───────────────────────────────────────────────────
+	 * 策略：取 packetsReceived + packetsSent 之和最大的 SSRC 的 RTT。
+	 *
+	 * 理由：
+	 * 1. 主流 SSRC（高包量）拥有持续稳定的 RTCP 反馈，其 roundTripTime 始终
+	 *    反映最新网络状态，是最可信、也是最接近真实值的 RTT 来源。
+	 * 2. RTX SSRC 仅在丢包重传时发包，包量极低，RTCP 测量周期长，
+	 *    其 RTT 可能停留在旧时刻的高抖动值，直接选主流可完全规避此干扰。
+	 * 3. 相较于先前的 MIN 策略（在多 SSRC 中取随机最小值），
+	 *    选主流语义更明确，在连续采样间不会因为"碰巧选到不同 SSRC"而产生跳变。
+	 *
+	 * 回退规则：若所有 SSRC 的包量均为 0（连接建立初期），
+	 * 取所有有效 RTT 的最小值作为兜底估算。
+	 *
+	 * 硬性过滤：RTT > 10s 视为 RTCP 未初始化或溢出，直接丢弃。
 	 */
 	private extractRoundTripTime(stats: any[]): number | null {
-		let maxRtt: number | null = null
+		const MAX_VALID_RTT_SEC = 10 // 超过 10s 视为无效值（RTCP 未初始化或溢出）
+
+		let primaryRtt: number | null = null // 流量最大 SSRC 的 RTT（主流）
+		let primaryPackets = 0
+		const fallbackRtts: number[] = [] // 包量为 0 时的兜底候选
 
 		for (const stat of stats) {
 			const rtt = stat.roundTripTime
-			if (typeof rtt === "number" && rtt > 0) {
-				if (maxRtt === null || rtt > maxRtt) {
-					maxRtt = rtt
-				}
+			if (typeof rtt !== "number" || rtt <= 0 || rtt > MAX_VALID_RTT_SEC) continue
+
+			fallbackRtts.push(rtt)
+
+			// 累计包量：Producer stats → packetsReceived；Consumer stats → packetsSent
+			const packetCount = (stat.packetsReceived ?? 0) + (stat.packetsSent ?? 0)
+
+			if (packetCount > primaryPackets) {
+				primaryPackets = packetCount
+				primaryRtt = rtt
 			}
 		}
 
-		return maxRtt
+		// 优先使用主流 SSRC（包量最大，RTCP 反馈最新鲜）
+		// 兜底：取所有有效 RTT 中的最小值（连接初期无包量统计时）
+		if (primaryPackets > 0) return primaryRtt
+		return fallbackRtts.length > 0 ? Math.min(...fallbackRtts) : null
 	}
 
 	// ─── 报告构建 ──────────────────────────────────────────────────────────

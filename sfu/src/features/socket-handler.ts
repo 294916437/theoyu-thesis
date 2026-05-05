@@ -55,7 +55,7 @@ export class SocketHandler {
 			this.logger.info(`Client connected: ${socket.id}`)
 
 			// 初始化连接管理
-			// this.connectionManager.setupConnection(socket)
+			this.connectionManager.setupConnection(socket)
 			this.monitoring.recordConnection()
 
 			// 注册所有事件处理器

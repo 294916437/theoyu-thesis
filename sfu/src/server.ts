@@ -11,6 +11,7 @@ import { GrpcClient } from "./utils/grpc-client"
 import { Logger } from "./utils/logger"
 import { RoomManager } from "./core/room-manager"
 import { GlobalErrorHandler } from "./utils/error-handler"
+import { LatencyCollector } from "./features/latency-collector"
 
 const logger = new Logger("SFU-Server")
 const app = express()
@@ -58,6 +59,11 @@ async function startServer() {
 			res.json(roomManager.getRoomStats())
 		})
 
+		// E2E 延迟采集报告接口（论文测试用）
+		app.get("/api/latency-report", (req, res) => {
+			res.json(LatencyCollector.getInstance().getReport())
+		})
+
 		// 404 处理
 		app.use((req, res) => {
 			res.status(404).json({ error: "Not Found" })
@@ -89,6 +95,9 @@ async function startServer() {
 
 		socketHandler["monitoring"].startPeriodicLogging(60000)
 
+		// 启动 E2E 延迟采集（论文测试用，5 秒一次，不影响业务）
+		LatencyCollector.getInstance().start()
+
 		// 初始化 Nacos 客户端并注册服务
 		logger.info("Initializing Nacos client...")
 		const nacosClient = NacosClient.getInstance()
@@ -114,6 +123,9 @@ async function startServer() {
 			logger.info(`${signal} received, shutting down gracefully...`)
 
 			try {
+				// 停止 E2E 延迟采集并写最终报告
+				await LatencyCollector.getInstance().stop()
+
 				// 关闭 gRPC 客户端
 				grpcClient.close()
 

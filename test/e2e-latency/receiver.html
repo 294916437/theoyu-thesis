@@ -197,7 +197,9 @@
 					const stats = await recvTransport.getStats()
 					for (const [, stat] of stats) {
 						if (stat.type === "candidate-pair" && stat.nominated) {
-							return Math.round(stat.currentRoundTripTime * 1000)
+							// currentRoundTripTime 单位是秒,如果不存在则 fallback 为 0
+							const rttSec = stat.currentRoundTripTime || 0
+							return Math.round(rttSec * 1000)
 						}
 					}
 				} catch (_) {}
@@ -212,6 +214,8 @@
 				rttSamples = []
 				log(`开始采样（jsQR 解码），目标 ${targetCount} 次…`)
 
+				let lastSentTs = 0
+
 				function sampleFrame(now) {
 					if (!samplingActive) return
 
@@ -221,55 +225,66 @@
 						return
 					}
 
+					let decodeSuccess = false
+
 					if (videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
 						// 1. 绘入 captureCanvas（在 getImageData 前完成，保证帧与 now 对齐）
 						captureCtx.drawImage(videoEl, 0, 0, 640, 480)
 
 						// 2. 只对 QR 码所在的右下角裁剪，减少 jsQR 扫描面积提升性能
-						//    QR 码位置：x=404, y=244, 宽高=236px
-						//    cellSize=8: 21*8+32*2=232px，绘制位置(640-232-4, 480-232-4)=(404,244)
 						const qrRegion = captureCtx.getImageData(404, 244, 236, 236)
-						const code = jsQR(qrRegion.data, qrRegion.width, qrRegion.height, { inversionAttempts: "attemptBoth" })
+
+						// 二值化处理，消除视频压缩带来的边缘伪影模糊，大幅提升 jsQR 解码成功率
+						const data = qrRegion.data
+						for (let i = 0; i < data.length; i += 4) {
+							const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114
+							const val = gray > 140 ? 255 : 0
+							data[i] = val
+							data[i + 1] = val
+							data[i + 2] = val
+						}
+
+						const code = jsQR(qrRegion.data, qrRegion.width, qrRegion.height, { inversionAttempts: "dontInvert" })
 						if (code) {
 							const sentTs = parseInt(code.data)
-							// sentTs 为 Date.now() Unix ms；now 为 performance.now() DOMHighResTimeStamp
-							// 转换公式：wallClock = now + performance.timeOrigin
-							if (!isNaN(sentTs) && sentTs > 1_000_000_000_000) {
+							if (!isNaN(sentTs) && sentTs > 1_000_000_000_000 && sentTs !== lastSentTs) {
+								lastSentTs = sentTs
+								decodeSuccess = true
 								const recvWallMs = now + performance.timeOrigin
 								const latency = Math.round(recvWallMs - sentTs)
 								if (latency > 0 && latency < 5000) {
 									sampleResults.push(latency)
 									appendRawData(sampleResults.length, sentTs, Math.round(recvWallMs), latency)
 									updateResultsTable()
-									// 每 10 次采样自动收集一次 RTCP RTT
-									if (sampleResults.length % 10 === 1) {
-										collectRTT().then((rtt) => {
-											if (rtt !== null) rttSamples.push(rtt)
-										})
-									}
+
+									// 每次采样都更新 RTCP RTT 保证样本充足
+									collectRTT().then((rtt) => {
+										if (rtt !== null && rtt > 0) rttSamples.push(rtt)
+									})
 								}
 							}
 						}
 					}
 
-					// 约 200ms 采一次（避免同一帧重复采样）
-					setTimeout(() => {
-						if (!samplingActive) return
-						if (typeof videoEl.requestVideoFrameCallback === "function") {
-							videoEl.requestVideoFrameCallback(sampleFrame)
-						} else {
-							requestAnimationFrame(() => sampleFrame(performance.now()))
-						}
-					}, 200)
+					// 如果解码成功，等待 400ms 再采下一帧以分散样本；如果失败或重复，立即尝试下一帧
+					if (decodeSuccess) {
+						setTimeout(() => requestNext(), 400)
+					} else {
+						requestNext()
+					}
 				}
 
-				// 启动首次采样（兼容不支持 requestVideoFrameCallback 的旧版浏览器）
-				if (typeof videoEl.requestVideoFrameCallback === "function") {
-					videoEl.requestVideoFrameCallback(sampleFrame)
-				} else {
-					log("浏览器不支持 requestVideoFrameCallback，降级为 requestAnimationFrame（精度略低）")
-					requestAnimationFrame(() => sampleFrame(performance.now()))
+				function requestNext() {
+					if (!samplingActive) return
+					if (typeof videoEl.requestVideoFrameCallback === "function") {
+						videoEl.requestVideoFrameCallback(sampleFrame)
+					} else {
+						requestAnimationFrame(() => sampleFrame(performance.now()))
+					}
 				}
+
+				// 启动首次采样
+				requestNext()
 			} // end startSampling
 
 			function finalizeSampling() {

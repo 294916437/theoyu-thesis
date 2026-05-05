@@ -698,7 +698,14 @@ public class RoomServiceImpl implements RoomService {
     private Long parseRoomId(String roomIdOrNo) {
         try {
             // 尝试直接解析为 Long
-            return Long.parseLong(roomIdOrNo);
+            // return Long.parseLong(roomIdOrNo);
+            // 根据长度判断
+            if(roomIdOrNo.length() == 6) {
+                throw new NumberFormatException("长度为6，为roomNo");
+            }else{
+                return Long.parseLong(roomIdOrNo);
+            }
+            
         } catch (NumberFormatException e) {
             // 从 Hash 缓存获取映射
             String mappingKey = RedisKeyConstants.ROOM_NO_MAPPING_KEY;

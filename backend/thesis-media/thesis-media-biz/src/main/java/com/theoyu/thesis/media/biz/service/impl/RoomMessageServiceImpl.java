@@ -147,12 +147,45 @@ public class RoomMessageServiceImpl implements RoomMessageService {
                 .collect(Collectors.toMap(FindUserByIdRspDTO::getId, user -> user, (existing, replacement) -> existing));
 
         // 构建响应
-        return messageList.stream()
+        List<RoomMessageResVO> result = messageList.stream()
                 .map(messagePO -> {
                     FindUserByIdRspDTO userInfo = userInfoMap.get(messagePO.getSenderId());
-                    return buildMessageResVO(messagePO,userInfo);
+                    return buildMessageResVO(messagePO, userInfo);
                 })
                 .collect(Collectors.toList());
+
+        // 异步回写 Redis 缓存（仅第一页触发，避免重复预热）
+        if (pageNum == 1) {
+            final List<RoomMessageResVO> cacheList = result;
+            threadPoolTaskExecutor.execute(() -> {
+                try {
+                    String cacheKey = String.format(RedisKeyConstants.ROOM_MESSAGE_KEY, roomId);
+                    // 仅在 ZSet 为空时回写，防止并发写入覆盖更新的缓存
+                    Long existingSize = redisTemplate.opsForZSet().size(cacheKey);
+                    if (existingSize != null && existingSize > 0) {
+                        return;
+                    }
+                    for (RoomMessageResVO vo : cacheList) {
+                        String json = JsonUtils.toJsonString(vo);
+                        if (json != null) {
+                            double score = vo.getSendTime() != null
+                                    ? vo.getSendTime().toEpochSecond(java.time.ZoneOffset.of("+8")) * 1000.0
+                                    : System.currentTimeMillis();
+                            redisTemplate.opsForZSet().add(cacheKey, json, score);
+                        }
+                    }
+                    Long size = redisTemplate.opsForZSet().size(cacheKey);
+                    if (size != null && size > MAX_CACHE_MESSAGE_SIZE) {
+                        redisTemplate.opsForZSet().removeRange(cacheKey, 0, size - MAX_CACHE_MESSAGE_SIZE - 1);
+                    }
+                    log.info("DB 查询结果已异步回写消息缓存, roomId: {}, count: {}", roomId, cacheList.size());
+                } catch (Exception e) {
+                    log.error("消息缓存回写失败, roomId: {}", roomId, e);
+                }
+            });
+        }
+
+        return result;
     }
 
     /**

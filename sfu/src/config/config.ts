@@ -112,6 +112,12 @@ export class Config {
 					clockRate: 48000,
 					channels: 2,
 					preferredPayloadType: 111,
+					parameters: {
+						// 启用不连续传输：静音时停止发包，降低带宽与 CPU
+						usedtx: 1,
+						// 启用前向纠错：在轻微丢包时无需重传即可恢复音频
+						useinbandfec: 1,
+					},
 				},
 				// Video: VP8 (PT 96 是标准值)
 				{

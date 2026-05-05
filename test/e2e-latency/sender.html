@@ -16,11 +16,6 @@
 				background: #333;
 				border-radius: 4px;
 			}
-			#ts-canvas {
-				border: 1px solid #555;
-				display: block;
-				margin: 10px 0;
-			}
 			#preview {
 				border: 1px solid #555;
 				display: block;
@@ -55,7 +50,7 @@
 		</style>
 	</head>
 	<body>
-		<h2>📤 E2E延迟测试 — 发送端</h2>
+		<h2>📤 E2E延迟测试 — 背景参与者（真实摄像头）</h2>
 		<div class="section">
 			<label>SFU 地址（Socket.io URL）</label>
 			<input id="sfuUrl" value="http://localhost:3000" style="width: 280px" />
@@ -72,50 +67,20 @@
 			<button onclick="stopSender()" style="background: #c62828">⏹ 断开</button>
 		</div>
 		<div id="status">等待操作...</div>
-		<!-- 隐藏的时间戳叠加 Canvas，作为发布源 -->
-		<canvas id="ts-canvas" width="640" height="360"></canvas>
-		<label>本地预览（Canvas 帧）</label>
-		<video id="preview" autoplay muted playsinline></video>
+		<!-- 真实摄像头预览 -->
+		<label>本地摄像头预览</label>
+		<video id="preview" width="320" height="240" autoplay muted playsinline style="border: 1px solid #555; display: block; margin: 10px 0"></video>
 
-		<!-- 依赖：Socket.io + mediasoup-client -->
-		<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-		<script src="https://cdn.jsdelivr.net/npm/mediasoup-client@3.7.8/dist/mediasoup-client.min.js"></script>
-		<script>
+		<script type="module">
+			import { io } from "socket.io-client"
+			import { Device } from "mediasoup-client"
 			let socket = null
 			let device = null
 			let sendTransport = null
 			let recvTransport = null
-			let animFrameId = null
+			let camStream = null
 			let roomId = null
 
-			// ─── Canvas 时间戳叠加 ───────────────────────────────────────────────────
-			const canvas = document.getElementById("ts-canvas")
-			const ctx = canvas.getContext("2d")
-
-			/**
-			 * 每帧将当前毫秒时间戳写入 Canvas。
-			 * 格式：13位整数，左上角绘制，白字黑底。
-			 */
-			function drawTimestamp() {
-				const now = Date.now()
-				ctx.fillStyle = "#000000"
-				ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-				// 主内容区（随机色块，让画面有明显变化）
-				ctx.fillStyle = `hsl(${(now / 50) % 360}, 70%, 40%)`
-				ctx.fillRect(0, 40, canvas.width, canvas.height - 40)
-
-				// 时间戳字符串叠加区（黑底白字，固定位置）
-				ctx.fillStyle = "#000000"
-				ctx.fillRect(0, 0, canvas.width, 38)
-				ctx.fillStyle = "#ffffff"
-				ctx.font = "bold 28px monospace"
-				ctx.fillText(`TS:${now}`, 8, 30)
-
-				animFrameId = requestAnimationFrame(drawTimestamp)
-			}
-
-			// ─── 工具函数 ────────────────────────────────────────────────────────────
 			function log(msg) {
 				document.getElementById("status").innerText = msg
 				console.log("[Sender]", msg)
@@ -139,7 +104,22 @@
 				const token = document.getElementById("token").value.trim()
 				roomId = rid
 
-				// 1. 连接 Socket.io
+				// 1. 获取真实摄像头流——与 sender-main.html 一致的获取方式
+				log("请求摄像头权限…")
+				try {
+					camStream = await navigator.mediaDevices.getUserMedia({
+						video: { width: 640, height: 480, frameRate: 30 },
+						audio: false,
+					})
+					const previewEl = document.getElementById("preview")
+					previewEl.srcObject = camStream
+					previewEl.play().catch(() => {})
+				} catch (e) {
+					log(`❌ 摄像头获取失败: ${e.message}`)
+					return
+				}
+
+				// 2. 连接 Socket.io
 				log("连接 SFU…")
 				socket = io(sfuUrl, { auth: { token }, transports: ["websocket"] })
 				await new Promise((res, rej) => {
@@ -148,19 +128,24 @@
 				})
 				log("Socket 已连接，加入房间…")
 
-				// 2. 加入房间
+				// 3. 加入房间
 				const joinResp = await emitAsync("joinRoom", { roomId: rid, userId: uid, username: uname, token })
 				log(`已加入房间，peerId=${joinResp.peerId}，当前参与者：${joinResp.peers.length + 1}`)
 
-				// 3. 获取路由 RTP 能力
+				// 4. 获取路由 RTP 能力
 				const { rtpCapabilities } = await emitAsync("getRouterRtpCapabilities", { roomId: rid })
 
-				// 4. 加载 mediasoup Device
-				device = new window.mediasoupClient.Device()
+				// 5. 加载 mediasoup Device
+				device = new Device()
 				await device.load({ routerRtpCapabilities: rtpCapabilities })
 				log("Device 已加载")
 
-				// 5. 创建 Send Transport
+				if (!device.canProduce("video")) {
+					log("❌ 当前设备/浏览器不支持生产视频")
+					return
+				}
+
+				// 6. 创建 Send Transport
 				const sendParams = await emitAsync("createWebRtcTransport", { roomId: rid, producing: true, consuming: false })
 				sendTransport = device.createSendTransport(sendParams)
 				sendTransport.on("connect", ({ dtlsParameters }, callback, errback) => {
@@ -175,32 +160,22 @@
 					}
 				})
 
-				// 6. 创建 Recv Transport（订阅其他人）
+				// 7. 创建 Recv Transport（订阅其他参与者，模拟真实会议负载）
 				const recvParams = await emitAsync("createWebRtcTransport", { roomId: rid, producing: false, consuming: true })
 				recvTransport = device.createRecvTransport(recvParams)
 				recvTransport.on("connect", ({ dtlsParameters }, callback, errback) => {
 					emitAsync("connectWebRtcTransport", { roomId: rid, transportId: recvParams.id, dtlsParameters }).then(callback).catch(errback)
 				})
 
-				// 7. 启动时间戳 Canvas 并捕获流
-				drawTimestamp()
-				const stream = canvas.captureStream(30)
-				const videoTrack = stream.getVideoTracks()[0]
+				// 8. 发布真实摄像头视频轨道
+				const videoTrack = camStream.getVideoTracks()[0]
+				await sendTransport.produce({ track: videoTrack, appData: { source: "e2e-bg-sender" } })
+				log("真实摄像头推流中（与 sender-main 同房间，模拟真实会议负载）…")
 
-				// 本地预览
-				document.getElementById("preview").srcObject = stream
-
-				// 8. 发布视频
-				await sendTransport.produce({ track: videoTrack, appData: { source: "e2e-sender" } })
-				log("✅ 视频推流中（时间戳叠加帧），等待接收端加入测量…")
-
-				// 9. 监听新生产者，自动消费
+				// 9. 订阅已有参与者（模拟 N 路转发负载）
 				socket.on("newProducer", async ({ producerId, peerId }) => {
-					log(`发现新参与者生产者 ${producerId}（peerId=${peerId}），开始订阅…`)
 					await subscribeProducer(producerId, rid)
 				})
-
-				// 订阅已有参与者
 				for (const peer of joinResp.peers) {
 					for (const producer of peer.producers || []) {
 						await subscribeProducer(producer.id, rid)
@@ -217,17 +192,22 @@
 					})
 					const consumer = await recvTransport.consume(consumerParams)
 					await emitAsync("resumeConsumer", { roomId: rid, consumerId: consumer.id })
-					console.log("[Sender] subscribed to producer", producerId)
 				} catch (e) {
 					console.warn("[Sender] subscribe error:", e.message)
 				}
 			}
 
+			// 将 onclick 引用的函数暴露到 window（module 脚本默认作用域隔离）
+			window.startSender = startSender
+			window.stopSender = stopSender
+
 			function stopSender() {
-				if (animFrameId) {
-					cancelAnimationFrame(animFrameId)
-					animFrameId = null
+				if (camStream) {
+					camStream.getTracks().forEach((t) => t.stop())
+					camStream = null
 				}
+				const previewEl = document.getElementById("preview")
+				if (previewEl) previewEl.srcObject = null
 				if (socket) {
 					socket.disconnect()
 					socket = null

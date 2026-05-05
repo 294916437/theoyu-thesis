@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="UTF-8" />
+		<title>E2E 延迟测试</title>
+		<style>
+			body {
+				font-family: monospace;
+				background: #1a1a1a;
+				color: #eee;
+				padding: 40px;
+			}
+			a {
+				display: block;
+				margin: 12px 0;
+				color: #4fc3f7;
+				font-size: 18px;
+				text-decoration: none;
+			}
+			a:hover {
+				text-decoration: underline;
+			}
+			p {
+				color: #aaa;
+				margin: 4px 0 0 16px;
+				font-size: 13px;
+			}
+		</style>
+	</head>
+	<body>
+		<h2>📊 E2E 延迟测试 — 导航</h2>
+		<a href="/sender-main.html">📡 发送端主页（QR 码帧推流）</a>
+		<p>生成含 Date.now() QR 码的视频帧并推送到 SFU，用于精确测量 E2E 延迟</p>
+		<a href="/sender.html">📤 背景发送端（负载模拟）</a>
+		<p>用于 3/6 人并发测试，加入房间并推流（无 QR 码）</p>
+		<a href="/receiver.html">📥 接收端（延迟测量）</a>
+		<p>订阅发送端视频，jsQR 解码 QR 码，计算 E2E 延迟与 RTCP RTT</p>
+	</body>
+</html>

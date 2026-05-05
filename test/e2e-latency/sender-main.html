@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 	<head>
 		<meta charset="UTF-8" />
-		<title>E2E延迟测试 - 时间戳广播器（发送端辅助）</title>
+		<title>E2E延迟测试 - 真实摄像头时间戳发送端</title>
 		<style>
 			body {
 				font-family: monospace;
@@ -44,11 +44,12 @@
 		</style>
 	</head>
 	<body>
-		<h2>📡 发送端 — 时间戳帧推流（主页面）</h2>
+		<h2>📡 发送端 — 真实摄像头 + 时间戳推流（主测量发送端）</h2>
 		<p style="color: #aaa">
-			本页面同时承担两个职责：<br />
-			1. 通过 Canvas + captureStream 生成带时间戳的视频帧推送到 SFU<br />
-			2. 通过 <b>BroadcastChannel</b> 每帧广播当前时间戳，供同浏览器其他标签页（接收端）精确计算 E2E 延迟
+			本页面承担以下职责：<br />
+			1. 通过 <b>getUserMedia</b> 获取真实摄像头视频流<br />
+			2. 将摄像头帧绘制到 Canvas，并在右下角叠加 QR 码（内容为当前 Date.now() 毫秒时间戳）<br />
+			3. 通过 captureStream(30) 发布到 SFU，接收端通过 jsQR 解码后计算真实 E2E 延迟
 		</p>
 
 		<div class="section">
@@ -68,19 +69,37 @@
 		</div>
 
 		<div id="status">等待操作…</div>
-		<canvas id="ts-canvas" width="640" height="360"></canvas>
+		<!-- 隐藏的摄像头原始视频，用于绘制到 canvas -->
+		<video id="cam-video" style="display: none" autoplay muted playsinline></video>
+		<canvas id="ts-canvas" width="640" height="480"></canvas>
+		<label>本地预览（Canvas 推流画面 = 真实摄像头 + QR 时间戳叠加）</label>
+		<video id="preview" width="640" height="480" autoplay muted playsinline style="border: 1px solid #555; display: block; margin: 10px 0"></video>
 
-		<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-		<script src="https://cdn.jsdelivr.net/npm/mediasoup-client@3.7.8/dist/mediasoup-client.min.js"></script>
-		<script>
+		<script type="module">
+			import { io } from "socket.io-client"
+			import qrcode from "qrcode-generator"
+			import { Device } from "mediasoup-client"
 			let socket = null,
 				device = null,
 				sendTransport = null,
 				recvTransport = null
 			let rafId = null
-			const bc = new BroadcastChannel("e2e-latency-ts")
+			let canvasStream = null // 保持对 captureStream 的引用，以便 stop() 时停止轨道
+			let camStream = null // 真实摄像头流
+			const camVideo = document.getElementById("cam-video") // 摄像头视频元素
 			const canvas = document.getElementById("ts-canvas")
 			const ctx = canvas.getContext("2d")
+
+			const WIDTH = 640
+			const HEIGHT = 480
+			// 预分配 QR 码离屏 Canvas（重用，避免每帧 document.createElement 开销）
+			// cellSize=8, moduleCount=21, margin=cellSize*4=32 → total=21*8+32*2=232px
+			// cellSize=8 与视频编解码器 8×8 DCT 块对齐，类模素均肀2个方块，显著降低压缩失真
+			const QR_TOTAL = 232
+			const qrOffscreen = document.createElement("canvas")
+			qrOffscreen.width = QR_TOTAL
+			qrOffscreen.height = QR_TOTAL
+			const qrOffCtx = qrOffscreen.getContext("2d")
 
 			function log(msg) {
 				document.getElementById("status").innerText = msg
@@ -91,27 +110,59 @@
 				return new Promise((res, rej) => socket.emit(ev, data, (r) => (r?.error ? rej(new Error(r.error)) : res(r))))
 			}
 
-			// 每帧：绘制时间戳 + 广播给接收端页面
+			/**
+			 * 将 13 位毫秒时间戳渲染到预分配的离屏 Canvas（重用，避免每帧分配）。
+			 * 使用 version 1（21×21 模块）+ 纠错 M，足以容纳 13 位纯数字。
+			 * cellSize=8 → 模块区 168px + 安静区 32px×2 = 232px 总边长，
+			 * 小格自身对齐 8×8 DCT 块，压缩后 jsQR 解码可靠性显著提升。
+			 */
+			function renderQRToOffscreen(tsStr) {
+				const qr = qrcode(1, "M") // version 1, 纠错 M（对比 L 增加冗余度，迅味压缩后解码成功率）
+				qr.addData(tsStr, "Numeric")
+				qr.make()
+				const moduleCount = qr.getModuleCount() // 21
+				const cellSize = 8
+				const margin = 32 // 安静区 32px（= cellSize * 4）
+				qrOffCtx.fillStyle = "#ffffff"
+				qrOffCtx.fillRect(0, 0, QR_TOTAL, QR_TOTAL)
+				qrOffCtx.fillStyle = "#000000"
+				for (let row = 0; row < moduleCount; row++) {
+					for (let col = 0; col < moduleCount; col++) {
+						if (qr.isDark(row, col)) {
+							qrOffCtx.fillRect(margin + col * cellSize, margin + row * cellSize, cellSize, cellSize)
+						}
+					}
+				}
+			}
+
+			/**
+			 * 每帧：将真实摄像头画面绘入 Canvas，然后叠加时间戳文字 + QR 码。
+			 * 摄像头内容保证视频流有真实的动态内容，QR 码供接收端 jsQR 解码计算 E2E 延迟。
+			 */
 			function drawAndBroadcast() {
 				const now = Date.now()
+				const tsStr = String(now)
 
-				// 背景
-				ctx.fillStyle = "#000"
-				ctx.fillRect(0, 0, 640, 360)
+				// 1. 绘制真实摄像头帧（作为背景内容）
+				if (camVideo.readyState >= 2) {
+					ctx.drawImage(camVideo, 0, 0, WIDTH, HEIGHT)
+				} else {
+					// 摄像头未就绪时填充黑色占位
+					ctx.fillStyle = "#000"
+					ctx.fillRect(0, 0, WIDTH, HEIGHT)
+				}
 
-				// 动态内容（让视频帧有明显变化，避免编码器跳帧）
-				ctx.fillStyle = `hsl(${(now / 50) % 360}, 70%, 40%)`
-				ctx.fillRect(0, 40, 640, 320)
-
-				// 时间戳叠加（黑底白字，固定在顶部 38px）
-				ctx.fillStyle = "#000"
-				ctx.fillRect(0, 0, 640, 38)
+				// 2. 时间戳文字叠加（左上角，半透明黑底白字，人工可读）
+				ctx.fillStyle = "rgba(0,0,0,0.65)"
+				ctx.fillRect(0, 0, WIDTH, 38)
 				ctx.fillStyle = "#fff"
 				ctx.font = "bold 28px monospace"
 				ctx.fillText(`TS:${now}`, 8, 30)
 
-				// 广播给接收端标签页
-				bc.postMessage({ type: "timestamp", ts: now })
+				// 3. QR 码叠加（右下角，白底黑码，供 jsQR 解码）
+				// QR 码内容为纯数字时间戳，解码后即为 Date.now() 发送时刻
+				renderQRToOffscreen(tsStr)
+				ctx.drawImage(qrOffscreen, WIDTH - QR_TOTAL - 4, HEIGHT - QR_TOTAL - 4)
 
 				rafId = requestAnimationFrame(drawAndBroadcast)
 			}
@@ -122,6 +173,36 @@
 				const uid = document.getElementById("userId").value.trim()
 				const uname = document.getElementById("username").value.trim()
 				const token = document.getElementById("token").value.trim()
+
+				// ① 获取真实摄像头流（参考 onnx+rust.html 的 getUserMedia 方式）
+				log("请求摄像头权限…")
+				try {
+					camStream = await navigator.mediaDevices.getUserMedia({
+						video: { width: WIDTH, height: HEIGHT, frameRate: 30 },
+						audio: false,
+					})
+					camVideo.srcObject = camStream
+					await new Promise((r) => (camVideo.onloadedmetadata = r))
+					camVideo.play().catch(() => {})
+				} catch (e) {
+					log(`❌ 摄像头获取失败: ${e.message}（请确认浏览器已授权摄像头权限）`)
+					return
+				}
+
+				// ② 启动 Canvas 帧绘制（摄像头画面 + QR 时间戳叠加）
+				if (!rafId) {
+					drawAndBroadcast()
+					// 稍等一会儿，确保 canvas 已经至少绘制了一帧，否则可能因为处于空白内容导致捕获为空/断流
+					await new Promise((r) => setTimeout(r, 100))
+				}
+				canvasStream = canvas.captureStream(30)
+				const previewEl = document.getElementById("preview")
+				previewEl.srcObject = canvasStream
+				// 等待 canvasStream 真正能够派发出视频轨道
+				await new Promise((r) => setTimeout(r, 100))
+
+				// 动态赋值 srcObject 后浏览器不会自动触发 autoplay，需显式调用 play()
+				previewEl.play().catch(() => {})
 
 				log("连接 SFU…")
 				socket = io(sfuUrl, { auth: { token }, transports: ["websocket"] })
@@ -134,12 +215,22 @@
 				log(`加入房间成功，peerId=${joinResp.peerId}`)
 
 				const { rtpCapabilities } = await emitAsync("getRouterRtpCapabilities", { roomId: rid })
-				device = new window.mediasoupClient.Device()
+				device = new Device()
 				await device.load({ routerRtpCapabilities: rtpCapabilities })
+
+				if (!device.canProduce("video")) {
+					log("❌ 当前设备/浏览器不支持生产视频")
+					return
+				}
 
 				// Send Transport
 				const sp = await emitAsync("createWebRtcTransport", { roomId: rid, producing: true, consuming: false })
 				sendTransport = device.createSendTransport(sp)
+
+				sendTransport.on("connectionstatechange", (state) => {
+					log(`[ICE/DTLS] Sender Transport Connection State: ${state}`)
+				})
+
 				sendTransport.on("connect", ({ dtlsParameters }, cb, eb) => emitAsync("connectWebRtcTransport", { roomId: rid, transportId: sp.id, dtlsParameters }).then(cb).catch(eb))
 				sendTransport.on("produce", async ({ kind, rtpParameters, appData }, cb, eb) => {
 					try {
@@ -155,30 +246,43 @@
 				recvTransport = device.createRecvTransport(rp)
 				recvTransport.on("connect", ({ dtlsParameters }, cb, eb) => emitAsync("connectWebRtcTransport", { roomId: rid, transportId: rp.id, dtlsParameters }).then(cb).catch(eb))
 
-				// 启动帧绘制 + 广播
-				drawAndBroadcast()
+				// 发布已在函数开头捕获的 stream
+				await sendTransport.produce({ track: canvasStream.getVideoTracks()[0], appData: { source: "e2e-ts" } })
 
-				// 捕获并发布
-				const stream = canvas.captureStream(30)
-				await sendTransport.produce({ track: stream.getVideoTracks()[0], appData: { source: "e2e-ts" } })
-
-				log("推流中，同时广播时间戳给同浏览器接收端标签页")
+				log("真实摄像头推流中（摄像头画面 + QR 时间戳叠加），等待接收端加入测量…")
 			}
+
+			// 将 onclick 引用的函数暴露到 window（module 脚本默认作用域隔离）
+			window.start = start
+			window.stop = stop
 
 			function stop() {
 				if (rafId) {
 					cancelAnimationFrame(rafId)
 					rafId = null
 				}
+				if (canvasStream) {
+					canvasStream.getTracks().forEach((t) => t.stop())
+					canvasStream = null
+				}
+				if (camStream) {
+					camStream.getTracks().forEach((t) => t.stop())
+					camStream = null
+				}
+				camVideo.srcObject = null
+				const preview = document.getElementById("preview")
+				if (preview) preview.srcObject = null
 				if (socket) {
 					socket.disconnect()
 					socket = null
 				}
 				if (sendTransport) {
 					sendTransport.close()
+					sendTransport = null
 				}
 				if (recvTransport) {
 					recvTransport.close()
+					recvTransport = null
 				}
 				log("已停止")
 			}

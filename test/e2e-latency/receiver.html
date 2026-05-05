@@ -95,6 +95,8 @@
 			<input id="token" value="test-token" />
 			<label>参与者规模（仅用于标注，如 2/3/5）</label>
 			<input id="participantCount" value="2" type="number" min="2" max="20" />
+			<label>发送端用户名（多人测试时精准订阅 QR 流，留空则订阅第一个视频流）</label>
+			<input id="senderUsername" value="" placeholder="留空=订阅第一个视频流" />
 			<label>采样次数（默认 60）</label>
 			<input id="sampleCount" value="60" type="number" min="10" max="500" />
 			<br />
@@ -106,10 +108,12 @@
 
 		<!-- 接收到的远程视频 -->
 		<label>远程视频帧</label>
-		<video id="remote-video" width="640" height="360" autoplay playsinline></video>
+		<video id="remote-video" width="640" height="480" autoplay muted playsinline></video>
 
 		<!-- 采样 Canvas（用于读取像素）-->
 		<canvas id="sample-canvas" width="640" height="38" style="display: none"></canvas>
+		<!-- 帧捕获 Canvas（jsQR QR 码解码用）-->
+		<canvas id="capture-canvas" width="640" height="480" style="display: none"></canvas>
 
 		<div class="section">
 			<h3>📊 实时结果</h3>
@@ -122,11 +126,12 @@
 							<th>E2E延迟均值 (ms)</th>
 							<th>E2E延迟最大值 (ms)</th>
 							<th>当前延迟 (ms)</th>
+							<th>RTCP RTT均值 (ms)</th>
 						</tr>
 					</thead>
 					<tbody id="results-body">
 						<tr>
-							<td colspan="5">—</td>
+							<td colspan="6">—</td>
 						</tr>
 					</tbody>
 				</table>
@@ -134,21 +139,24 @@
 			<div id="raw-data" style="margin-top: 8px; color: #aaa; font-size: 12px; max-height: 120px; overflow-y: auto"></div>
 		</div>
 
-		<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-		<script src="https://cdn.jsdelivr.net/npm/mediasoup-client@3.7.8/dist/mediasoup-client.min.js"></script>
-		<script>
+		<script type="module">
+			import { io } from "socket.io-client"
+			import jsQR from "jsqr"
+			import { Device } from "mediasoup-client"
 			let socket = null
 			let device = null
 			let recvTransport = null
-			let sendTransport = null
 			let activeConsumer = null // 只关注第一个 video consumer
 			let samplingActive = false
 			let sampleResults = []
+			let rttSamples = []
 			let animFrameId = null
 
 			const videoEl = document.getElementById("remote-video")
 			const sampleCanvas = document.getElementById("sample-canvas")
 			const sampleCtx = sampleCanvas.getContext("2d", { willReadFrequently: true })
+			const captureCanvas = document.getElementById("capture-canvas")
+			const captureCtx = captureCanvas.getContext("2d", { willReadFrequently: true })
 
 			// ─── 日志 ────────────────────────────────────────────────────────────────
 			function log(msg) {
@@ -166,42 +174,45 @@
 				})
 			}
 
-			// ─── OCR-like 时间戳读取 ─────────────────────────────────────────────────
+			// ─── jsQR 初始化（QR 码解码方案） ────────────────────────────────────────────────────────
 			/**
-			 * 从视频帧顶部裁剪时间戳区域（高 38px），通过 Canvas getImageData 读取像素，
-			 * 再用原生 Canvas measureText 辅助读取文字（利用发送端的定长格式解析）。
-			 *
-			 * 由于浏览器端无法直接做完整 OCR，这里采用"像素哈希校验 + 发送端固定格式"方案：
-			 *   - 发送端将 13 位时间戳（Date.now()）写在 Canvas 左上角 "TS:xxxxxxxxxxxxx"
-			 *   - 接收端将视频帧绘入 sample-canvas，读取顶部黑底白字区域的亮度行，
-			 *     通过对比亮度分布还原数字（简化：用 getImageData 直接读 R 通道构造伪OCR）
-			 *
-			 * 实际可靠读取方案：借助 tesseract.js 或直接使用 "发送端 postMessage + BroadcastChannel" 传时间戳。
-			 * 本测试脚本采用 BroadcastChannel 方案（同一浏览器多标签页），精度更高。
+			 * 接收端从实际视频帧中解码 QR 码获取发送时刻：
+			 *   - 发送端在每帧右下角绘制 QR 码，内容为当前 Date.now()（13 位 Unix ms）
+			 *   - 接收端通过 requestVideoFrameCallback 获取帧展示时刻 (now: performance.now())
+			 *   - 将视频帧绘入 captureCanvas，调用 jsQR() 同步解码 QR 码
+			 *   - E2E 延迟 = (now + performance.timeOrigin) − sentTs
+			 * jsQR 是纯 JS 实现，兼容所有现代浏览器，不依赖浏览器内置 API。
 			 */
-
-			// ─── BroadcastChannel 方案（推荐，同浏览器多标签） ──────────────────────
-			let bc = null
-			let lastSentTs = null // 发送端广播的最新时间戳
 			let videoFrameReceived = false
 
-			function initBroadcastChannel() {
-				bc = new BroadcastChannel("e2e-latency-ts")
-				bc.onmessage = (evt) => {
-					if (evt.data && evt.data.type === "timestamp") {
-						lastSentTs = evt.data.ts
-					}
-				}
+			function initBarcodeDetector() {
+				log("jsQR 已初始化（纯 JS QR 解码，兼容所有现代浏览器）")
+				return true
 			}
 
-			// ─── 采样循环 ─────────────────────────────────────────────────────────────
+			// ─── RTCP RTT 采集（via WebRTC stats API） ────────────────────────────────
+			async function collectRTT() {
+				if (!recvTransport) return null
+				try {
+					const stats = await recvTransport.getStats()
+					for (const [, stat] of stats) {
+						if (stat.type === "candidate-pair" && stat.nominated) {
+							return Math.round(stat.currentRoundTripTime * 1000)
+						}
+					}
+				} catch (_) {}
+				return null
+			}
+
+			// ─── 采样循环（requestVideoFrameCallback + jsQR 解码） ──────────────────────
 			function startSampling() {
 				const targetCount = parseInt(document.getElementById("sampleCount").value) || 60
 				samplingActive = true
 				sampleResults = []
-				log(`开始采样，目标 ${targetCount} 次…`)
+				rttSamples = []
+				log(`开始采样（jsQR 解码），目标 ${targetCount} 次…`)
 
-				function sample() {
+				function sampleFrame(now) {
 					if (!samplingActive) return
 
 					if (sampleResults.length >= targetCount) {
@@ -210,25 +221,56 @@
 						return
 					}
 
-					// 方案 A：BroadcastChannel（同浏览器多标签页）
-					if (lastSentTs !== null && videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
-						const recvTs = Date.now()
-						const latency = recvTs - lastSentTs
+					if (videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
+						// 1. 绘入 captureCanvas（在 getImageData 前完成，保证帧与 now 对齐）
+						captureCtx.drawImage(videoEl, 0, 0, 640, 480)
 
-						// 过滤异常值（负数或超过 5 秒的明显错误值）
-						if (latency > 0 && latency < 5000) {
-							sampleResults.push(latency)
-							updateResultsTable()
-							appendRawData(sampleResults.length, lastSentTs, recvTs, latency)
+						// 2. 只对 QR 码所在的右下角裁剪，减少 jsQR 扫描面积提升性能
+						//    QR 码位置：x=404, y=244, 宽高=236px
+						//    cellSize=8: 21*8+32*2=232px，绘制位置(640-232-4, 480-232-4)=(404,244)
+						const qrRegion = captureCtx.getImageData(404, 244, 236, 236)
+						const code = jsQR(qrRegion.data, qrRegion.width, qrRegion.height, { inversionAttempts: "attemptBoth" })
+						if (code) {
+							const sentTs = parseInt(code.data)
+							// sentTs 为 Date.now() Unix ms；now 为 performance.now() DOMHighResTimeStamp
+							// 转换公式：wallClock = now + performance.timeOrigin
+							if (!isNaN(sentTs) && sentTs > 1_000_000_000_000) {
+								const recvWallMs = now + performance.timeOrigin
+								const latency = Math.round(recvWallMs - sentTs)
+								if (latency > 0 && latency < 5000) {
+									sampleResults.push(latency)
+									appendRawData(sampleResults.length, sentTs, Math.round(recvWallMs), latency)
+									updateResultsTable()
+									// 每 10 次采样自动收集一次 RTCP RTT
+									if (sampleResults.length % 10 === 1) {
+										collectRTT().then((rtt) => {
+											if (rtt !== null) rttSamples.push(rtt)
+										})
+									}
+								}
+							}
 						}
 					}
 
 					// 约 200ms 采一次（避免同一帧重复采样）
-					setTimeout(() => requestAnimationFrame(sample), 200)
+					setTimeout(() => {
+						if (!samplingActive) return
+						if (typeof videoEl.requestVideoFrameCallback === "function") {
+							videoEl.requestVideoFrameCallback(sampleFrame)
+						} else {
+							requestAnimationFrame(() => sampleFrame(performance.now()))
+						}
+					}, 200)
 				}
 
-				requestAnimationFrame(sample)
-			}
+				// 启动首次采样（兼容不支持 requestVideoFrameCallback 的旧版浏览器）
+				if (typeof videoEl.requestVideoFrameCallback === "function") {
+					videoEl.requestVideoFrameCallback(sampleFrame)
+				} else {
+					log("浏览器不支持 requestVideoFrameCallback，降级为 requestAnimationFrame（精度略低）")
+					requestAnimationFrame(() => sampleFrame(performance.now()))
+				}
+			} // end startSampling
 
 			function finalizeSampling() {
 				if (sampleResults.length === 0) {
@@ -237,25 +279,27 @@
 				}
 				const avg = Math.round(sampleResults.reduce((a, b) => a + b, 0) / sampleResults.length)
 				const max = Math.max(...sampleResults)
-				log(`采样完成 | 均值=${avg}ms | 最大值=${max}ms | 有效样本=${sampleResults.length}`)
-				updateResultsTable(avg, max)
+				const avgRtt = rttSamples.length > 0 ? Math.round(rttSamples.reduce((a, b) => a + b, 0) / rttSamples.length) : "—"
+				log(`采样完成 | E2E均值=${avg}ms | E2E最大值=${max}ms | RTCP RTT均值=${avgRtt}ms | 有效样本=${sampleResults.length}`)
+				updateResultsTable(avg, max, avgRtt)
 			}
 
-			function updateResultsTable(avg, max) {
+			function updateResultsTable(avg, max, avgRtt) {
 				const n = sampleResults.length
 				const curAvg = avg !== undefined ? avg : n > 0 ? Math.round(sampleResults.reduce((a, b) => a + b, 0) / n) : 0
 				const curMax = max !== undefined ? max : n > 0 ? Math.max(...sampleResults) : 0
 				const latest = sampleResults[n - 1] || 0
 				const scale = document.getElementById("participantCount").value
-
+				const rttDisplay = avgRtt !== undefined ? avgRtt : rttSamples.length > 0 ? Math.round(rttSamples.reduce((a, b) => a + b, 0) / rttSamples.length) : "—"
 				document.getElementById("results-body").innerHTML = `
-        <tr>
-          <td>${scale} 人</td>
-          <td class="highlight">${n}</td>
-          <td class="highlight">${curAvg}</td>
-          <td class="highlight">${curMax}</td>
-          <td>${latest}</td>
-        </tr>`
+					<tr>
+						<td>${scale} 人</td>
+						<td class="highlight">${n}</td>
+						<td class="highlight">${curAvg}</td>
+						<td class="highlight">${curMax}</td>
+						<td>${latest}</td>
+						<td class="highlight">${rttDisplay}</td>
+					</tr>`
 			}
 
 			function appendRawData(idx, sentTs, recvTs, latency) {
@@ -265,7 +309,7 @@
 
 			// ─── 主流程 ─────────────────────────────────────────────────────────────
 			async function startReceiver() {
-				initBroadcastChannel()
+				if (!initBarcodeDetector()) return
 
 				const sfuUrl = document.getElementById("sfuUrl").value.trim()
 				const rid = document.getElementById("roomId").value.trim()
@@ -285,71 +329,53 @@
 				log(`已加入房间，peerId=${joinResp.peerId}，其他参与者：${joinResp.peers.length}`)
 
 				const { rtpCapabilities } = await emitAsync("getRouterRtpCapabilities", { roomId: rid })
-				device = new window.mediasoupClient.Device()
+				device = new Device()
 				await device.load({ routerRtpCapabilities: rtpCapabilities })
+				log("路由 RTP 能力已加载")
 
 				// Recv Transport
 				const recvParams = await emitAsync("createWebRtcTransport", { roomId: rid, producing: false, consuming: true })
 				recvTransport = device.createRecvTransport(recvParams)
+				log("接收传输已建立")
+
+				recvTransport.on("connectionstatechange", (state) => {
+					log(`[ICE/DTLS] Receiver Transport Connection State: ${state}`)
+				})
+
 				recvTransport.on("connect", ({ dtlsParameters }, callback, errback) => {
 					emitAsync("connectWebRtcTransport", { roomId: rid, transportId: recvParams.id, dtlsParameters }).then(callback).catch(errback)
 				})
 
-				// Send Transport（用于加入信令但不发布媒体，部分 SFU 要求建立双向 transport）
-				const sendParams = await emitAsync("createWebRtcTransport", { roomId: rid, producing: true, consuming: false })
-				sendTransport = device.createSendTransport(sendParams)
-				sendTransport.on("connect", ({ dtlsParameters }, callback, errback) => {
-					emitAsync("connectWebRtcTransport", { roomId: rid, transportId: sendParams.id, dtlsParameters }).then(callback).catch(errback)
-				})
-				sendTransport.on("produce", (_, callback) => callback({ id: "noop" }))
+				// 从输入框读取发送端用户名（多人测试时精准订阅含 QR 码的视频流）
+				const senderUname = document.getElementById("senderUsername").value.trim()
+				function isTargetSender(peerUsername) {
+					return !senderUname || peerUsername === senderUname
+				}
 
-				// 订阅已有参与者的视频
-				let subscribed = false
+				// 订阅已有参与者的视频（优先匹配发送端用户名）
+				log(`扫描已入场 peer：${joinResp.peers.length} 个，开始订阅视频…`)
 				for (const peer of joinResp.peers) {
 					for (const producer of peer.producers || []) {
-						if (producer.kind === "video" && !subscribed) {
+						if (producer.kind === "video" && !activeConsumer && isTargetSender(peer.username)) {
 							await subscribeVideoProducer(producer.id, rid)
-							subscribed = true
 						}
 					}
 				}
 
-				// 监听新 Producer
-				socket.on("newProducer", async ({ producerId, kind }) => {
-					if (kind === "video" && !activeConsumer) {
+				// 监听新 Producer（单一监听器，避免重复注册；采样触发已内聚于 subscribeVideoProducer）
+				socket.on("newProducer", async ({ producerId, kind, username }) => {
+					if (kind === "video" && !activeConsumer && isTargetSender(username)) {
 						await subscribeVideoProducer(producerId, rid)
 					}
 				})
 
-				// 等待视频帧到达后开始采样
-				if (subscribed) {
-					videoEl.onloadeddata = () => {
-						if (!videoFrameReceived) {
-							videoFrameReceived = true
-							startSampling()
-						}
-					}
-					if (videoEl.readyState >= 2) {
-						videoFrameReceived = true
-						startSampling()
-					}
-				} else {
-					log("暂未发现视频生产者，等待 newProducer 事件…")
-					socket.on("newProducer", async ({ producerId, kind }) => {
-						if (kind === "video" && !activeConsumer) {
-							await subscribeVideoProducer(producerId, rid)
-							videoEl.onloadeddata = () => {
-								if (!videoFrameReceived) {
-									videoFrameReceived = true
-									startSampling()
-								}
-							}
-						}
-					})
+				if (!activeConsumer) {
+					log("暂未发现目标视频生产者，等待 newProducer 事件…")
 				}
 			}
 
 			async function subscribeVideoProducer(producerId, rid) {
+				log(`订阅视频 producer=${producerId}…`)
 				try {
 					const consumerParams = await emitAsync("consume", {
 						roomId: rid,
@@ -359,14 +385,53 @@
 					activeConsumer = await recvTransport.consume(consumerParams)
 					await emitAsync("resumeConsumer", { roomId: rid, consumerId: activeConsumer.id })
 
+					// 在 srcObject 赋值前就注册监听器，避免 loadeddata 在 await play() 期间触发而错过
+					videoEl.addEventListener(
+						"loadeddata",
+						() => {
+							if (!videoFrameReceived) {
+								videoFrameReceived = true
+								startSampling()
+							}
+						},
+						{ once: true },
+					)
+
+					activeConsumer.track.onunmute = () => {
+						log(`[Track] track 已解除静音，开始接收 RTP 包...`)
+					}
+					activeConsumer.track.onmute = () => {
+						log(`[Track] track 被静音 (通常意味着没收到包)...`)
+					}
+
 					// 绑定到 video 元素
 					videoEl.srcObject = new MediaStream([activeConsumer.track])
-					await videoEl.play().catch(() => {})
-					log(`已订阅视频 producer=${producerId}，等待帧数据…`)
+
+					videoEl.play().catch((e) => log(`play() 失败: ${e?.message || e}`))
+					log(`已订阅视频 producer=${producerId}，等待帧数据 (readyState: ${activeConsumer.track.readyState}, muted: ${activeConsumer.track.muted})…`)
+
+					if (videoEl.readyState >= 2 && !videoFrameReceived) {
+						videoFrameReceived = true
+						startSampling()
+					}
+
+					// 兜底超时：3s 后若 loadeddata 与 readyState 均未触发采样，强制启动
+					setTimeout(() => {
+						if (!videoFrameReceived && activeConsumer) {
+							log("loadeddata 未触发，强制启动采样…")
+							videoFrameReceived = true
+							startSampling()
+						}
+					}, 3000)
 				} catch (e) {
 					log("订阅失败: " + e.message)
 				}
 			}
+
+			// 将 onclick 引用的函数暴露到 window（module 脚本默认作用域隔离）
+			window.startReceiver = startReceiver
+			window.stopReceiver = stopReceiver
+			window.exportResults = exportResults
 
 			function stopReceiver() {
 				samplingActive = false
@@ -382,16 +447,7 @@
 					recvTransport.close()
 					recvTransport = null
 				}
-				if (sendTransport) {
-					sendTransport.close()
-					sendTransport = null
-				}
-				if (bc) {
-					bc.close()
-					bc = null
-				}
 				activeConsumer = null
-				lastSentTs = null
 				videoFrameReceived = false
 				log("已停止")
 			}
@@ -404,13 +460,16 @@
 				}
 				const avg = Math.round(sampleResults.reduce((a, b) => a + b, 0) / n)
 				const max = Math.max(...sampleResults)
+				const avgRtt = rttSamples.length > 0 ? Math.round(rttSamples.reduce((a, b) => a + b, 0) / rttSamples.length) : null
 				const scale = document.getElementById("participantCount").value
 				const data = {
 					participantCount: parseInt(scale),
 					sampleCount: n,
 					avgLatencyMs: avg,
 					maxLatencyMs: max,
+					avgRttMs: avgRtt,
 					rawSamples: sampleResults,
+					rttSamples: rttSamples,
 					collectedAt: new Date().toISOString(),
 				}
 				const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })

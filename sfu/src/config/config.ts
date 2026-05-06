@@ -99,7 +99,7 @@ export class Config {
 		numWorkers: parseInt(process.env.MEDIASOUP_WORKERS || "4", 10),
 		workerSettings: {
 			logLevel: (process.env.MEDIASOUP_LOG_LEVEL as any) || "warn",
-			logTags: ["info", "ice", "dtls", "rtp", "srtp", "rtcp", "rtx", "bwe", "score", "simulcast", "svc"],
+			logTags: ["ice", "dtls", "bwe", "score"],
 			rtcMinPort: parseInt(process.env.RTC_MIN_PORT || "40000", 10),
 			rtcMaxPort: parseInt(process.env.RTC_MAX_PORT || "49999", 10),
 		},

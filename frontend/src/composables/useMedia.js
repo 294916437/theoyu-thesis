@@ -95,7 +95,7 @@ export function useMedia() {
 
 	// Simulcast 编码参数配置
 	const SIMULCAST_ENCODINGS = LATENCY_TEST_MODE
-		? [{ maxBitrate: 900000 }] // 测试模式：单层，无 rid，单一 SSRC
+		? [{ maxBitrate: 1500000 }] // 测试模式：单层，无 rid，单一 SSRC（提高码率避免Pacer拥塞引起伪高延迟）
 		: [
 				{ rid: 'r0', scaleResolutionDownBy: 4, maxBitrate: 100000 },
 				{ rid: 'r1', scaleResolutionDownBy: 2, maxBitrate: 300000 },

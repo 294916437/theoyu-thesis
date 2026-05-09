@@ -14,7 +14,7 @@ export class MeetProcessor {
     render_blur(): void;
     render_replace(): void;
     /**
-     * 设置模糊半径（每次 box blur 的半径，默认 15，范围 1..=50）
+     * 设置模糊半径（每次 box blur 的半径，默认 20，范围 1..=50）
      */
     set_blur_radius(radius: number): void;
 }

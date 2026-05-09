@@ -72,11 +72,11 @@ impl MeetProcessor {
             alpha_temporal: 0.7,
             blur_buffer: vec![0u8; width * height * 4],
             blur_temp: vec![0u8; width * height * 4],
-            blur_radius: 15,
+            blur_radius: 20,
         }
     }
 
-    /// 设置模糊半径（每次 box blur 的半径，默认 15，范围 1..=50）
+    /// 设置模糊半径（每次 box blur 的半径，默认 20，范围 1..=50）
     pub fn set_blur_radius(&mut self, radius: usize) {
         self.blur_radius = radius.clamp(1, 50);
     }
@@ -93,7 +93,7 @@ impl MeetProcessor {
         self.output_buffer.as_ptr()
     }
 
-    // 新增：暴露背景缓冲区指针给 JS 填充
+    // 暴露背景缓冲区指针给 JS 填充
     pub fn background_ptr(&self) -> *mut u8 {
         self.background_buffer.as_ptr() as *mut u8
     }
@@ -106,7 +106,7 @@ impl MeetProcessor {
         self.joint_bilateral_filter_opt();
     }
 
-    // 阶段 2: 渲染背景高斯模糊效果（3次可分离盒型模糊逼近高斯模糊）
+    // 阶段 2: 渲染背景高斯模糊效果（1次可分离盒型模糊逼近高斯模糊）
     pub fn render_blur(&mut self) {
         // 对 input_buffer 应用可分离盒型模糊，结果写入 blur_buffer
         self.apply_separable_box_blur();
@@ -132,8 +132,7 @@ impl MeetProcessor {
         }
     }
 
-    /// 3 次可分离盒型模糊（水平 + 垂直各一次为一轮），3 轮叠加逼近高斯模糊
-    /// 结果存入 self.blur_buffer
+    /// 1 次可分离盒型模糊（水平 + 垂直各一次为一轮），1 轮叠加逼近高斯模糊
     fn apply_separable_box_blur(&mut self) {
         let w = self.width;
         let h = self.height;
@@ -142,7 +141,7 @@ impl MeetProcessor {
         // 将原始帧复制到 blur_buffer 作为第一轮输入
         self.blur_buffer.copy_from_slice(&self.input_buffer);
 
-        for _ in 0..3 {
+        for _ in 0..1 {
             // 水平方向模糊: blur_buffer -> blur_temp
             box_blur_h_pass(&self.blur_buffer, &mut self.blur_temp, w, h, r);
             // 垂直方向模糊: blur_temp -> blur_buffer
@@ -156,7 +155,7 @@ impl MeetProcessor {
 
         unsafe {
             let mut p_in = self.input_buffer.as_ptr();
-            let mut p_bg = self.background_buffer.as_ptr(); // 背景图片
+            let mut p_bg = self.background_buffer.as_ptr();
             let mut p_out = self.output_buffer.as_mut_ptr();
             let mut p_mask = self.upsampled_mask.as_ptr();
 

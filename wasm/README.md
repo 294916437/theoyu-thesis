@@ -1,5 +1,5 @@
 ### 编译方法
 
 ```
-wasm-pack build --target web --out-dir ..\demos\pkg --release 2>&1
+wasm-pack build --target web --release --out-dir ../demos/pkg/
 ```

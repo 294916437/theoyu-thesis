@@ -96,7 +96,7 @@ async function startServer() {
 		socketHandler["monitoring"].startPeriodicLogging(60000)
 
 		// 启动 E2E 延迟采集（论文测试用，5 秒一次，不影响业务）
-		LatencyCollector.getInstance().start()
+		// LatencyCollector.getInstance().start()
 
 		// 初始化 Nacos 客户端并注册服务
 		logger.info("Initializing Nacos client...")
@@ -124,7 +124,7 @@ async function startServer() {
 
 			try {
 				// 停止 E2E 延迟采集并写最终报告
-				await LatencyCollector.getInstance().stop()
+				// await LatencyCollector.getInstance().stop()
 
 				// 关闭 gRPC 客户端
 				grpcClient.close()

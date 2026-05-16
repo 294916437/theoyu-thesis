@@ -100,6 +100,10 @@ export class SocketHandler {
 		// Simulcast/SVC 支持
 		socket.on("setPreferredLayers", (data, callback) => this.withErrorHandling(socket, "setPreferredLayers", data, callback, this.handleSetPreferredLayers))
 
+		// 聚光灯模式
+		socket.on("requestSpotlight", (data, callback) => this.withErrorHandling(socket, "requestSpotlight", data, callback, this.handleRequestSpotlight))
+		socket.on("setSpotlight", (data, callback) => this.withErrorHandling(socket, "setSpotlight", data, callback, this.handleSetSpotlight))
+
 		// 统计和监控
 		socket.on("getStats", (data, callback) => this.withErrorHandling(socket, "getStats", data, callback, this.handleGetStats))
 
@@ -961,6 +965,50 @@ export class SocketHandler {
 		})
 
 		this.logger.info(`Host ${session.userId} disabled video for ${disabledCount}/${allPeers.length} participants`)
+	}
+
+	// 普通参与者申请聚光灯模式
+	private async handleRequestSpotlight(socket: Socket, data: { roomId: string; requesterId: string; requesterUsername: string }, callback: Function): Promise<void> {
+		const { roomId, requesterId, requesterUsername } = data
+
+		const room = this.roomManager.getRoom(roomId)
+		if (!room) {
+			throw new Error("Room not found")
+		}
+
+		// 将申请广播给房间内所有人，由前端判断是否为主持人来决定是否弹窗
+		socket.to(roomId).emit("spotlightRequest", {
+			requesterId,
+			requesterUsername,
+		})
+
+		callback({ success: true })
+		this.logger.info(`Peer ${requesterId} requested spotlight in room ${roomId}`)
+	}
+
+	// 设置聚光灯（主持人操作）
+	private async handleSetSpotlight(socket: Socket, data: { roomId: string; targetPeerId: string | null; active: boolean }, callback: Function): Promise<void> {
+		const { roomId, targetPeerId, active } = data
+
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
+		}
+
+		const room = this.roomManager.getRoom(roomId)
+		if (!room) {
+			throw new Error("Room not found")
+		}
+
+		// 广播聚光灯状态变化给房间内所有人（含发送者）
+		this.io.to(roomId).emit("spotlightChanged", {
+			targetPeerId: active ? targetPeerId : null,
+			active,
+			setBy: session.userId,
+		})
+
+		callback({ success: true })
+		this.logger.info(`Peer ${session.userId} ${active ? "enabled" : "disabled"} spotlight for ${targetPeerId} in room ${roomId}`)
 	}
 
 	private async handleGetStats(socket: Socket, data: { roomId: string; producerId?: string; consumerId?: string }, callback: Function): Promise<void> {

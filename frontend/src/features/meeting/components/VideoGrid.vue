@@ -109,6 +109,9 @@
 							{{ pinnedParticipantId === participant.id ? 'mdi-pin-off' : 'mdi-pin' }}
 						</v-icon>
 					</v-btn>
+					<v-btn v-if="isHost" icon size="x-small" variant="flat" color="warning" class="ml-1" @click="handleSetSpotlight(participant.peerId)">
+						<v-icon size="small">mdi-spotlight</v-icon>
+					</v-btn>
 				</div>
 			</div>
 
@@ -153,6 +156,73 @@
 				</div>
 			</div>
 		</div>
+
+		<!-- 聚光灯覆盖层：Zoom 风格 —— 中央主视频 + 右侧纵向缩略图条 -->
+		<div v-if="spotlightParticipant" class="spotlight-overlay">
+			<!-- 主视频区 -->
+			<div class="spotlight-main">
+				<video
+					v-show="spotlightParticipant.videoEnabled"
+					ref="spotlightVideoRef"
+					autoplay
+					playsinline
+					:muted="spotlightParticipant.isLocal"
+					class="spotlight-main-video"
+				></video>
+				<div v-if="!spotlightParticipant.videoEnabled" class="spotlight-main-placeholder">
+					<v-avatar :size="120" color="primary">
+						<span class="text-h3">{{ getInitials(spotlightParticipant.name) }}</span>
+					</v-avatar>
+				</div>
+
+				<!-- 顶部渐变：聚光灯标识 + 主持人关闭按钮 -->
+				<div class="spotlight-main-header">
+					<v-chip size="small" color="warning" variant="flat" prepend-icon="mdi-spotlight" class="spotlight-badge"> 聚光灯模式 </v-chip>
+					<v-btn
+						v-if="isHost"
+						icon="mdi-close-circle"
+						size="small"
+						variant="text"
+						color="white"
+						class="ml-auto"
+						@click="emit('set-spotlight', { targetPeerId: null, active: false })"
+					></v-btn>
+				</div>
+
+				<!-- 底部渐变：姓名 + 静音状态 -->
+				<div class="spotlight-main-footer">
+					<v-icon v-if="!spotlightParticipant.audioEnabled" icon="mdi-microphone-off" color="error" size="16" class="mr-1"></v-icon>
+					<span class="spotlight-main-name">{{ spotlightParticipant.name }}</span>
+				</div>
+			</div>
+
+			<!-- 右侧纵向缩略图条 (Filmstrip) -->
+			<div v-if="otherParticipantsForSpotlight.length" class="spotlight-filmstrip">
+				<div class="spotlight-filmstrip-header">
+					<v-icon icon="mdi-account-multiple" size="12" class="mr-1"></v-icon>
+					{{ otherParticipantsForSpotlight.length }}
+				</div>
+				<div v-for="p in otherParticipantsForSpotlight" :key="p.isLocal ? 'local' : p.peerId" class="filmstrip-tile">
+					<video
+						v-if="p.videoEnabled"
+						:ref="el => setSpotlightThumbRef(el, p.isLocal ? 'local' : p.peerId)"
+						autoplay
+						playsinline
+						:muted="p.isLocal"
+						class="filmstrip-video"
+					></video>
+					<div v-else class="filmstrip-placeholder">
+						<v-avatar size="36" color="primary">
+							<span class="text-caption font-weight-bold">{{ getInitials(p.name) }}</span>
+						</v-avatar>
+					</div>
+					<div class="filmstrip-name">
+						<v-icon v-if="!p.audioEnabled" icon="mdi-microphone-off" color="error" size="10"></v-icon>
+						{{ p.name }}
+					</div>
+				</div>
+			</div>
+		</div>
 	</div>
 </template>
 
@@ -191,15 +261,29 @@ const props = defineProps({
 		type: Boolean,
 		default: true,
 	},
+	spotlightPeerId: {
+		type: String,
+		default: null,
+	},
+	isHost: {
+		type: Boolean,
+		default: false,
+	},
+	localPeerId: {
+		type: String,
+		default: null,
+	},
 })
 
-const emit = defineEmits(['pin-participant', 'unpin-participant'])
+const emit = defineEmits(['pin-participant', 'unpin-participant', 'set-spotlight'])
 
 // ==================== 响应式状态 ====================
 const localVideoElement = ref(null)
 const screenShareVideo = ref(null)
 const videoRefs = ref(new Map())
 const thumbnailRefs = ref(new Map())
+const spotlightThumbRefs = ref(new Map())
+const spotlightVideoRef = ref(null)
 const pinnedParticipantId = ref(null)
 // 使用 WeakMap 缓存流对象，避免重复创建
 const streamObjectCache = new WeakMap()
@@ -377,7 +461,78 @@ const localConnectionQuality = computed(() => {
 	}
 })
 
+// 设置聚光灯缩略图引用
+function setSpotlightThumbRef(el, participantId) {
+	if (el) {
+		spotlightThumbRefs.value.set(participantId, el)
+		if (participantId === 'local' && props.localStream) {
+			el.srcObject = props.localStream
+		} else {
+			const participant = formattedParticipants.value.find(p => p.peerId === participantId)
+			if (participant?.stream) {
+				el.srcObject = participant.stream
+			}
+		}
+	} else {
+		spotlightThumbRefs.value.delete(participantId)
+	}
+}
+
 // ==================== 方法 ====================
+
+// 参与者操作 tile 中的聚光灯设置按钮点击
+function handleSetSpotlight(participantId) {
+	emit('set-spotlight', { targetPeerId: participantId, active: true })
+}
+
+// ==================== 聚光灯计算属性 ====================
+
+// 当前聚光灯的参与者对象
+const spotlightParticipant = computed(() => {
+	if (!props.spotlightPeerId) return null
+	// 检查聚光灯是否为本地用户（支持 'local' 字符串和实际 peerId 两种形式）
+	const isLocalSpotlit = props.spotlightPeerId === 'local' || (props.localPeerId && props.spotlightPeerId === props.localPeerId)
+	if (isLocalSpotlit) {
+		return {
+			id: 'local',
+			name: '我',
+			stream: props.localStream,
+			videoEnabled: props.localVideoEnabled,
+			audioEnabled: props.localAudioEnabled,
+			isLocal: true,
+		}
+	}
+	return formattedParticipants.value.find(p => p.peerId === props.spotlightPeerId) || null
+})
+
+// 其他参与者（排除当前聚光灯的那位）用于展示在缩略图条
+const otherParticipantsForSpotlight = computed(() => {
+	if (!props.spotlightPeerId) return []
+	// 检查是否为本地用户处于聚光灯
+	const isLocalSpotlit = props.spotlightPeerId === 'local' || (props.localPeerId && props.spotlightPeerId === props.localPeerId)
+	return allParticipantsWithLocal.value.filter(p => {
+		if (isLocalSpotlit && p.isLocal) return false
+		const id = p.isLocal ? 'local' : p.peerId
+		return id !== props.spotlightPeerId
+	})
+})
+
+// 监听聚光灯参与者变化，更新主视频元素 srcObject
+// 必须在 spotlightParticipant 声明之后才能引用，否则触发 TDZ ReferenceError
+watch(
+	[spotlightVideoRef, spotlightParticipant],
+	async ([el, participant]) => {
+		await nextTick()
+		if (el && participant) {
+			if (participant.isLocal && props.localStream) {
+				el.srcObject = props.localStream
+			} else if (participant.stream) {
+				el.srcObject = participant.stream
+			}
+		}
+	},
+	{ immediate: true },
+)
 
 // 获取连接质量
 function getConnectionQuality(participant) {
@@ -880,6 +1035,198 @@ onUnmounted(() => {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+/* ==================== 聚光灯 (Zoom 风格) ==================== */
+.spotlight-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 5;
+	display: flex;
+	flex-direction: row;
+	gap: 8px;
+	padding: 4px;
+	background: rgb(var(--v-theme-background));
+}
+
+/* 主视频区（与 video-tile 相同风格） */
+.spotlight-main {
+	flex: 1;
+	position: relative;
+	min-width: 0;
+	overflow: hidden;
+	background: rgb(var(--v-theme-surface));
+	border-radius: 12px;
+	border: 2px solid transparent;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.spotlight-main-video {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	background: rgb(var(--v-theme-surface));
+}
+
+.spotlight-main-placeholder {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgb(var(--v-theme-secondary)) 100%);
+}
+
+.spotlight-main-header {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	display: flex;
+	align-items: center;
+	padding: 12px 16px;
+	background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent);
+}
+
+.spotlight-badge {
+	font-weight: 600;
+	letter-spacing: 0.3px;
+}
+
+.spotlight-main-footer {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	display: flex;
+	align-items: center;
+	padding: 12px 16px;
+	background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+}
+
+.spotlight-main-name {
+	font-size: 14px;
+	font-weight: 500;
+	color: #fff;
+	text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* 右侧纵向缩略图条 (Filmstrip) */
+.spotlight-filmstrip {
+	width: 180px;
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 4px;
+	overflow-y: auto;
+	background: rgb(var(--v-theme-background));
+	scrollbar-width: thin;
+	scrollbar-color: rgba(var(--v-border-color), 0.3) transparent;
+}
+
+.spotlight-filmstrip::-webkit-scrollbar {
+	width: 4px;
+}
+
+.spotlight-filmstrip::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.spotlight-filmstrip::-webkit-scrollbar-thumb {
+	background: rgba(var(--v-border-color), 0.3);
+	border-radius: 2px;
+}
+
+.spotlight-filmstrip-header {
+	display: flex;
+	align-items: center;
+	padding: 2px 4px 8px;
+	color: rgb(var(--v-theme-on-surface-variant));
+	font-size: 11px;
+	flex-shrink: 0;
+	border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+/* 缩略图 tile 与 thumbnail-tile 风格一致 */
+.filmstrip-tile {
+	width: 100%;
+	aspect-ratio: 16 / 9;
+	position: relative;
+	border-radius: 8px;
+	overflow: hidden;
+	background: rgb(var(--v-theme-surface));
+	flex-shrink: 0;
+	border: 1.5px solid transparent;
+	transition:
+		border-color 0.15s,
+		box-shadow 0.15s;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.filmstrip-tile:hover {
+	border-color: rgb(var(--v-theme-primary));
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.filmstrip-video {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.filmstrip-placeholder {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgb(var(--v-theme-secondary)) 100%);
+}
+
+.filmstrip-name {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	padding: 4px 6px;
+	background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+	font-size: 10px;
+	color: rgba(255, 255, 255, 0.95);
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+/* 移动端：切换为底部横向缩略图条 */
+@media (max-width: 600px) {
+	.spotlight-overlay {
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.spotlight-filmstrip {
+		width: 100%;
+		height: 90px;
+		flex-direction: row;
+		padding: 4px 8px;
+		overflow-x: auto;
+		overflow-y: hidden;
+	}
+
+	.filmstrip-tile {
+		width: 120px;
+		height: 68px;
+		aspect-ratio: unset;
+	}
+
+	.spotlight-filmstrip-header {
+		display: none;
+	}
 }
 
 /* ==================== 响应式调整 ==================== */

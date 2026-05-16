@@ -92,8 +92,12 @@
 							:local-audio-enabled="audioEnabled"
 							:local-video-enabled="videoEnabled"
 							:show-connection-quality="true"
+							:spotlight-peer-id="spotlightPeerId"
+							:is-host="isHost"
+							:local-peer-id="peerId"
 							@pin-participant="handlePinParticipant"
 							@unpin-participant="handleUnpinParticipant"
+							@set-spotlight="handleSetSpotlight"
 						/>
 
 						<!-- 网络断开提示 -->
@@ -139,11 +143,13 @@
 										:meeting-id="meetingInfo.roomId"
 										:local-audio-enabled="audioEnabled"
 										:local-video-enabled="videoEnabled"
+										:spotlight-peer-id="spotlightPeerId"
 										@host-toggle-audio="hostToggleAudio"
 										@host-toggle-video="hostToggleVideo"
 										@mute-all="muteAll"
 										@disable-all-video="disableAllVideo"
 										@remove-participant="removeParticipant"
+										@set-spotlight="handleSetSpotlight"
 									/>
 								</v-tabs-window-item>
 
@@ -631,6 +637,21 @@
 													</v-list-item-title>
 												</v-list-item>
 
+												<!-- 聚光灯模式 -->
+												<v-list-item v-if="!isHost" @click="handleRequestSpotlight">
+													<template #prepend>
+														<v-icon icon="mdi-spotlight" color="warning"></v-icon>
+													</template>
+													<v-list-item-title>申请聚光灯</v-list-item-title>
+												</v-list-item>
+
+												<v-list-item v-if="spotlightPeerId" @click="handleSetSpotlight({ targetPeerId: null, active: false })">
+													<template #prepend>
+														<v-icon icon="mdi-spotlight-off" color="on-surface-variant"></v-icon>
+													</template>
+													<v-list-item-title>关闭聚光灯</v-list-item-title>
+												</v-list-item>
+
 												<v-list-item @click="showSettings = true">
 													<template #prepend>
 														<v-icon icon="mdi-cog"></v-icon>
@@ -835,6 +856,33 @@
 				</v-card>
 			</v-dialog>
 
+			<!-- 聚光灯申请对话框（仅主持人可见） -->
+			<v-dialog v-model="showSpotlightRequestDialog" max-width="400" persistent>
+				<v-card rounded="xl" elevation="8">
+					<v-card-title class="d-flex align-center pa-4 ga-2">
+						<v-icon icon="mdi-spotlight" color="warning" size="28"></v-icon>
+						<span class="text-h6 font-weight-semibold">聚光灯申请</span>
+					</v-card-title>
+					<v-divider></v-divider>
+					<v-card-text class="pa-5">
+						<div class="d-flex align-center ga-3 mb-2">
+							<v-avatar color="primary" size="40">
+								<span class="text-body-1 font-weight-bold">{{ spotlightRequest?.requesterUsername?.charAt(0)?.toUpperCase() }}</span>
+							</v-avatar>
+							<div>
+								<div class="text-body-1 font-weight-medium">{{ spotlightRequest?.requesterUsername }}</div>
+								<div class="text-caption text-medium-emphasis">申请开启聚光灯模式</div>
+							</div>
+						</div>
+						<v-alert type="info" variant="tonal" density="compact" class="mt-3 text-body-2"> 开启后，该参与者的视频将占据主屏幕中央，其他人缩小至底部缩略图。 </v-alert>
+					</v-card-text>
+					<v-card-actions class="px-5 pb-5 pt-0 ga-3">
+						<v-btn variant="tonal" color="error" size="large" rounded="lg" class="flex-1-1" prepend-icon="mdi-close-circle" @click="denySpotlight"> 拒绝 </v-btn>
+						<v-btn variant="flat" color="warning" size="large" rounded="lg" class="flex-1-1" prepend-icon="mdi-spotlight" @click="approveSpotlight"> 同意 </v-btn>
+					</v-card-actions>
+				</v-card>
+			</v-dialog>
+
 			<!-- 图片预览对话框 -->
 			<FilePreview
 				v-model="previewVisible"
@@ -983,6 +1031,10 @@ const {
 	disableAllVideo,
 	removeParticipant,
 	setAllConsumersPreferredLayers,
+	spotlightPeerId,
+	spotlightRequest,
+	requestSpotlight,
+	setSpotlight,
 } = useMedia()
 // 处理背景替换文件上传处理
 
@@ -1814,12 +1866,52 @@ const handleUnpinParticipant = participantId => {
 	// TODO: 实现取消固定逻辑
 }
 
-const handleSpotlightParticipant = participantId => {
-	console.log('Spotlight participant', participantId)
-	videoLayout.value = 'spotlight'
-	$notify.success('已切换到聚光灯模式')
-	// TODO: 实现聚光灯
+// ==================== 聚光灯功能 ====================
+const showSpotlightRequestDialog = ref(false)
+
+// 主持人处理 VideoGrid 中的 set-spotlight 事件（直接设置，无需弹窗）
+const handleSetSpotlight = async ({ targetPeerId, active }) => {
+	await setSpotlight(targetPeerId, active)
+	if (active) {
+		$notify.success('已开启聚光灯模式')
+	} else {
+		$notify.info('已关闭聚光灯模式')
+	}
 }
+
+// 主持人同意聚光灯申请
+const approveSpotlight = async () => {
+	showSpotlightRequestDialog.value = false
+	if (spotlightRequest.value) {
+		await setSpotlight(spotlightRequest.value.requesterId, true)
+		spotlightRequest.value = null
+		$notify.success('已开启聚光灯模式')
+	}
+}
+
+// 主持人拒绝聚光灯申请
+const denySpotlight = async () => {
+	showSpotlightRequestDialog.value = false
+	// 通知申请者被拒绝：通过 setSpotlight active=false 广播，前端自行过滤
+	// 这里只需关闭弹窗，对方不会收到任何通知（可根据需求扩展）
+	spotlightRequest.value = null
+	$notify.info('已拒绝聚光灯申请')
+}
+
+// 非主持人申请聚光灯
+const handleRequestSpotlight = async () => {
+	await requestSpotlight()
+}
+
+// 监听收到新的聚光灯申请：主持人弹窗，非主持人丢弃防止状态污染
+watch(spotlightRequest, newRequest => {
+	if (!newRequest) return
+	if (isHost.value) {
+		showSpotlightRequestDialog.value = true
+	} else {
+		spotlightRequest.value = null
+	}
+})
 
 // ==================== 设置管理 ====================
 const saveSettings = async () => {

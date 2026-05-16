@@ -36,8 +36,12 @@ const props = defineProps({
 		type: Boolean,
 		default: true,
 	},
+	spotlightPeerId: {
+		type: String,
+		default: null,
+	},
 })
-const emit = defineEmits(['host-toggle-audio', 'host-toggle-video', 'mute-all', 'disable-all-video', 'remove-participant'])
+const emit = defineEmits(['host-toggle-audio', 'host-toggle-video', 'mute-all', 'disable-all-video', 'remove-participant', 'set-spotlight'])
 // 按角色分组
 const participantsByRole = computed(() => {
 	const hosts = props.participants.filter(p => String(p.userId) === String(props.hostId))
@@ -196,6 +200,15 @@ const handleRemoveParticipant = async participant => {
 		$notify.error('操作失败')
 	}
 }
+
+/**
+ * 主持人设置聚光灯（可对任何人，包括自己）
+ */
+const handleSetSpotlight = participant => {
+	const targetPeerId = participant.peerId
+	const isCurrentlySpotlit = props.spotlightPeerId === targetPeerId
+	emit('set-spotlight', { targetPeerId: isCurrentlySpotlit ? null : targetPeerId, active: !isCurrentlySpotlit })
+}
 /**
  * 全体静音
  */
@@ -324,6 +337,23 @@ const handleDisableAllVideo = async () => {
 							</v-icon>
 						</div>
 					</div>
+
+					<!-- 主持人自身的聚光灯菜单 -->
+					<v-menu v-if="isHost && isCurrentUser(participant)">
+						<template #activator="{ props }">
+							<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text" color="primary"></v-btn>
+						</template>
+						<v-list density="compact" class="menu-list">
+							<v-list-item @click="handleSetSpotlight(participant)">
+								<template #prepend>
+									<v-icon :color="spotlightPeerId === participant.peerId ? 'on-surface-variant' : 'warning'">
+										{{ spotlightPeerId === participant.peerId ? 'mdi-spotlight-off' : 'mdi-spotlight' }}
+									</v-icon>
+								</template>
+								<v-list-item-title>{{ spotlightPeerId === participant.peerId ? '取消聚光灯' : '聚光我的画面' }}</v-list-item-title>
+							</v-list-item>
+						</v-list>
+					</v-menu>
 				</div>
 			</div>
 
@@ -399,6 +429,16 @@ const handleDisableAllVideo = async () => {
 
 								<v-divider class="my-1"></v-divider>
 							</template>
+
+							<!-- 聚光灯控制（对所有参与者可用） -->
+							<v-list-item @click="handleSetSpotlight(participant)">
+								<template #prepend>
+									<v-icon :color="spotlightPeerId === participant.peerId ? 'on-surface-variant' : 'warning'">
+										{{ spotlightPeerId === participant.peerId ? 'mdi-spotlight-off' : 'mdi-spotlight' }}
+									</v-icon>
+								</template>
+								<v-list-item-title>{{ spotlightPeerId === participant.peerId ? '取消聚光灯' : '设为聚光灯' }}</v-list-item-title>
+							</v-list-item>
 
 							<!-- 移除参与者 -->
 							<template v-if="canControlOtherParticipant(participant)">

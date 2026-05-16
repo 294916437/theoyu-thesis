@@ -87,6 +87,10 @@ export function useMedia() {
 	// 维护全局视频码率 (默认 2: 高清)
 	const currentSpatialLayer = ref(2)
 
+	// ========== 聚光灯状态 ==========
+	const spotlightPeerId = ref(null) // 当前聚光灯的 peerId，null 表示无聚光灯
+	const spotlightRequest = ref(null) // { requesterId, requesterUsername } | null，主持人收到申请时置位
+
 	// ========== 延迟测试配置 ==========
 	// true  → 单层编码，禁用 Simulcast（用于 RTCP RTT 延迟测量，消除多 SSRC stale 干扰）
 	// false → 正常 Simulcast 三层编码（正式业务模式）
@@ -612,6 +616,41 @@ export function useMedia() {
 			reader.onerror = reject
 			reader.readAsDataURL(file)
 		})
+	}
+
+	/**
+	 * 申请聚光灯（普通参与者调用）
+	 */
+	async function requestSpotlight() {
+		try {
+			await socketClient.emit('requestSpotlight', {
+				roomId: roomId.value,
+				requesterId: peerId.value,
+				requesterUsername: username.value,
+			})
+			$notify.info('聚光灯申请已发送，等待主持人确认')
+		} catch (error) {
+			console.error('[Spotlight] Request failed:', error)
+			$notify.error('申请聚光灯失败')
+		}
+	}
+
+	/**
+	 * 设置聚光灯（主持人调用，直接开启或关闭）
+	 * @param {string|null} targetPeer - 目标 peerId，null 表示关闭
+	 * @param {boolean} active - 是否开启
+	 */
+	async function setSpotlight(targetPeer, active) {
+		try {
+			await socketClient.emit('setSpotlight', {
+				roomId: roomId.value,
+				targetPeerId: targetPeer,
+				active,
+			})
+		} catch (error) {
+			console.error('[Spotlight] Set spotlight failed:', error)
+			$notify.error('设置聚光灯失败')
+		}
 	}
 
 	/**
@@ -1206,6 +1245,16 @@ export function useMedia() {
 			// 3. 强制触发响应式更新
 			participants.value = [...participants.value]
 		})
+		// 监听聚光灯申请（只有主持人 UI 会处理）
+		socketClient.on('spotlightRequest', data => {
+			spotlightRequest.value = data
+		})
+
+		// 监听聚光灯状态变化
+		socketClient.on('spotlightChanged', data => {
+			spotlightPeerId.value = data.active ? data.targetPeerId : null
+		})
+
 		// 监听 Simulcast 层级变化 (码率自适应)
 		socketClient.on('consumerLayersChanged', data => {
 			const { consumerId, spatialLayer } = data
@@ -2004,6 +2053,8 @@ export function useMedia() {
 		effectLoading,
 		effectError,
 		currentSpatialLayer,
+		spotlightPeerId,
+		spotlightRequest,
 
 		// 方法
 		joinMeeting,
@@ -2025,5 +2076,7 @@ export function useMedia() {
 		changeVideoDevice,
 		getScreenSharingParticipant,
 		uploadCustomBackground,
+		requestSpotlight,
+		setSpotlight,
 	}
 }

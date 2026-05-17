@@ -60,9 +60,9 @@ async function startServer() {
 		})
 
 		// E2E 延迟采集报告接口（论文测试用）
-		app.get("/api/latency-report", (req, res) => {
-			res.json(LatencyCollector.getInstance().getReport())
-		})
+		// app.get("/api/latency-report", (req, res) => {
+		// 	res.json(LatencyCollector.getInstance().getReport())
+		// })
 
 		// 404 处理
 		app.use((req, res) => {

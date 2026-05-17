@@ -430,7 +430,7 @@ public class RoomServiceImpl implements RoomService {
             Long cacheSize = redisTemplate.opsForZSet().size(cacheKey);
 
             List<UpcomingRoomResVO> resultList;
-            long totalCount;
+            long totalCount = 0;
 
             if (cacheSize != null && cacheSize > 0) {
                 // 缓存命中：使用 ZSet 的范围查询
@@ -447,7 +447,6 @@ public class RoomServiceImpl implements RoomService {
                     log.info("[RoomService] 缓存命中 - userId: {}, count: {}", userId, totalCount);
                 } else {
                     resultList = Collections.emptyList();
-                    totalCount = 0;
                 }
             } else {
                 // 缓存未命中：查询数据库
@@ -1225,9 +1224,10 @@ public class RoomServiceImpl implements RoomService {
                 .roomNo(room.getRoomNo())
                 .title(room.getTitle())
                 .hostId(room.getHostId())
-                .hostName(hostInfo != null ? hostInfo.getNickName() : "未知")
+                .hostName(hostInfo.getNickName())
                 .type(room.getType())
                 .maxParticipants(room.getMaxParticipants())
+                .startTime(room.getStartTime())
                 .createdTime(room.getCreatedTime())
                 .isHost(room.getHostId().equals(userId))
                 .build();

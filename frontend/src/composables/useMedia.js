@@ -72,6 +72,7 @@ export function useMedia() {
 	let effectAnimationId = null
 	let inferenceTimeoutId = null
 	let sourceVideoElement = null
+	let backgroundLoaded = false
 	const float32Data = new Float32Array(MASK_WIDTH * MASK_HEIGHT * 3)
 
 	// Mediasoup 客户端实例
@@ -246,20 +247,22 @@ export function useMedia() {
 		try {
 			// 只有当视频准备好且有宽/高时才绘制
 			if (videoEl.readyState >= 2 && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
-				// 1. 绘制源视频到 Canvas
-				effectCtx.drawImage(videoEl, 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
+				// 1. 绘制源视频到 Canvas（使用 canvas 实际尺寸，保持原始分辨率）
+				const W = effectCanvas.width
+				const H = effectCanvas.height
+				effectCtx.drawImage(videoEl, 0, 0, W, H)
 
 				// 2. 应用特效 (WASM/Mask)
 				if (currentMask && effectProcessor && wasmModule) {
 					try {
-						const frameData = effectCtx.getImageData(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
+						const frameData = effectCtx.getImageData(0, 0, W, H)
 
 						// 写入输入帧
 						const inputPtr = effectProcessor.input_ptr()
-						const inputBuffer = new Uint8Array(wasmModule.memory.buffer, inputPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
+						const inputBuffer = new Uint8Array(wasmModule.memory.buffer, inputPtr, W * H * 4)
 						inputBuffer.set(frameData.data)
 
-						// 写入 mask
+						// 写入 mask（推理 mask 维度固定为 MASK_WIDTH×MASK_HEIGHT）
 						const maskPtr = effectProcessor.mask_ptr()
 						const maskBuffer = new Float32Array(wasmModule.memory.buffer, maskPtr, MASK_WIDTH * MASK_HEIGHT)
 						maskBuffer.set(currentMask)
@@ -270,10 +273,8 @@ export function useMedia() {
 						if (effectType.value === 'blur') {
 							effectProcessor.render_blur()
 						} else if (effectType.value === 'replace') {
-							const bgPtr = effectProcessor.background_ptr()
-							const bgBuffer = new Uint8Array(wasmModule.memory.buffer, bgPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
-							// 简单的非零检查，确认背景已加载
-							if (bgBuffer.some(p => p !== 0)) {
+							// 使用 backgroundLoaded 标志代替逐像素 .some() 检查（每帧避免 O(W*H*4) 遍历）
+							if (backgroundLoaded) {
 								effectProcessor.render_replace()
 							} else {
 								effectProcessor.render_blur()
@@ -282,8 +283,8 @@ export function useMedia() {
 
 						// 读取输出并绘回
 						const outputPtr = effectProcessor.output_ptr()
-						const outputBuffer = new Uint8ClampedArray(wasmModule.memory.buffer, outputPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
-						effectCtx.putImageData(new ImageData(outputBuffer.slice(), VIDEO_WIDTH, VIDEO_HEIGHT), 0, 0)
+						const outputBuffer = new Uint8ClampedArray(wasmModule.memory.buffer, outputPtr, W * H * 4)
+						effectCtx.putImageData(new ImageData(outputBuffer.slice(), W, H), 0, 0)
 					} catch (err) {
 						// 忽略单帧处理错误，防止循环中断
 						console.warn('Effect processing error:', err)
@@ -294,8 +295,8 @@ export function useMedia() {
 			console.error('[BackgroundEffect] Render error:', error)
 		}
 
-		// 强制 30FPS 循环 (约33ms)
-		effectAnimationId = setTimeout(renderLoop, 33)
+		// 与显示刷新同步的渲染循环（与 demo 一致，使用 RAF 代替 setTimeout 避免抖动）
+		effectAnimationId = requestAnimationFrame(renderLoop)
 	}
 	/**
 	 * 启动背景特效流
@@ -319,8 +320,6 @@ export function useMedia() {
 			sourceVideoElement.autoplay = true
 			sourceVideoElement.muted = true
 			sourceVideoElement.playsInline = true
-			sourceVideoElement.width = VIDEO_WIDTH
-			sourceVideoElement.height = VIDEO_HEIGHT
 
 			// 样式设置：不可见但占据布局（避免 display:none）
 			sourceVideoElement.style.position = 'absolute'
@@ -347,6 +346,17 @@ export function useMedia() {
 						.catch(reject)
 				}
 			})
+
+			// 3.5 检测实际视频尺寸并同步更新 effectCanvas 与 WASM 处理器
+			const actualW = sourceVideoElement.videoWidth || VIDEO_WIDTH
+			const actualH = sourceVideoElement.videoHeight || VIDEO_HEIGHT
+			if (effectCanvas && (effectCanvas.width !== actualW || effectCanvas.height !== actualH)) {
+				effectCanvas.width = actualW
+				effectCanvas.height = actualH
+				effectCtx = effectCanvas.getContext('2d', { willReadFrequently: true, alpha: false })
+				// 以实际尺寸重建 WASM 处理器（mask 尺寸在 Rust 侧固定为 256×144）
+				effectProcessor = MeetProcessor.new(actualW, actualH)
+			}
 
 			// 4. 加载背景
 			if (effectType.value === 'replace' && selectedBackground.value) {
@@ -443,7 +453,7 @@ export function useMedia() {
 
 		// 2. 停止定时器
 		if (effectAnimationId) {
-			clearTimeout(effectAnimationId)
+			cancelAnimationFrame(effectAnimationId)
 			effectAnimationId = null
 		}
 		if (inferenceTimeoutId) {
@@ -525,6 +535,7 @@ export function useMedia() {
 		// 6. 重置状态
 		effectProducerActive.value = false
 		originalCameraTrack.value = null
+		backgroundLoaded = false
 
 		// 强制触发响应式更新
 		participants.value = [...participants.value]
@@ -572,22 +583,26 @@ export function useMedia() {
 			img.crossOrigin = 'Anonymous'
 			img.src = bg.url
 			img.onload = () => {
-				const canvas = new OffscreenCanvas(VIDEO_WIDTH, VIDEO_HEIGHT)
+				// 使用 effectCanvas 的实际尺寸加载背景（与 WASM processor 一致）
+				const BW = effectCanvas ? effectCanvas.width : VIDEO_WIDTH
+				const BH = effectCanvas ? effectCanvas.height : VIDEO_HEIGHT
+				const canvas = new OffscreenCanvas(BW, BH)
 				const ctx = canvas.getContext('2d')
 
 				// Cover 模式
-				const scale = Math.max(VIDEO_WIDTH / img.width, VIDEO_HEIGHT / img.height)
-				const x = (VIDEO_WIDTH - img.width * scale) / 2
-				const y = (VIDEO_HEIGHT - img.height * scale) / 2
+				const scale = Math.max(BW / img.width, BH / img.height)
+				const x = (BW - img.width * scale) / 2
+				const y = (BH - img.height * scale) / 2
 				ctx.drawImage(img, x, y, img.width * scale, img.height * scale)
 
-				const imageData = ctx.getImageData(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT)
+				const imageData = ctx.getImageData(0, 0, BW, BH)
 
 				// 写入 WASM 背景缓冲区
 				if (effectProcessor && wasmModule) {
 					const bgPtr = effectProcessor.background_ptr()
-					const bgBuffer = new Uint8Array(wasmModule.memory.buffer, bgPtr, VIDEO_WIDTH * VIDEO_HEIGHT * 4)
+					const bgBuffer = new Uint8Array(wasmModule.memory.buffer, bgPtr, BW * BH * 4)
 					bgBuffer.set(imageData.data)
+					backgroundLoaded = true
 				}
 
 				resolve()

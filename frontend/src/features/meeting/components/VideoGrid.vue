@@ -11,7 +11,11 @@
 				}"
 			>
 				<!-- 视频元素 -->
-				<video ref="localVideoElement" autoplay playsinline muted class="video-element"></video>
+				<div ref="localMediaWrapper" class="local-media-wrapper">
+					<!-- 特效未激活时显示 <video>（srcObject = localStream） -->
+					<video v-show="!props.effectCanvas" ref="localVideoElement" autoplay playsinline muted class="video-element"></video>
+					<!-- 特效激活时：effectCanvas HTMLCanvasElement 通过 watch 内 appendChild 插入 -->
+				</div>
 
 				<!-- 无视频时的占位符 -->
 				<div v-if="!localVideoEnabled" class="video-placeholder">
@@ -273,12 +277,17 @@ const props = defineProps({
 		type: String,
 		default: null,
 	},
+	effectCanvas: {
+		type: Object,
+		default: null,
+	},
 })
 
 const emit = defineEmits(['pin-participant', 'unpin-participant', 'set-spotlight'])
 
 // ==================== 响应式状态 ====================
 const localVideoElement = ref(null)
+const localMediaWrapper = ref(null)
 const screenShareVideo = ref(null)
 const videoRefs = ref(new Map())
 const thumbnailRefs = ref(new Map())
@@ -647,9 +656,31 @@ watch(
 	() => props.localStream,
 	async newStream => {
 		await nextTick()
+		// 特效激活时 <video> 被 v-show 隐藏，但 srcObject 仍设置以备停止特效后立即恢复
 		if (localVideoElement.value && newStream) {
 			console.log('Setting local stream', newStream.id)
 			localVideoElement.value.srcObject = newStream
+		}
+	},
+	{ immediate: true },
+)
+
+// 监听特效 canvas 变化：将 effectCanvas HTMLCanvasElement 插入 / 移除本地格子
+watch(
+	[() => props.effectCanvas, localMediaWrapper],
+	([canvas, wrapper]) => {
+		if (!wrapper) return
+		// 移除旧的特效 canvas（如有）
+		const prev = wrapper.querySelector('canvas.local-effect-canvas')
+		if (prev) prev.remove()
+		if (canvas) {
+			canvas.classList.add('local-effect-canvas')
+			// 用内联样式直接保证尺寸，完全绕过 scoped 约束。
+			canvas.style.display = 'block'
+			canvas.style.width = '100%'
+			canvas.style.height = '100%'
+			canvas.style.objectFit = 'cover'
+			wrapper.appendChild(canvas)
 		}
 	},
 	{ immediate: true },
@@ -707,8 +738,8 @@ watch(() => formattedParticipants.value, handleParticipantsUpdate, { deep: true 
 onMounted(async () => {
 	await nextTick()
 
-	// 设置本地视频
-	if (localVideoElement.value && props.localStream) {
+	// 设置本地视频（特效未激活时）
+	if (localVideoElement.value && props.localStream && !props.effectCanvas) {
 		localVideoElement.value.srcObject = props.localStream
 	}
 
@@ -802,6 +833,19 @@ onUnmounted(() => {
 	object-fit: cover;
 	background: rgb(var(--v-theme-surface));
 	transition: opacity 0.3s ease-in-out;
+}
+
+.local-media-wrapper {
+	width: 100%;
+	height: 100%;
+}
+
+/* :deep() 确保 scoped 样式能匹配动态插入的外部 canvas 元素 */
+.local-media-wrapper :deep(canvas.local-effect-canvas) {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
 }
 
 .video-placeholder {

@@ -95,6 +95,7 @@
 							:spotlight-peer-id="spotlightPeerId"
 							:is-host="isHost"
 							:local-peer-id="peerId"
+							:effect-canvas="localEffectCanvas"
 							@pin-participant="handlePinParticipant"
 							@unpin-participant="handleUnpinParticipant"
 							@set-spotlight="handleSetSpotlight"
@@ -1015,6 +1016,7 @@ const {
 	effectLoading,
 	effectError,
 	effectProducerActive,
+	localEffectCanvas,
 	currentSpatialLayer,
 	joinMeeting,
 	leaveMeeting,

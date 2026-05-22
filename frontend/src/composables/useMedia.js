@@ -1,5 +1,5 @@
 /* eslint-disable no-undef */
-import { ref, computed, watch, nextTick, markRaw } from 'vue'
+import { ref, shallowRef, computed, watch, nextTick, markRaw } from 'vue'
 import { socketClient } from '@/utils/SocketClient'
 import { MediasoupClient } from '@/utils/MediasoupClient'
 import { useThrottleFn } from '@vueuse/core'
@@ -11,7 +11,7 @@ import router from '@/router'
 const MASK_WIDTH = 256
 const MASK_HEIGHT = 144
 const VIDEO_WIDTH = 640
-const VIDEO_HEIGHT = 480
+const VIDEO_HEIGHT = 360
 
 // WASM 处理分辨率
 const PROC_W = 640
@@ -44,6 +44,8 @@ export function useMedia() {
 	const customBackgrounds = ref([])
 	const effectLoading = ref(false)
 	const effectError = ref(null)
+	// effectCanvas 的 DOM 元素引用——特效激活时指向 HTMLCanvasElement，停止后置 null
+	const localEffectCanvas = shallowRef(null)
 
 	// 预设背景列表
 	const presetBackgrounds = ref([
@@ -168,8 +170,8 @@ export function useMedia() {
 
 			// 输出 canvas
 			effectCanvas = document.createElement('canvas')
-			effectCanvas.width = VIDEO_WIDTH
-			effectCanvas.height = VIDEO_HEIGHT
+			effectCanvas.width = PROC_W
+			effectCanvas.height = PROC_H
 			effectCtx = effectCanvas.getContext('2d', { willReadFrequently: false, alpha: false })
 
 			// 缓存 TypedArray 视图
@@ -300,8 +302,8 @@ export function useMedia() {
 						// 7. 将 WASM 输出回写至处理 canvas
 						procCtx.putImageData(new ImageData(cachedOutputView, PROC_W, PROC_H), 0, 0)
 
-						// 8. GPU upscale：将处理结果 drawImage 到输出 canvas
-						effectCtx.drawImage(procCanvas, 0, 0, effectCanvas.width, effectCanvas.height)
+						// 8. 等尺寸 blit：procCanvas 与 effectCanvas 均为 PROC_W×PROC_H，GPU 直接复制无需 resize
+						effectCtx.drawImage(procCanvas, 0, 0)
 					} catch (err) {
 						// 忽略单帧处理错误，防止循环中断
 						console.warn('Effect processing error:', err)
@@ -364,15 +366,6 @@ export function useMedia() {
 				}
 			})
 
-			// 3.5 将输出 canvas 对齐摄像头实际分辨率
-			const actualW = sourceVideoElement.videoWidth || VIDEO_WIDTH
-			const actualH = sourceVideoElement.videoHeight || VIDEO_HEIGHT
-			if (effectCanvas.width !== actualW || effectCanvas.height !== actualH) {
-				effectCanvas.width = actualW
-				effectCanvas.height = actualH
-				effectCtx = effectCanvas.getContext('2d', { willReadFrequently: false, alpha: false })
-			}
-
 			// 4. 加载背景
 			if (effectType.value === 'replace' && selectedBackground.value) {
 				await loadBackgroundImage(selectedBackground.value)
@@ -380,6 +373,7 @@ export function useMedia() {
 
 			// 5. 启动循环
 			effectProducerActive.value = true
+			localEffectCanvas.value = effectCanvas // 通知 VideoGrid 直接展示此 canvas 元素
 			inferenceLoop(sourceVideoElement)
 			renderLoop() // 不传参，使用闭包变量
 
@@ -415,7 +409,7 @@ export function useMedia() {
 			}
 			mediasoupClient.producers.set('video', effectProducer)
 
-			// 10. 更新本地状态
+			// 10. 更新本地 Producer 状态（localStream 保持原始摄像头轨道不变， VideoGrid 通过 effectCanvas prop 直接展示特效画面）
 			const localPeer = participants.value.find(p => p.peerId === peerId.value)
 			if (localPeer) {
 				localPeer.producers.video = {
@@ -423,20 +417,6 @@ export function useMedia() {
 					kind: 'video',
 					paused: false,
 					appData: { source: 'effect', effectType: effectType.value },
-				}
-
-				// 更新显示
-				if (localPeer.streams.video) {
-					const videoStream = localPeer.streams.video
-					videoStream.getTracks().forEach(t => videoStream.removeTrack(t))
-					videoStream.addTrack(effectVideoTrack)
-				}
-
-				if (localStream.value) {
-					localStream.value.getTracks().forEach(t => {
-						if (t.kind === 'video') localStream.value.removeTrack(t)
-					})
-					localStream.value.addTrack(effectVideoTrack)
 				}
 			}
 			// 强制触发响应式更新，确保 UI 同步
@@ -509,23 +489,10 @@ export function useMedia() {
 			})
 			mediasoupClient.producers.set('video', newProducer)
 			updateLocalProducer('video', newProducer)
-
-			// 刷新 Track 到本地流
-			const localPeer = participants.value.find(p => p.peerId === peerId.value)
-			if (localPeer && localPeer.streams.video) {
-				localPeer.streams.video.getTracks().forEach(t => localPeer.streams.video.removeTrack(t))
-				localPeer.streams.video.addTrack(originalCameraTrack.value)
-			}
-			if (localStream.value) {
-				localStream.value.getTracks().forEach(t => {
-					if (t.kind === 'video') localStream.value.removeTrack(t)
-				})
-				localStream.value.addTrack(originalCameraTrack.value)
-			}
 		} else {
 			// 重新请求摄像头
 			const stream = await navigator.mediaDevices.getUserMedia({
-				video: { width: 1280, height: 720 },
+				video: { width: VIDEO_WIDTH, height: VIDEO_HEIGHT },
 			})
 			const newTrack = stream.getVideoTracks()[0]
 			const newProducer = await mediasoupClient.produce(newTrack, {
@@ -536,12 +503,7 @@ export function useMedia() {
 			})
 			mediasoupClient.producers.set('video', newProducer)
 			updateLocalProducer('video', newProducer)
-			// 刷新通过 newTrack 更新 localStream...
-			const localPeer = participants.value.find(p => p.peerId === peerId.value)
-			if (localPeer && localPeer.streams.video) {
-				localPeer.streams.video.getTracks().forEach(t => t.stop()) // kill old
-				localPeer.streams.video.addTrack(newTrack)
-			}
+			// 摄像头需重新打开：将新轨道加入 localStream 供 VideoGrid 摄像头预览使用
 			if (localStream.value) {
 				localStream.value.addTrack(newTrack)
 			}
@@ -551,6 +513,7 @@ export function useMedia() {
 		effectProducerActive.value = false
 		originalCameraTrack.value = null
 		backgroundLoaded = false
+		localEffectCanvas.value = null // 通知 VideoGrid 恢复显示 video 元素
 
 		// 强制触发响应式更新
 		participants.value = [...participants.value]
@@ -2078,6 +2041,7 @@ export function useMedia() {
 		hasScreenShare,
 		effectType,
 		effectProducerActive,
+		localEffectCanvas,
 		selectedBackground,
 		allBackgrounds,
 		effectLoading,

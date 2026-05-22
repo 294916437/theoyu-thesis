@@ -13,6 +13,10 @@ const MASK_HEIGHT = 144
 const VIDEO_WIDTH = 640
 const VIDEO_HEIGHT = 480
 
+// WASM 处理分辨率
+const PROC_W = 640
+const PROC_H = 360
+
 export function useMedia() {
 	// 状态管理
 	const roomId = ref(null)
@@ -63,8 +67,10 @@ export function useMedia() {
 	let wasmModule = null
 	let effectProcessor = null
 	let onnxSession = null
-	let effectCanvas = null
+	let effectCanvas = null // 输出 canvas：captureStream 来源，永远不调用 getImageData
 	let effectCtx = null
+	let procCanvas = null // 处理 canvas：固定 PROC_W×PROC_H，WASM I/O 专用
+	let procCtx = null
 	let maskCanvas = null
 	let maskCtx = null
 	let currentMask = null
@@ -73,6 +79,10 @@ export function useMedia() {
 	let inferenceTimeoutId = null
 	let sourceVideoElement = null
 	let backgroundLoaded = false
+	// 缓存 TypedArray 视图——在 initBackgroundEffect 后初始化，整个 session 内复用
+	let cachedInputView = null // Uint8Array(PROC_W * PROC_H * 4) → WASM input_ptr
+	let cachedMaskView = null // Float32Array(MASK_WIDTH * MASK_HEIGHT) → WASM mask_ptr
+	let cachedOutputView = null // Uint8ClampedArray(PROC_W * PROC_H * 4) → WASM output_ptr
 	const float32Data = new Float32Array(MASK_WIDTH * MASK_HEIGHT * 3)
 
 	// Mediasoup 客户端实例
@@ -93,14 +103,13 @@ export function useMedia() {
 	const spotlightRequest = ref(null) // { requesterId, requesterUsername } | null，主持人收到申请时置位
 
 	// ========== 延迟测试配置 ==========
-	// true  → 单层编码，禁用 Simulcast（用于 RTCP RTT 延迟测量，消除多 SSRC stale 干扰）
-	// false → 正常 Simulcast 三层编码（正式业务模式）
-	// 完成延迟数据采集后将此值改回 false
-	const LATENCY_TEST_MODE = true
+	// true  → 单层编码，禁用 Simulcast
+	// false → 正常 Simulcast 三层编码
+	const LATENCY_TEST_MODE = false
 
 	// Simulcast 编码参数配置
 	const SIMULCAST_ENCODINGS = LATENCY_TEST_MODE
-		? [{ maxBitrate: 1500000 }] // 测试模式：单层，无 rid，单一 SSRC（提高码率避免Pacer拥塞引起伪高延迟）
+		? [{ maxBitrate: 1500000 }] // 测试模式：单层，无 rid，单一 SSRC）
 		: [
 				{ rid: 'r0', scaleResolutionDownBy: 4, maxBitrate: 100000 },
 				{ rid: 'r1', scaleResolutionDownBy: 2, maxBitrate: 300000 },
@@ -133,7 +142,8 @@ export function useMedia() {
 			console.log('[BackgroundEffect] Initializing WASM...')
 			wasmModule = await init({ module_or_path: wasmUrl })
 			init_panic_hook()
-			effectProcessor = MeetProcessor.new(VIDEO_WIDTH, VIDEO_HEIGHT)
+			// WASM processor 固定使用 PROC_W×PROC_H，与摄像头实际分辨率解耦
+			effectProcessor = MeetProcessor.new(PROC_W, PROC_H)
 			console.log('[BackgroundEffect] WASM initialized successfully')
 
 			// 2. 配置 ONNX Runtime WASM 路径
@@ -152,10 +162,20 @@ export function useMedia() {
 			maskCanvas = new OffscreenCanvas(MASK_WIDTH, MASK_HEIGHT)
 			maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true, alpha: false })
 
+			// 处理 canvas
+			procCanvas = new OffscreenCanvas(PROC_W, PROC_H)
+			procCtx = procCanvas.getContext('2d', { willReadFrequently: true, alpha: false })
+
+			// 输出 canvas
 			effectCanvas = document.createElement('canvas')
 			effectCanvas.width = VIDEO_WIDTH
 			effectCanvas.height = VIDEO_HEIGHT
-			effectCtx = effectCanvas.getContext('2d', { willReadFrequently: true, alpha: false })
+			effectCtx = effectCanvas.getContext('2d', { willReadFrequently: false, alpha: false })
+
+			// 缓存 TypedArray 视图
+			cachedInputView = new Uint8Array(wasmModule.memory.buffer, effectProcessor.input_ptr(), PROC_W * PROC_H * 4)
+			cachedMaskView = new Float32Array(wasmModule.memory.buffer, effectProcessor.mask_ptr(), MASK_WIDTH * MASK_HEIGHT)
+			cachedOutputView = new Uint8ClampedArray(wasmModule.memory.buffer, effectProcessor.output_ptr(), PROC_W * PROC_H * 4)
 
 			console.log('[BackgroundEffect] Canvas initialized')
 			return true
@@ -238,42 +258,38 @@ export function useMedia() {
 	function renderLoop() {
 		// 使用闭包或全局引用 sourceVideoElement
 		const videoEl = sourceVideoElement
+		// 缓存 reactive ref 值
+		const type = effectType.value
 
 		// 检查停止条件
-		if (!videoEl || effectType.value === 'none' || !effectProducerActive.value) {
+		if (!videoEl || type === 'none' || !effectProducerActive.value) {
 			return
 		}
 
 		try {
 			// 只有当视频准备好且有宽/高时才绘制
 			if (videoEl.readyState >= 2 && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
-				// 1. 绘制源视频到 Canvas（使用 canvas 实际尺寸，保持原始分辨率）
-				const W = effectCanvas.width
-				const H = effectCanvas.height
-				effectCtx.drawImage(videoEl, 0, 0, W, H)
+				// 1. 将源视频下采样绘制到处理 canvas（GPU 路径，无 CPU 参与）
+				procCtx.drawImage(videoEl, 0, 0, PROC_W, PROC_H)
 
 				// 2. 应用特效 (WASM/Mask)
 				if (currentMask && effectProcessor && wasmModule) {
 					try {
-						const frameData = effectCtx.getImageData(0, 0, W, H)
+						// 3. 读取处理分辨率像素（0.9 MB，替代全分辨率的 3.5 MB，减少 75% CPU 阻塞）
+						const frameData = procCtx.getImageData(0, 0, PROC_W, PROC_H)
 
-						// 写入输入帧
-						const inputPtr = effectProcessor.input_ptr()
-						const inputBuffer = new Uint8Array(wasmModule.memory.buffer, inputPtr, W * H * 4)
-						inputBuffer.set(frameData.data)
+						// 4. 写入 WASM 输入帧（复用缓存视图，避免每帧 new TypedArray）
+						cachedInputView.set(frameData.data)
 
-						// 写入 mask（推理 mask 维度固定为 MASK_WIDTH×MASK_HEIGHT）
-						const maskPtr = effectProcessor.mask_ptr()
-						const maskBuffer = new Float32Array(wasmModule.memory.buffer, maskPtr, MASK_WIDTH * MASK_HEIGHT)
-						maskBuffer.set(currentMask)
+						// 5. 写入分割 mask（推理循环在独立 setTimeout 中异步生成，固定 256×144）
+						cachedMaskView.set(currentMask)
 
-						// 处理
+						// 6. WASM 处理（在 PROC_W×PROC_H 分辨率下完成 JBF + blur/replace）
 						effectProcessor.prepare_mask()
 
-						if (effectType.value === 'blur') {
+						if (type === 'blur') {
 							effectProcessor.render_blur()
-						} else if (effectType.value === 'replace') {
-							// 使用 backgroundLoaded 标志代替逐像素 .some() 检查（每帧避免 O(W*H*4) 遍历）
+						} else if (type === 'replace') {
 							if (backgroundLoaded) {
 								effectProcessor.render_replace()
 							} else {
@@ -281,10 +297,11 @@ export function useMedia() {
 							}
 						}
 
-						// 读取输出并绘回
-						const outputPtr = effectProcessor.output_ptr()
-						const outputBuffer = new Uint8ClampedArray(wasmModule.memory.buffer, outputPtr, W * H * 4)
-						effectCtx.putImageData(new ImageData(outputBuffer.slice(), W, H), 0, 0)
+						// 7. 将 WASM 输出回写至处理 canvas
+						procCtx.putImageData(new ImageData(cachedOutputView, PROC_W, PROC_H), 0, 0)
+
+						// 8. GPU upscale：将处理结果 drawImage 到输出 canvas
+						effectCtx.drawImage(procCanvas, 0, 0, effectCanvas.width, effectCanvas.height)
 					} catch (err) {
 						// 忽略单帧处理错误，防止循环中断
 						console.warn('Effect processing error:', err)
@@ -295,7 +312,7 @@ export function useMedia() {
 			console.error('[BackgroundEffect] Render error:', error)
 		}
 
-		// 与显示刷新同步的渲染循环（与 demo 一致，使用 RAF 代替 setTimeout 避免抖动）
+		// 与显示刷新同步的渲染循环（RAF 代替 setTimeout 避免抖动）
 		effectAnimationId = requestAnimationFrame(renderLoop)
 	}
 	/**
@@ -347,15 +364,13 @@ export function useMedia() {
 				}
 			})
 
-			// 3.5 检测实际视频尺寸并同步更新 effectCanvas 与 WASM 处理器
+			// 3.5 将输出 canvas 对齐摄像头实际分辨率
 			const actualW = sourceVideoElement.videoWidth || VIDEO_WIDTH
 			const actualH = sourceVideoElement.videoHeight || VIDEO_HEIGHT
-			if (effectCanvas && (effectCanvas.width !== actualW || effectCanvas.height !== actualH)) {
+			if (effectCanvas.width !== actualW || effectCanvas.height !== actualH) {
 				effectCanvas.width = actualW
 				effectCanvas.height = actualH
-				effectCtx = effectCanvas.getContext('2d', { willReadFrequently: true, alpha: false })
-				// 以实际尺寸重建 WASM 处理器（mask 尺寸在 Rust 侧固定为 256×144）
-				effectProcessor = MeetProcessor.new(actualW, actualH)
+				effectCtx = effectCanvas.getContext('2d', { willReadFrequently: false, alpha: false })
 			}
 
 			// 4. 加载背景
@@ -583,9 +598,9 @@ export function useMedia() {
 			img.crossOrigin = 'Anonymous'
 			img.src = bg.url
 			img.onload = () => {
-				// 使用 effectCanvas 的实际尺寸加载背景（与 WASM processor 一致）
-				const BW = effectCanvas ? effectCanvas.width : VIDEO_WIDTH
-				const BH = effectCanvas ? effectCanvas.height : VIDEO_HEIGHT
+				// 背景图加载到 WASM 处理分辨率（PROC_W×PROC_H）
+				const BW = PROC_W
+				const BH = PROC_H
 				const canvas = new OffscreenCanvas(BW, BH)
 				const ctx = canvas.getContext('2d')
 

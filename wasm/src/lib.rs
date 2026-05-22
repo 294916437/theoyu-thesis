@@ -64,7 +64,7 @@ impl MeetProcessor {
             upsampled_mask: vec![0.0; width * height],
             gray_cache: vec![0.0; width * height],
             filtered_buffer: vec![0.0; width * height],
-            prev_mask: vec![0.0; width * height],
+            prev_mask: vec![0.0; mask_width * mask_height],
             spatial_kernel,
             kernel_radius,
             mask_width,
@@ -79,6 +79,25 @@ impl MeetProcessor {
     /// 设置模糊半径（每次 box blur 的半径，默认 20，范围 1..=50）
     pub fn set_blur_radius(&mut self, radius: usize) {
         self.blur_radius = radius.clamp(1, 50);
+    }
+
+    /// 动态调整处理分辨率（仅重建宽高相关缓冲区，mask 尺寸保持 256×144）。
+    pub fn resize(&mut self, width: usize, height: usize) {
+        if self.width == width && self.height == height {
+            return;
+        }
+        self.width = width;
+        self.height = height;
+        let len = width * height;
+        self.input_buffer      = vec![0u8;   len * 4];
+        self.output_buffer     = vec![0u8;   len * 4];
+        self.background_buffer = vec![0u8;   len * 4];
+        self.upsampled_mask    = vec![0.0f32; len];
+        self.gray_cache        = vec![0.0f32; len];
+        self.filtered_buffer   = vec![0.0f32; len];
+        self.blur_buffer       = vec![0u8;   len * 4];
+        self.blur_temp         = vec![0u8;   len * 4];
+        // prev_mask / mask_buffer 保持 mask_width×mask_height，无需重建
     }
 
     pub fn input_ptr(&self) -> *mut u8 {
@@ -99,14 +118,15 @@ impl MeetProcessor {
     }
 
     // 阶段 1: 准备 Mask (计算密集型，每帧只调一次)
+    // 优化后执行顺序：低分辨率时域平滑 → 上采样 → 灰度缓存 → 联合双边滤波
     pub fn prepare_mask(&mut self) {
-        self.compute_gray_cache();
+        self.temporal_smooth_low_res();   // 在 256×144 上做 EMA，再上采样
         self.bilinear_upsample();
-        self.temporal_smooth();
+        self.compute_gray_cache();
         self.joint_bilateral_filter_opt();
     }
 
-    // 阶段 2: 渲染背景高斯模糊效果（1次可分离盒型模糊逼近高斯模糊）
+    // 阶段 2: 渲染背景高斯模糊效果
     pub fn render_blur(&mut self) {
         // 对 input_buffer 应用可分离盒型模糊，结果写入 blur_buffer
         self.apply_separable_box_blur();
@@ -182,15 +202,15 @@ impl MeetProcessor {
         }
     }
 
-    // 保留辅助函数
-    fn temporal_smooth(&mut self) {
-        let len = self.width * self.height;
+    // 低分辨率时域平滑：在 mask_width×mask_height（256×144）上对 mask_buffer 做 EMA
+    fn temporal_smooth_low_res(&mut self) {
+        let len = self.mask_width * self.mask_height;
         for i in 0..len {
-            let curr = unsafe { *self.upsampled_mask.get_unchecked(i) };
+            let curr = unsafe { *self.mask_buffer.get_unchecked(i) };
             let prev = unsafe { *self.prev_mask.get_unchecked(i) };
             let smoothed = self.alpha_temporal * curr + (1.0 - self.alpha_temporal) * prev;
             unsafe {
-                *self.upsampled_mask.get_unchecked_mut(i) = smoothed;
+                *self.mask_buffer.get_unchecked_mut(i) = smoothed;
                 *self.prev_mask.get_unchecked_mut(i) = smoothed;
             }
         }

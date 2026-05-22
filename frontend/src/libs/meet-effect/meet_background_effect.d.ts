@@ -14,6 +14,10 @@ export class MeetProcessor {
     render_blur(): void;
     render_replace(): void;
     /**
+     * 动态调整处理分辨率（仅重建宽高相关缓冲区，mask 尺寸保持 256×144）。
+     */
+    resize(width: number, height: number): void;
+    /**
      * 设置模糊半径（每次 box blur 的半径，默认 20，范围 1..=50）
      */
     set_blur_radius(radius: number): void;
@@ -35,6 +39,7 @@ export interface InitOutput {
     readonly meetprocessor_prepare_mask: (a: number) => void;
     readonly meetprocessor_render_blur: (a: number) => void;
     readonly meetprocessor_render_replace: (a: number) => void;
+    readonly meetprocessor_resize: (a: number, b: number, c: number) => void;
     readonly meetprocessor_set_blur_radius: (a: number, b: number) => void;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

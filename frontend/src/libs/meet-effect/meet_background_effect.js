@@ -65,6 +65,14 @@ export class MeetProcessor {
         wasm.meetprocessor_render_replace(this.__wbg_ptr);
     }
     /**
+     * 动态调整处理分辨率（仅重建宽高相关缓冲区，mask 尺寸保持 256×144）。
+     * @param {number} width
+     * @param {number} height
+     */
+    resize(width, height) {
+        wasm.meetprocessor_resize(this.__wbg_ptr, width, height);
+    }
+    /**
      * 设置模糊半径（每次 box blur 的半径，默认 20，范围 1..=50）
      * @param {number} radius
      */

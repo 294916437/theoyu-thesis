@@ -11,6 +11,7 @@ export const meetprocessor_output_ptr: (a: number) => number;
 export const meetprocessor_prepare_mask: (a: number) => void;
 export const meetprocessor_render_blur: (a: number) => void;
 export const meetprocessor_render_replace: (a: number) => void;
+export const meetprocessor_resize: (a: number, b: number, c: number) => void;
 export const meetprocessor_set_blur_radius: (a: number, b: number) => void;
 export const __wbindgen_free: (a: number, b: number, c: number) => void;
 export const __wbindgen_malloc: (a: number, b: number) => number;

@@ -37,6 +37,7 @@
 					</v-card-actions>
 				</v-card>
 			</div>
+			<!-- ========== Consent 阶段 ========== -->
 			<div v-else-if="phase === 'consent'" key="consent" class="phase-content">
 				<v-card class="consent-card text-center pa-6" max-width="560" elevation="0">
 					<div class="d-flex justify-center mb-4">
@@ -47,8 +48,11 @@
 
 					<v-card-text class="text-body-2 text-medium-emphasis pb-4"> 你仍可以在会议期间随时关闭麦克风和摄像头。 </v-card-text>
 
+					<!-- 设备权限错误提示 -->
+					<v-alert v-if="consentError" type="error" variant="tonal" rounded="lg" class="mx-4 mb-3 text-left" :text="consentError" density="compact"></v-alert>
+
 					<v-card-actions class="flex-column ga-3 px-4 pb-4">
-						<v-btn color="primary" variant="flat" block size="large" rounded="pill" prepend-icon="mdi-monitor-share" @click="requestAndJoin">
+						<v-btn color="primary" variant="flat" block size="large" rounded="pill" prepend-icon="mdi-monitor-share" :loading="mediaChecking" @click="requestAndJoin">
 							使用麦克风和摄像头
 						</v-btn>
 
@@ -93,6 +97,14 @@ const props = defineProps({
 		default: () => ({}),
 	},
 	isRetrying: {
+		type: Boolean,
+		default: false,
+	},
+	consentError: {
+		type: String,
+		default: null,
+	},
+	mediaChecking: {
 		type: Boolean,
 		default: false,
 	},

@@ -8,6 +8,8 @@
 				:loading-progress="loadingProgress"
 				:meeting-info="meetingInfo"
 				:is-retrying="isRetrying"
+				:consent-error="consentError"
+				:media-checking="mediaChecking"
 				@confirm="handleMediaConsent"
 				@retry="handleRetryJoin"
 				@timeup="handleTimeup"
@@ -1136,6 +1138,8 @@ const enableMirror = ref(false)
 // 等候室相关状态
 
 const isRetrying = ref(false)
+const consentError = ref(null)
+const mediaChecking = ref(false)
 const WAITING_THRESHOLD_MS = 30 * 60 * 1000 // 30分钟
 
 // 检查会议时间拦截规则
@@ -1187,8 +1191,44 @@ onMounted(async () => {
 	}
 })
 
+// 媒体设备错误类型 → 友好提示映射
+const resolveMediaError = err => {
+	switch (err.name) {
+		case 'NotAllowedError':
+		case 'PermissionDeniedError':
+			return '摄像头/麦克风权限被拒绝，请点击浏览器地址栏旁的权限图标，允许本页面访问设备后重试。'
+		case 'NotReadableError':
+		case 'TrackStartError':
+			return '摄像头或麦克风设备无法启动，可能正被其他程序占用，请关闭其他视频应用后重试。'
+		case 'NotFoundError':
+		case 'DevicesNotFoundError':
+			return '未检测到摄像头或麦克风设备，请确认设备已正确连接。'
+		case 'OverconstrainedError':
+			return '所选设备不满足要求，请在设置中更换设备后重试。'
+		default:
+			return `设备访问失败（${err.name}）：${err.message}`
+	}
+}
+
 // 用户选择媒体权限后的处理
 const handleMediaConsent = async ({ withMedia }) => {
+	consentError.value = null
+
+	// 选择使用设备时，先预检权限和设备可用性，失败则停留在 consent 展示错误
+	if (withMedia) {
+		mediaChecking.value = true
+		try {
+			const testStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+			testStream.getTracks().forEach(t => t.stop())
+		} catch (err) {
+			consentError.value = resolveMediaError(err)
+			mediaChecking.value = false
+			return // 停留在 consent 阶段
+		} finally {
+			mediaChecking.value = false
+		}
+	}
+
 	entryPhase.value = 'loading'
 
 	try {
@@ -1219,8 +1259,14 @@ const handleMediaConsent = async ({ withMedia }) => {
 		entryPhase.value = 'hidden'
 	} catch (error) {
 		console.error('Failed to initialize meeting', error)
-		$notify.error(`加入会议失败: ${error.message}`)
-		entryPhase.value = 'hidden'
+		// 加入过程中的媒体错误：回退到 consent 让用户处理，而非强行进入会议室
+		if (withMedia && (error.name === 'NotReadableError' || error.name === 'NotAllowedError' || error.name === 'NotFoundError')) {
+			consentError.value = resolveMediaError(error)
+			entryPhase.value = 'consent'
+		} else {
+			$notify.error(`加入会议失败: ${error.message}`)
+			entryPhase.value = 'consent'
+		}
 	}
 }
 

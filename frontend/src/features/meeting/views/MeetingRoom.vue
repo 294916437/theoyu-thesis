@@ -491,16 +491,8 @@
 					<div v-show="!controlBarCollapsed" class="control-bar">
 						<v-container fluid class="pa-0">
 							<v-row no-gutters align="center" justify="center">
-								<!-- 左侧：连接状态 -->
-								<v-col cols="auto" class="d-flex align-center">
-									<v-chip :color="overallConnectionQuality.color" variant="flat" size="small" class="ml-4">
-										<template #prepend>
-											<v-icon size="small">{{ overallConnectionQuality.icon }}</v-icon>
-										</template>
-										{{ overallConnectionQuality.text }}
-									</v-chip>
-								</v-col>
-
+								<!-- 左侧：待定 -->
+								<v-col cols="auto" class="d-flex align-center"> </v-col>
 								<v-spacer></v-spacer>
 
 								<!-- 中间：主要控制按钮 -->

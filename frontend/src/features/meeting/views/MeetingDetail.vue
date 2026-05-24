@@ -226,9 +226,9 @@
 
 										<template #append>
 											<div class="text-caption text-grey-darken-1 text-right">
-												<div>{{ formatJoinTime(participant.joinedAt) }}</div>
+												<div>{{ formatDate(participant.joinedAt) }}</div>
 												<div v-if="participant.leftAt" class="mt-1">
-													{{ formatJoinTime(participant.leftAt) }}
+													{{ formatDate(participant.leftAt) }}
 												</div>
 											</div>
 										</template>
@@ -433,12 +433,6 @@ const durationText = computed(() => {
 	const minutes = duration % 60
 	return `${hours} 小时 ${minutes} 分钟`
 })
-
-// 格式化加入时间
-const formatJoinTime = time => {
-	if (!time) return '-'
-	return useDateFormat(time, 'HH:mm').value
-}
 
 const formatDate = time => {
 	if (!time) return '-'

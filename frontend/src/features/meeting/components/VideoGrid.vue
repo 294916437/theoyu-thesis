@@ -527,7 +527,6 @@ const otherParticipantsForSpotlight = computed(() => {
 })
 
 // 监听聚光灯参与者变化，更新主视频元素 srcObject
-// 必须在 spotlightParticipant 声明之后才能引用，否则触发 TDZ ReferenceError
 watch(
 	[spotlightVideoRef, spotlightParticipant],
 	async ([el, participant]) => {

@@ -1,6 +1,5 @@
 <script setup>
 import { $notify } from '@/plugins/notification'
-import { getInitials } from '@/utils/common'
 import { ref, computed } from 'vue'
 
 const props = defineProps({
@@ -306,13 +305,9 @@ const handleDisableAllVideo = async () => {
 					}"
 				>
 					<!-- 头像 -->
-					<v-avatar size="36" :image="participant.avatar" color="primary-lighten-1">
-						<template #placeholder>
-							<v-progress-circular indeterminate size="20" color="primary"></v-progress-circular>
-						</template>
-						<span v-if="!participant.avatar" class="text-white text-caption font-weight-bold">
-							{{ getInitials(participant.username) }}
-						</span>
+					<v-avatar color="primary" size="36">
+						<v-img v-if="participant.avatar" :src="participant.avatar"></v-img>
+						<v-icon v-else icon="mdi-account" size="20"></v-icon>
 					</v-avatar>
 
 					<!-- 参与者状态 -->
@@ -373,13 +368,9 @@ const handleDisableAllVideo = async () => {
 					}"
 				>
 					<!-- 头像 -->
-					<v-avatar size="36" :image="participant.avatar" color="secondary-lighten-1">
-						<template #placeholder>
-							<v-progress-circular indeterminate size="20" color="secondary"></v-progress-circular>
-						</template>
-						<span v-if="!participant.avatar" class="text-white text-caption font-weight-bold">
-							{{ getInitials(participant.username) }}
-						</span>
+					<v-avatar color="secondary" size="36">
+						<v-img v-if="participant.avatar" :src="participant.avatar"></v-img>
+						<v-icon v-else icon="mdi-account" size="20"></v-icon>
 					</v-avatar>
 
 					<!-- 参与者状态 -->

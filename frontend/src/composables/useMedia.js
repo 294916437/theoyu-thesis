@@ -889,8 +889,8 @@ export function useMedia() {
 							// 重新获取原始摄像头轨道
 							const stream = await navigator.mediaDevices.getUserMedia({
 								video: {
-									width: { ideal: 1280, max: 1920 },
-									height: { ideal: 720, max: 1080 },
+									width: { ideal: VIDEO_WIDTH, max: 1920 },
+									height: { ideal: VIDEO_HEIGHT, max: 1080 },
 									frameRate: { ideal: 30, max: 60 },
 								},
 							})
@@ -958,8 +958,8 @@ export function useMedia() {
 					sampleRate: 48000,
 				},
 				video: {
-					width: { ideal: 1280, max: 1920 },
-					height: { ideal: 720, max: 1080 },
+					width: { ideal: VIDEO_WIDTH, max: 1920 },
+					height: { ideal: VIDEO_HEIGHT, max: 1080 },
 					frameRate: { ideal: 30, max: 60 },
 				},
 			})

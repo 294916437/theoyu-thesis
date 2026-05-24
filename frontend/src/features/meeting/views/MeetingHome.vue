@@ -113,10 +113,10 @@
 
 									<v-list-item-subtitle class="d-flex align-center text-medium-emphasis">
 										<v-icon size="16" class="mr-1">mdi-account-multiple</v-icon>
-										{{ meeting.participantCount || 0 }} 位参与者
+										{{ getRoleText(meeting.role) }} 身份
 										<span class="mx-2">·</span>
 										<v-icon size="16" class="mr-1">mdi-timer-outline</v-icon>
-										{{ meeting.duration || 0 }} 分钟
+										{{ calculateDuration(meeting.joinedAt, meeting.leftAt) }} 分钟
 									</v-list-item-subtitle>
 
 									<template #append>
@@ -216,6 +216,27 @@ const formatTime = time => {
 // 格式化日期时间
 const formatDateTime = time => {
 	return useDateFormat(time, 'MM-DD HH:mm').value
+}
+
+// 计算会议的持续时间（分钟）
+const calculateDuration = (startTime, endTime) => {
+	const start = new Date(startTime)
+	const end = new Date(endTime)
+	const duration = Math.max(0, Math.floor((end - start) / 60000)) // 转换为分钟并确保非负
+	return duration
+}
+// 显示参与会议时的角色
+const getRoleText = role => {
+	switch (role) {
+		case 0:
+			return '参与者'
+		case 1:
+			return '主持人'
+		case 2:
+			return '联席主持'
+		default:
+			return '参与者'
+	}
 }
 
 // 获取距离会议开始的时间

@@ -212,13 +212,10 @@ public class RoomServiceImpl implements RoomService {
             List<ParticipantListItemVO> participants =
                     getAllParticipantsForDetail(roomId);
 
-            // 5. 计算持续时间（分钟）
-            Integer duration = calculateDuration(room);
-
-            // 6. 获取录像信息
+            // 5. 获取录像信息
             RoomRecordPO roomRecord = roomRecordPOMapper.selectByRoomIdAndHostId(roomId, room.getHostId());
 
-            // 7. 构建响应
+            // 6. 构建响应
             return GetRoomDetailResVO.builder()
                     .roomId(room.getId())
                     .roomNo(room.getRoomNo())
@@ -226,7 +223,6 @@ public class RoomServiceImpl implements RoomService {
                     .description(room.getSettings()) // 假设 settings 包含描述信息
                     .startTime(room.getStartTime())
                     .endTime(room.getEndTime()) // 补充 endTime
-                    .duration(duration)
                     .status(room.getStatus())
                     .host(hostInfo)
                     .participantCount(participants.size())
@@ -601,13 +597,13 @@ public class RoomServiceImpl implements RoomService {
         }
     }
     /**
-     * 从在线参与者缓存中移除（保留全部参与者列表）
+     * 从在线参与者缓存中移除，更新历史参与者缓存的status和leftAt字段
      *
      * @param roomId 房间ID
      * @param userId 用户ID
      */
     @Override
-    public void removeOnlineParticipantFromCache(Long roomId, Long userId) {
+    public void removeAndUpdateParticipantsCache(Long roomId, Long userId, LocalDateTime leftAt) {
         try {
             String onlineKey = String.format(
                     RedisKeyConstants.ROOM_ONLINE_PARTICIPANTS_KEY, roomId);
@@ -647,7 +643,29 @@ public class RoomServiceImpl implements RoomService {
                 log.info("[RoomService] 在线 Set 为空已删除 - roomId: {}", roomId);
             }
 
-            // 不删除 room:all-participants:{roomId}，保留历史参与记录
+            // 原地更新 all-participants Hash 中该参与者的状态和离开时间，维护数据一致性
+            String allParticipantsKey = String.format(
+                    RedisKeyConstants.ROOM_ALL_PARTICIPANTS_KEY, roomId);
+            Object cachedJson = redisTemplate.opsForHash().get(allParticipantsKey, userId.toString());
+
+            if (cachedJson != null) {
+                try {
+                    ParticipantListItemVO vo = JsonUtils.parseObject(
+                            cachedJson.toString(), ParticipantListItemVO.class);
+                    if (vo != null) {
+                        vo.setStatus(2);      // 2-离线
+                        vo.setLeftAt(leftAt);
+                        String updatedJson = JsonUtils.toJsonString(vo);
+                        redisTemplate.opsForHash().put(allParticipantsKey, userId.toString(), updatedJson);
+                        log.info("[RoomService] 更新 all-participants 缓存 - roomId: {}, userId: {}, status: {}, leftAt: {}",
+                                roomId, userId, vo.getStatus(), vo.getLeftAt());
+                    }
+                } catch (Exception e) {
+                    log.warn("[RoomService] 更新 all-participants 缓存失败，删除该条目 - userId: {}", userId, e);
+                    // 降级：删除该条目，下次从 DB 重建
+                    redisTemplate.opsForHash().delete(allParticipantsKey, userId.toString());
+                }
+            }
 
         } catch (Exception e) {
             log.error("[RoomService] 从在线缓存移除参与者失败 - roomId: {}, userId: {}",

@@ -230,17 +230,18 @@ public class SFUGrpcServer extends SFUCallbackServiceGrpc.SFUCallbackServiceImpl
             long timestamp = request.getTimestamp();
 
             // 1. 更新参与者离线状态
+            LocalDateTime leftAt = LocalDateTime.now();
             roomParticipantPOMapper.updateStatusToOffline(
                     roomId,
                     userId,
-                    LocalDateTime.now()
+                    leftAt
             );
 
             // 2. 清理 Redis 缓存
             // 删除参与者用户信息缓存
             removeParticipantCache(roomIdStr, userIdStr);
-            // 从在线参与者列表缓存中移除
-            roomService.removeOnlineParticipantFromCache(roomId,userId);
+            // 从在线参与者列表缓存中移除，同时同步更新 all-participants 缓存的离线状态
+            roomService.removeAndUpdateParticipantsCache(roomId, userId, leftAt);
 
             // 3. 异步发送 MQ 消息
             sendParticipantEventToMQ(roomId, userId, username, "left", timestamp);

@@ -27,8 +27,6 @@ public class GetRoomDetailResVO {
 
     private LocalDateTime endTime;
 
-    private Integer duration;
-
     private Integer status;
 
     private FindUserByIdRspDTO host;

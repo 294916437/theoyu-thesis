@@ -4,6 +4,8 @@ import com.theoyu.framework.common.response.PageResponse;
 import com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO;
 import com.theoyu.thesis.media.biz.model.vo.*;
 
+import java.time.LocalDateTime;
+
 public interface RoomService {
 
     /**
@@ -45,7 +47,7 @@ public interface RoomService {
      */
     PageResponse<ParticipantListItemVO> getParticipants(GetParticipantsReqVO reqVO);
 
-    void removeOnlineParticipantFromCache(Long roomId, Long participantId);
+    void removeAndUpdateParticipantsCache(Long roomId, Long participantId, LocalDateTime leftAt);
 
     void addParticipantToCache(Long roomId, RoomParticipantPO participant);
 

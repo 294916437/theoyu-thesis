@@ -4,8 +4,10 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
+@EnableScheduling
 @MapperScan("com.theoyu.thesis.media.biz.model.mapper")
 @EnableFeignClients(basePackages = { // 扫描用于发现OpenFeign客户端
         "com.theoyu.thesis.oss.api",

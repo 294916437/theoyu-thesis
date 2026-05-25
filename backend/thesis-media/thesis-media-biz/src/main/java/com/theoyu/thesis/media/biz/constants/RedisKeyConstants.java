@@ -169,6 +169,12 @@ public class RedisKeyConstants {
      */
     public static final long ROOM_RECORDING_STATUS_EXPIRE_TIME = 3*24 * 60 * 60L;
 
+    // ==================== 预约会议自动激活 ====================
 
+    /**
+     * 预约会议自动激活延迟队列（ZSet，score 为激活时制01秒时间戳）
+     * room:activation:queue
+     */
+    public static final String ROOM_ACTIVATION_QUEUE_KEY = "room:activation:queue";
 
 }

@@ -34,6 +34,11 @@ public interface RoomService {
     void closeRoom(Long roomId);
 
     /**
+     * 自动激活预约会议（将状态从 0 更新为 1）
+     */
+    void activateRoom(Long roomId);
+
+    /**
      * 更新会议信息（仅主持人可操作，进行中的会议不可编辑）
      */
     void updateRoom(Long roomId, UpdateRoomReqVO reqVO);

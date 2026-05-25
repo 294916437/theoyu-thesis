@@ -112,7 +112,12 @@ public class RoomServiceImpl implements RoomService {
         // 4. 缓存会议信息（使用 Hash 结构）
         cacheRoomInfo(room);
 
-        // 5. 异步发送会议创建事件到MQ
+        // 5. 预约会议：调度自动激活任务（提前30分钟将状态改为进行中）
+        if (isReserved) {
+            scheduleRoomActivation(roomId, meetingStartTime);
+        }
+
+        // 6. 异步发送会议创建事件到MQ
         threadPoolTaskExecutor.execute(() -> {
             try {
                 // 构建消息事件对象
@@ -344,6 +349,11 @@ public class RoomServiceImpl implements RoomService {
             if (reqVO.getDuration() != null && reqVO.getDuration() > 0) {
                 update.setEndTime(startTimeLDT.plusMinutes(reqVO.getDuration()));
             }
+            // 6. 若为预约中状态，重新调度自动激活任务
+            if (Integer.valueOf(0).equals(room.getStatus())) {
+                cancelRoomActivation(roomId);
+                scheduleRoomActivation(roomId, startTimeLDT);
+            }
         }
 
         // 6. 更新数据库
@@ -387,6 +397,9 @@ public class RoomServiceImpl implements RoomService {
 
         // 6. 清理 roomNo -> roomId 映射
         redisTemplate.opsForHash().delete(RedisKeyConstants.ROOM_NO_MAPPING_KEY, room.getRoomNo());
+
+        // 7. 若为预约中状态，取消激活任务
+        cancelRoomActivation(roomId);
 
         log.info("[RoomService] deleteRoom success - roomId: {}", roomId);
     }
@@ -1544,5 +1557,44 @@ public class RoomServiceImpl implements RoomService {
                 roomParticipantPOMapper.selectByRoomIdAndUserId(roomId, userId);
 
         return participant != null;
+    }
+
+    // ==================== 预约会议自动激活 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void activateRoom(Long roomId) {
+        RoomPO room = roomPOMapper.selectByPrimaryKey(roomId);
+        if (room == null || !Integer.valueOf(0).equals(room.getStatus())) {
+            // 会议不存在或状态已变更（已开始、已结束、已取消），跳过
+            return;
+        }
+        roomPOMapper.updateStatusById(roomId, 1);
+        updateRoomStatusInCache(roomId, 1);
+        log.info("[RoomService] 预约会议自动激活 - roomId: {}", roomId);
+    }
+
+    /**
+     * 将预约会议加入延迟激活队列（ZSet），score 为激活时间（UTC+8 epoch 秒）。
+     * 若激活时刻已过，则设置为当前时间以便立即处理。
+     */
+    private void scheduleRoomActivation(Long roomId, LocalDateTime startTime) {
+        LocalDateTime activationTime = startTime.minusMinutes(30);
+        LocalDateTime now = LocalDateTime.now();
+        if (activationTime.isBefore(now)) {
+            activationTime = now;
+        }
+        double score = activationTime.toEpochSecond(java.time.ZoneOffset.ofHours(8));
+        redisTemplate.opsForZSet().add(
+                RedisKeyConstants.ROOM_ACTIVATION_QUEUE_KEY, roomId.toString(), score);
+        log.info("[RoomService] 已调度会议激活任务 - roomId: {}, activationTime: {}", roomId, activationTime);
+    }
+
+    /**
+     * 从延迟激活队列中移除指定会议（用于删除或重新调度时取消旧任务）。
+     */
+    private void cancelRoomActivation(Long roomId) {
+        redisTemplate.opsForZSet().remove(
+                RedisKeyConstants.ROOM_ACTIVATION_QUEUE_KEY, roomId.toString());
     }
 }

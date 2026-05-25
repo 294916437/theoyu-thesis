@@ -191,7 +191,9 @@ const handleLogout = async () => {
 	const res = await logout()
 	if (res.success) {
 		userStore.logout()
+		// 刷新页面
 		router.push('/login')
+		window.location.reload()
 	}
 }
 </script>

@@ -198,12 +198,10 @@
 								<template v-for="(participant, index) in meetingDetail.participants" :key="participant.userId">
 									<v-list-item class="px-6 py-3">
 										<template #prepend>
-											<v-badge :color="getParticipantStatusColor(participant.status)" dot location="bottom right" offset-x="4" offset-y="4">
-												<v-avatar color="primary" size="40">
-													<v-img v-if="participant.avatar" :src="participant.avatar"></v-img>
-													<v-icon v-else icon="mdi-account" size="20"></v-icon>
-												</v-avatar>
-											</v-badge>
+											<v-avatar color="primary" size="40">
+												<v-img v-if="participant.avatar" :src="participant.avatar"></v-img>
+												<v-icon v-else icon="mdi-account" size="20"></v-icon>
+											</v-avatar>
 										</template>
 
 										<v-list-item-title class="d-flex align-center">

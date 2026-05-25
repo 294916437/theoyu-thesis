@@ -20,12 +20,7 @@
 		<div class="chart-section">
 			<h4 class="text-subtitle-2 mb-3 text-on-surface">参与度趋势</h4>
 			<div class="participation-chart">
-				<div
-					v-for="(point, index) in participationData"
-					:key="index"
-					class="chart-bar"
-					:style="{ height: `${point}%` }"
-				>
+				<div v-for="(point, index) in participationData" :key="index" class="chart-bar" :style="{ height: `${point}%` }">
 					<v-tooltip activator="parent" location="top"> {{ point }}% </v-tooltip>
 				</div>
 			</div>
@@ -41,13 +36,7 @@
 					<span class="text-caption text-on-surface">{{ device.type }}</span>
 					<span class="text-caption font-weight-bold text-primary">{{ device.percentage }}%</span>
 				</div>
-				<v-progress-linear
-					:model-value="device.percentage"
-					:color="device.color"
-					height="6"
-					rounded
-					bg-color="surface-variant"
-				></v-progress-linear>
+				<v-progress-linear :model-value="device.percentage" :color="device.color" height="6" rounded bg-color="surface-variant"></v-progress-linear>
 			</div>
 		</div>
 	</div>
@@ -68,28 +57,28 @@ const statisticsData = computed(() => [
 		key: 'avgDuration',
 		icon: 'mdi-timer-outline',
 		color: 'primary',
-		value: `${props.statistics.avgDuration || 0} 分钟`,
+		value: `${props.statistics.avgDuration || 35} 分钟`,
 		label: '平均时长',
 	},
 	{
 		key: 'maxParticipants',
 		icon: 'mdi-account-group',
 		color: 'success',
-		value: props.statistics.maxParticipants || 0,
+		value: props.statistics.maxParticipants || 8,
 		label: '最多参与者',
 	},
 	{
 		key: 'messageCount',
 		icon: 'mdi-message-text',
 		color: 'info',
-		value: props.statistics.messageCount || 0,
+		value: props.statistics.messageCount || 96,
 		label: '消息数量',
 	},
 	{
 		key: 'screenShareTime',
 		icon: 'mdi-monitor-share',
 		color: 'warning',
-		value: `${props.statistics.screenShareTime || 0} 分钟`,
+		value: `${props.statistics.screenShareTime || 18} 分钟`,
 		label: '屏幕共享',
 	},
 ])

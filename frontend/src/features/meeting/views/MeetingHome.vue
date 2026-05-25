@@ -228,11 +228,11 @@ const calculateDuration = (startTime, endTime) => {
 // 显示参与会议时的角色
 const getRoleText = role => {
 	switch (role) {
-		case 0:
-			return '参与者'
 		case 1:
-			return '主持人'
+			return '参与者'
 		case 2:
+			return '主持人'
+		case 3:
 			return '联席主持'
 		default:
 			return '参与者'

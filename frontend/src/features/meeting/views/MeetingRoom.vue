@@ -83,9 +83,9 @@
 
 			<!-- 主视频区域 -->
 			<v-container fluid class="video-container" :style="{ height: videoContainerHeight }">
-				<v-row no-gutters class="fill-height">
+				<div class="video-layout">
 					<!-- 视频网格 -->
-					<v-col :cols="showSidebar ? 9 : 12" class="video-main">
+					<div class="video-main">
 						<VideoGrid
 							:participants="onlineParticipants"
 							:screen-share="screenShare"
@@ -111,10 +111,10 @@
 								<v-btn variant="flat" color="primary" class="mt-4" @click="handleReconnect"> 重新连接 </v-btn>
 							</div>
 						</v-fade-transition>
-					</v-col>
+					</div>
 
 					<!-- 侧边栏 -->
-					<v-col v-if="showSidebar" cols="3" class="sidebar-container">
+					<div v-if="showSidebar" class="sidebar-container">
 						<div class="sidebar">
 							<v-tabs v-model="sidebarTab" bg-color="surface" color="primary" density="compact" class="sidebar-tabs">
 								<v-tab value="participants">
@@ -477,8 +477,8 @@
 								</v-tabs-window-item>
 							</v-tabs-window>
 						</div>
-					</v-col>
-				</v-row>
+					</div>
+				</div>
 			</v-container>
 
 			<!-- 底部控制栏 -->
@@ -2032,11 +2032,20 @@ useEventListener('beforeunload', e => {
 	padding: 0;
 }
 
+.video-layout {
+	display: flex;
+	height: 100%;
+}
+
 .video-main {
+	flex: 1;
+	min-width: 0;
 	height: 100%;
 }
 
 .sidebar-container {
+	width: 320px;
+	flex-shrink: 0;
 	display: flex;
 	flex-direction: column;
 	height: 100%;
@@ -2758,17 +2767,6 @@ useEventListener('beforeunload', e => {
 	border-radius: 50%;
 	background: rgba(var(--v-theme-warning), 0.1);
 	border: 2px solid rgba(var(--v-theme-warning), 0.3);
-}
-
-/* 响应式调整 */
-@media (max-width: 960px) {
-	.sidebar-container {
-		display: none;
-	}
-
-	.video-main {
-		width: 100% !important;
-	}
 }
 
 @media (max-width: 600px) {

@@ -361,7 +361,7 @@ const route = useRoute()
 const router = useRouter()
 const { copy, copied } = useClipboard()
 const userStore = useUserStore()
-const currentUserId = computed(() => userStore.user?.id)
+const currentUserId = computed(() => userStore.userId)
 // ==================== 文件预览与下载 ====================
 const {
 	visible: previewVisible,
@@ -446,15 +446,6 @@ const formatFileSize = bytes => {
 	const sizes = ['B', 'KB', 'MB', 'GB']
 	const i = Math.floor(Math.log(num) / Math.log(k))
 	return Math.round((num / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
-}
-
-// 参与者状态
-const getParticipantStatusColor = status => {
-	const colors = {
-		1: 'success', // 在线
-		2: 'grey', // 离线
-	}
-	return colors[status] || 'grey'
 }
 
 const getParticipantStatusText = participant => {

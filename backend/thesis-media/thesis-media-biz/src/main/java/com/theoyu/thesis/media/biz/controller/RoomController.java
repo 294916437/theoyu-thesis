@@ -97,6 +97,28 @@ public class RoomController {
         roomService.closeRoom(reqVO.getRoomId());
         return Response.success();
     }
+
+    /**
+     * 更新会议信息
+     * PUT /room/{roomId}
+     */
+    @PutMapping("/{roomId}")
+    @ApiOperationLog(description = "更新会议信息")
+    public Response<?> updateRoom(@PathVariable Long roomId, @RequestBody @Valid UpdateRoomReqVO reqVO) {
+        roomService.updateRoom(roomId, reqVO);
+        return Response.success();
+    }
+
+    /**
+     * 删除会议
+     * DELETE /room/{roomId}
+     */
+    @DeleteMapping("/{roomId}")
+    @ApiOperationLog(description = "删除会议")
+    public Response<?> deleteRoom(@PathVariable Long roomId) {
+        roomService.deleteRoom(roomId);
+        return Response.success();
+    }
     /**
      * 获取房间参与者列表
      * GET /room/participants?roomId=123&status=1&page=1&size=20

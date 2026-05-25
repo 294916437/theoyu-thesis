@@ -30,6 +30,8 @@ public enum ResponseCodeEnum implements BaseExceptionInterface {
     RECORDING_STATUS_QUERY_FAILED("MEDIA-1017", "查询录制状态失败"),
     RECORDING_PERMISSION_DENIED("MEDIA-1018", "无权操作录制，仅房主可操作"),
     ROOM_NOT_ACTIVE_FOR_RECORDING("MEDIA-1019", "会议未在进行中，无法录制"),
+    ROOM_UPDATE_FAILED("MEDIA-1020", "进行中的会议不可编辑"),
+    ROOM_DELETE_FAILED("MEDIA-1021", "进行中的会议不可删除"),
 
     // ==================== 用户相关 20xx ====================
     USER_NOT_FOUND("MEDIA-2001", "用户不存在"),

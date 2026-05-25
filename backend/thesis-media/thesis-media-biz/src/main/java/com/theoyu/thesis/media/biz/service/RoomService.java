@@ -34,6 +34,16 @@ public interface RoomService {
     void closeRoom(Long roomId);
 
     /**
+     * 更新会议信息（仅主持人可操作，进行中的会议不可编辑）
+     */
+    void updateRoom(Long roomId, UpdateRoomReqVO reqVO);
+
+    /**
+     * 删除会议（仅主持人可操作，进行中的会议不可删除）
+     */
+    void deleteRoom(Long roomId);
+
+    /**
      * 获取最近参加过的会议
      */
     PageResponse<RecentRoomResVO> getRecentRooms(Long page, Long size);

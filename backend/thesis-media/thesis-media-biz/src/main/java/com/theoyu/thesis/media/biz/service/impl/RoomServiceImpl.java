@@ -307,6 +307,92 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void updateRoom(Long roomId, UpdateRoomReqVO reqVO) {
+        Long userId = LoginUserContextHolder.getUserId();
+        log.info("[RoomService] updateRoom - userId: {}, roomId: {}", userId, roomId);
+
+        // 1. 查询会议
+        RoomPO room = getRoomFromCache(roomId);
+        if (room == null) {
+            throw new BusinessException(ResponseCodeEnum.ROOM_NOT_FOUND);
+        }
+
+        // 2. 检查权限（仅主持人可编辑）
+        if (!room.getHostId().equals(userId)) {
+            throw new BusinessException(ResponseCodeEnum.ROOM_ACCESS_DENIED);
+        }
+
+        // 3. 进行中的会议不可编辑
+        if (Integer.valueOf(1).equals(room.getStatus())) {
+            throw new BusinessException(ResponseCodeEnum.ROOM_UPDATE_FAILED);
+        }
+
+        // 4. 构建更新对象
+        RoomPO update = RoomPO.builder()
+                .id(roomId)
+                .title(reqVO.getTitle())
+                .settings(reqVO.getDescription())
+                .updatedTime(LocalDateTime.now())
+                .build();
+
+        if (reqVO.getStartTime() != null) {
+            // 前端传入 UTC Instant，转换为 UTC+8 LocalDateTime 存储（与项目惯例一致）
+            LocalDateTime startTimeLDT = LocalDateTime.ofInstant(
+                    reqVO.getStartTime(), java.time.ZoneOffset.ofHours(8));
+            update.setStartTime(startTimeLDT);
+            // 5. 根据 duration 计算 endTime（仅预约会议需要）
+            if (reqVO.getDuration() != null && reqVO.getDuration() > 0) {
+                update.setEndTime(startTimeLDT.plusMinutes(reqVO.getDuration()));
+            }
+        }
+
+        // 6. 更新数据库
+        roomPOMapper.updateByPrimaryKeySelective(update);
+
+        // 7. 失效缓存（下次读取时从 DB 重建）
+        String roomKey = String.format(RedisKeyConstants.ROOM_INFO_KEY, roomId);
+        redisTemplate.delete(roomKey);
+
+        log.info("[RoomService] updateRoom success - roomId: {}", roomId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteRoom(Long roomId) {
+        Long userId = LoginUserContextHolder.getUserId();
+        log.info("[RoomService] deleteRoom - userId: {}, roomId: {}", userId, roomId);
+
+        // 1. 查询会议
+        RoomPO room = getRoomFromCache(roomId);
+        if (room == null) {
+            throw new BusinessException(ResponseCodeEnum.ROOM_NOT_FOUND);
+        }
+
+        // 2. 检查权限（仅主持人可删除）
+        if (!room.getHostId().equals(userId)) {
+            throw new BusinessException(ResponseCodeEnum.ROOM_ACCESS_DENIED);
+        }
+
+        // 3. 进行中的会议不可删除
+        if (Integer.valueOf(1).equals(room.getStatus())) {
+            throw new BusinessException(ResponseCodeEnum.ROOM_DELETE_FAILED);
+        }
+
+        // 4. 删除数据库记录
+        roomPOMapper.deleteByPrimaryKey(roomId);
+
+        // 5. 清理房间信息缓存
+        String roomKey = String.format(RedisKeyConstants.ROOM_INFO_KEY, roomId);
+        redisTemplate.delete(roomKey);
+
+        // 6. 清理 roomNo -> roomId 映射
+        redisTemplate.opsForHash().delete(RedisKeyConstants.ROOM_NO_MAPPING_KEY, room.getRoomNo());
+
+        log.info("[RoomService] deleteRoom success - roomId: {}", roomId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void closeRoom(Long roomId) {
         Long userId = LoginUserContextHolder.getUserId();
         log.info("[RoomService] closeRoom - userId: {}, roomId: {}", userId, roomId);

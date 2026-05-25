@@ -16,17 +16,6 @@
 					maxlength="100"
 				></v-text-field>
 
-				<v-textarea
-					v-model="formData.description"
-					label="会议描述(可选)"
-					variant="outlined"
-					prepend-inner-icon="mdi-text-box"
-					rows="3"
-					counter="500"
-					maxlength="500"
-					class="mt-4"
-				></v-textarea>
-
 				<v-row class="mt-4">
 					<v-col cols="12" md="6">
 						<v-text-field
@@ -51,81 +40,16 @@
 					</v-col>
 				</v-row>
 
-				<v-select
-					v-model="formData.duration"
-					:items="durationOptions"
-					label="持续时间"
-					variant="outlined"
-					prepend-inner-icon="mdi-timer"
-					class="mt-4"
-				></v-select>
+				<v-select v-model="formData.duration" :items="durationOptions" label="持续时间" variant="outlined" prepend-inner-icon="mdi-timer" class="mt-4"></v-select>
 
-				<v-combobox
-					v-model="formData.participants"
-					:items="availableParticipants"
-					label="参与者(可选)"
-					variant="outlined"
-					prepend-inner-icon="mdi-account-multiple"
-					multiple
-					chips
-					closable-chips
-					class="mt-4"
-				>
-					<template #chip="{ props, item }">
-						<v-chip v-bind="props" :text="item.raw.name || item.raw"></v-chip>
-					</template>
-				</v-combobox>
+				<v-divider class="mt-6 mb-4"></v-divider>
+				<div class="text-subtitle-2 text-grey-darken-2 mb-3">会议设置</div>
 
-				<v-expansion-panels class="mt-4">
-					<v-expansion-panel>
-						<v-expansion-panel-title>
-							<v-icon left>mdi-cog</v-icon>
-							高级设置
-						</v-expansion-panel-title>
-						<v-expansion-panel-text>
-							<v-switch
-								v-model="formData.enableWaitingRoom"
-								label="启用等候室"
-								color="primary"
-								hide-details
-							></v-switch>
+				<v-switch v-model="formData.enableWaitingRoom" label="启用等候室" color="primary" hide-details density="comfortable"></v-switch>
 
-							<v-switch
-								v-model="formData.enableRecording"
-								label="自动录制"
-								color="primary"
-								hide-details
-								class="mt-2"
-							></v-switch>
+				<v-switch v-model="formData.enableRecording" label="自动录制" color="primary" hide-details density="comfortable" class="mt-1"></v-switch>
 
-							<v-switch
-								v-model="formData.muteOnEntry"
-								label="加入时静音"
-								color="primary"
-								hide-details
-								class="mt-2"
-							></v-switch>
-
-							<v-text-field
-								v-model="formData.password"
-								label="会议密码(可选)"
-								type="password"
-								variant="outlined"
-								prepend-inner-icon="mdi-lock"
-								class="mt-4"
-							></v-text-field>
-
-							<v-select
-								v-model="formData.maxParticipants"
-								:items="maxParticipantsOptions"
-								label="最大参与人数"
-								variant="outlined"
-								prepend-inner-icon="mdi-account-group"
-								class="mt-4"
-							></v-select>
-						</v-expansion-panel-text>
-					</v-expansion-panel>
-				</v-expansion-panels>
+				<v-switch v-model="formData.disableCamera" label="默认关闭摄像头" color="primary" hide-details density="comfortable" class="mt-1"></v-switch>
 			</v-form>
 		</v-card-text>
 
@@ -158,20 +82,19 @@ const formRef = ref(null)
 const valid = ref(false)
 const saving = ref(false)
 
-const isEdit = computed(() => !!props.meeting?.id)
+// 保留原始 description 中的其他字段（如 allowedCodecs），防止编辑时丢失
+const originalDescriptionExtra = ref({})
+
+const isEdit = computed(() => !!props.meeting?.roomId)
 
 const formData = ref({
 	title: '',
-	description: '',
 	startDate: useDateFormat(new Date(), 'YYYY-MM-DD').value,
 	startTime: useDateFormat(new Date(), 'HH:mm').value,
 	duration: 60,
-	participants: [],
 	enableWaitingRoom: false,
 	enableRecording: false,
-	muteOnEntry: true,
-	password: '',
-	maxParticipants: 100,
+	disableCamera: false,
 })
 
 const rules = {
@@ -188,30 +111,24 @@ const durationOptions = [
 	{ title: '3小时', value: 180 },
 ]
 
-const maxParticipantsOptions = [
-	{ title: '10人', value: 10 },
-	{ title: '25人', value: 25 },
-	{ title: '50人', value: 50 },
-	{ title: '100人', value: 100 },
-	{ title: '250人', value: 250 },
-	{ title: '无限制', value: -1 },
-]
-
-const availableParticipants = ref([
-	{ name: '李四', email: 'lisi@example.com' },
-	{ name: '王五', email: 'wangwu@example.com' },
-	{ name: '赵六', email: 'zhaoliu@example.com' },
-])
-
 const handleSave = async () => {
 	const { valid: isValid } = await formRef.value.validate()
 	if (!isValid) return
 
 	saving.value = true
 	try {
+		const description = JSON.stringify({
+			...originalDescriptionExtra.value,
+			enableWaitingRoom: formData.value.enableWaitingRoom,
+			enableRecording: formData.value.enableRecording,
+			disableCamera: formData.value.disableCamera,
+		})
+
 		const meetingData = {
-			...formData.value,
+			title: formData.value.title,
+			description,
 			startTime: new Date(`${formData.value.startDate} ${formData.value.startTime}`).toISOString(),
+			duration: formData.value.duration,
 		}
 
 		emit('save', meetingData)
@@ -220,16 +137,32 @@ const handleSave = async () => {
 	}
 }
 
-// 如果是编辑模式,填充表单数据
+// 如果是编辑模式，填充表单数据
 watch(
 	() => props.meeting,
 	meeting => {
 		if (meeting) {
 			const startDate = new Date(meeting.startTime)
+
+			let parsedDesc = {}
+			try {
+				parsedDesc = JSON.parse(meeting.description || '{}')
+			} catch {
+				parsedDesc = {}
+			}
+
+			// 提取已知字段，其余保留为 extra 防止丢失
+			const { enableWaitingRoom, enableRecording, disableCamera, ...extra } = parsedDesc
+			originalDescriptionExtra.value = extra
+
 			formData.value = {
-				...meeting,
+				title: meeting.title || '',
 				startDate: useDateFormat(startDate, 'YYYY-MM-DD').value,
 				startTime: useDateFormat(startDate, 'HH:mm').value,
+				duration: meeting.duration || 60,
+				enableWaitingRoom: enableWaitingRoom ?? false,
+				enableRecording: enableRecording ?? false,
+				disableCamera: disableCamera ?? false,
 			}
 		}
 	},

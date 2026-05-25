@@ -1,63 +1,64 @@
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
 
-* {
-	margin: 0;
-	padding: 0;
+/* ==================== 基础重置 ==================== */
+
+html {
 	box-sizing: border-box;
 }
 
-html,
 body {
 	font-family: 'Roboto', sans-serif;
 	overflow: hidden;
 }
 
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure,
+figcaption,
+blockquote,
+pre,
+ul,
+ol,
+dl,
+dd {
+	margin: 0;
+	padding: 0;
+}
+
 /* ==================== 自定义滚动条 ==================== */
 
-/* 浅色主题滚动条 */
 ::-webkit-scrollbar {
-	width: 8px;
-	height: 8px;
+	width: 0%;
 }
 
 ::-webkit-scrollbar-track {
 	background: transparent;
-	border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-	background: rgba(57, 102, 162, 0.2); /* primary 色系，20% 不透明度 */
+	background: rgba(57, 102, 162, 0.2);
 	border-radius: 4px;
-	transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: rgba(57, 102, 162, 0.35); /* hover 时加深 */
+	background: rgba(57, 102, 162, 0.35);
 }
 
 ::-webkit-scrollbar-thumb:active {
-	background: rgba(57, 102, 162, 0.5); /* active 时更深 */
+	background: rgba(57, 102, 162, 0.5);
 }
 
-/* 滚动条角落 */
 ::-webkit-scrollbar-corner {
 	background: transparent;
 }
 
-/* 暗色主题滚动条 */
-.v-theme--dark ::-webkit-scrollbar-thumb {
-	background: rgba(81, 128, 184, 0.3); /* 暗色模式使用更亮的 primary */
-}
+/* ==================== 过渡动画 ==================== */
 
-.v-theme--dark ::-webkit-scrollbar-thumb:hover {
-	background: rgba(81, 128, 184, 0.45);
-}
-
-.v-theme--dark ::-webkit-scrollbar-thumb:active {
-	background: rgba(81, 128, 184, 0.6);
-}
-
-/* 过渡动画 */
 .fade-enter-active,
 .fade-leave-active {
 	transition: opacity 0.3s ease;

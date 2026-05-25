@@ -164,8 +164,7 @@ onUnmounted(() => {
 						<!-- Logo 区域 -->
 						<div class="text-center mb-8">
 							<v-icon size="64" color="primary">mdi-account-circle</v-icon>
-							<h1 class="text-h4 font-weight-bold mt-4 text-primary">欢迎</h1>
-							<p class="text-body-2 text-medium-emphasis mt-2">无需注册，即可登陆</p>
+							<h1 class="text-h4 font-weight-bold mt-4 text-primary">蔚蓝天空</h1>
 						</div>
 
 						<!-- 手机号输入 -->
@@ -211,11 +210,13 @@ onUnmounted(() => {
 <style scoped>
 .login-container {
 	min-height: 100vh;
-	background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgb(var(--v-theme-secondary)) 100%);
+	background-image: url('@/assets/image/login-background.jpg');
+	background-size: cover;
 }
 
 .login-card {
 	backdrop-filter: blur(10px);
-	background-color: rgba(var(--v-theme-surface), 0.95) !important;
+	background-color: rgba(var(--v-theme-surface), 0.95);
+	opacity: 0.85;
 }
 </style>

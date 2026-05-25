@@ -18,65 +18,71 @@
 			<v-app-bar density="compact" flat elevation="0" color="surface" class="meeting-header">
 				<v-toolbar-title class="d-flex align-center">
 					<v-icon icon="mdi-video" color="primary" class="mr-2"></v-icon>
-					<span class="text-h6 font-weight-medium">{{ meetingInfo.title }}</span>
+					<span class="text-subtitle-1 text-sm-h6 font-weight-medium header-title">{{ meetingInfo.title }}</span>
 				</v-toolbar-title>
 
 				<v-spacer></v-spacer>
 
-				<div class="d-flex align-center mr-4">
+				<div class="d-none d-sm-flex align-center mr-4">
 					<v-icon icon="mdi-clock-outline" size="small" class="mr-1"></v-icon>
 					<span class="text-body-2 font-weight-medium">{{ meetingDuration }}</span>
 				</div>
 
 				<!-- 网络状态指示 -->
-				<v-tooltip location="bottom">
-					<template #activator="{ props }">
-						<v-chip v-bind="props" :color="networkQuality.color" variant="tonal" size="small">
-							<template #prepend>
-								<v-icon :icon="networkQuality.icon" size="small"></v-icon>
-							</template>
-							{{ networkQuality.text }}
-						</v-chip>
-					</template>
-					<div class="text-caption">
-						<div>发送质量: {{ connectionQuality.send.quality }}</div>
-						<div>接收质量: {{ connectionQuality.recv.quality }}</div>
-						<div v-if="effectiveType">网络类型: {{ effectiveType }}</div>
-					</div>
-				</v-tooltip>
+				<div class="d-none d-sm-flex align-center">
+					<v-tooltip location="bottom">
+						<template #activator="{ props }">
+							<v-chip v-bind="props" :color="networkQuality.color" variant="tonal" size="small">
+								<template #prepend>
+									<v-icon :icon="networkQuality.icon" size="small"></v-icon>
+								</template>
+								{{ networkQuality.text }}
+							</v-chip>
+						</template>
+						<div class="text-caption">
+							<div>发送质量: {{ connectionQuality.send.quality }}</div>
+							<div>接收质量: {{ connectionQuality.recv.quality }}</div>
+							<div v-if="effectiveType">网络类型: {{ effectiveType }}</div>
+						</div>
+					</v-tooltip>
+				</div>
+				<!-- 移动端网络状态图标 -->
+				<v-icon :icon="networkQuality.icon" :color="networkQuality.color" size="small" class="d-flex d-sm-none mr-1"></v-icon>
 				<!-- 会议人数显示 -->
-				<v-chip color="success" variant="flat" size="small" class="mr-4">
+				<v-chip color="success" variant="flat" size="small" class="d-none d-sm-flex mr-4">
 					<template #prepend>
 						<v-icon icon="mdi-account-multiple" size="small"></v-icon>
 					</template>
 					<span class="font-weight-medium">{{ participantCount }} 人</span>
 				</v-chip>
 				<!-- 视频特效应用 -->
-				<v-tooltip location="bottom">
-					<template #activator="{ props }">
-						<v-btn
-							v-bind="props"
-							icon="mdi-image-filter-hdr"
-							variant="text"
-							size="small"
-							:color="effectProducerActive ? 'success' : undefined"
-							:loading="effectLoading"
-							class="mr-2"
-							@click="toggleBackgroundPanel"
-						>
-							<!-- 显示激活状态指示器 -->
-							<v-badge v-if="effectProducerActive" dot color="success" location="top end">
-								<v-icon>mdi-image-filter-hdr</v-icon>
-							</v-badge>
-							<v-icon v-else>mdi-image-filter-hdr</v-icon>
-						</v-btn>
-					</template>
-					<div>
-						<div>背景特效</div>
-						<div v-if="effectProducerActive" class="text-caption">当前: {{ effectType === 'blur' ? '背景虚化' : '虚拟背景' }}</div>
-						<div v-if="effectLoading" class="text-caption text-warning">加载中...</div>
-					</div>
-				</v-tooltip>
+				<div class="d-none d-sm-flex align-center">
+					<v-tooltip location="bottom">
+						<template #activator="{ props }">
+							<v-btn
+								v-bind="props"
+								icon="mdi-image-filter-hdr"
+								variant="text"
+								size="small"
+								:color="effectProducerActive ? 'success' : undefined"
+								:loading="effectLoading"
+								class="mr-2"
+								@click="toggleBackgroundPanel"
+							>
+								<!-- 显示激活状态指示器 -->
+								<v-badge v-if="effectProducerActive" dot color="success" location="top end">
+									<v-icon>mdi-image-filter-hdr</v-icon>
+								</v-badge>
+								<v-icon v-else>mdi-image-filter-hdr</v-icon>
+							</v-btn>
+						</template>
+						<div>
+							<div>背景特效</div>
+							<div v-if="effectProducerActive" class="text-caption">当前: {{ effectType === 'blur' ? '背景虚化' : '虚拟背景' }}</div>
+							<div v-if="effectLoading" class="text-caption text-warning">加载中...</div>
+						</div>
+					</v-tooltip>
+				</div>
 
 				<v-btn icon="mdi-cog" variant="text" size="small" @click="showSettings = true"></v-btn>
 			</v-app-bar>
@@ -116,6 +122,8 @@
 					<!-- 侧边栏 -->
 					<div v-if="showSidebar" class="sidebar-container">
 						<div class="sidebar">
+							<!-- 移动端底部抝抽指示条 -->
+							<div class="mobile-drawer-handle d-sm-none" @click="showSidebar = false"></div>
 							<v-tabs v-model="sidebarTab" bg-color="surface" color="primary" density="compact" class="sidebar-tabs">
 								<v-tab value="participants">
 									<v-icon icon="mdi-account-multiple" size="small" class="mr-1"></v-icon>
@@ -481,18 +489,22 @@
 				</div>
 			</v-container>
 
+			<!-- 移动端抽屉遮罩 -->
+			<div v-if="mobile && showSidebar" class="mobile-scrim" @click="showSidebar = false"></div>
+
 			<!-- 底部控制栏 -->
 			<div class="control-bar-wrapper" :class="{ collapsed: controlBarCollapsed }">
-				<!-- 收起/展开按钮 -->
-				<v-btn icon variant="elevated" color="primary" size="small" class="collapse-toggle" @click="controlBarCollapsed = !controlBarCollapsed">
+				<!-- 收起/展开按钮 (PC 专用) -->
+				<v-btn icon variant="elevated" color="primary" size="small" class="collapse-toggle d-none d-sm-block" @click="controlBarCollapsed = !controlBarCollapsed">
 					<v-icon>{{ controlBarCollapsed ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
 				</v-btn>
 
 				<!-- 控制栏主体 -->
 				<transition name="slide-up">
-					<div v-show="!controlBarCollapsed" class="control-bar">
+					<div v-show="!controlBarCollapsed || mobile" class="control-bar">
 						<v-container fluid class="pa-0">
-							<v-row no-gutters align="center" justify="center">
+							<!-- PC 布局 -->
+							<v-row v-if="!mobile" no-gutters align="center" justify="center">
 								<!-- 左侧：待定 -->
 								<v-col cols="auto" class="d-flex align-center"> </v-col>
 								<v-spacer></v-spacer>
@@ -714,6 +726,118 @@
 									</v-badge>
 								</v-col>
 							</v-row>
+
+							<!-- 移动端布局 -->
+							<div v-else class="mobile-control-bar">
+								<!-- 麦克风 -->
+								<div class="mobile-ctrl-item">
+									<v-btn
+										:icon="audioEnabled ? 'mdi-microphone' : 'mdi-microphone-off'"
+										:color="audioEnabled ? 'surface' : 'error'"
+										:variant="audioEnabled ? 'elevated' : 'flat'"
+										size="default"
+										class="mobile-ctrl-btn"
+										@click="toggleAudio"
+									></v-btn>
+									<span class="mobile-ctrl-label">{{ audioEnabled ? '静音' : '开麦' }}</span>
+								</div>
+								<!-- 摄像头 -->
+								<div class="mobile-ctrl-item">
+									<v-btn
+										:icon="videoEnabled ? 'mdi-video' : 'mdi-video-off'"
+										:color="videoEnabled ? 'surface' : 'error'"
+										:variant="videoEnabled ? 'elevated' : 'flat'"
+										size="default"
+										class="mobile-ctrl-btn"
+										@click="toggleVideo"
+									></v-btn>
+									<span class="mobile-ctrl-label">{{ videoEnabled ? '关摄像头' : '开摄像头' }}</span>
+								</div>
+								<!-- 参与者 -->
+								<div class="mobile-ctrl-item">
+									<v-btn
+										icon="mdi-account-multiple"
+										variant="elevated"
+										color="surface"
+										size="default"
+										class="mobile-ctrl-btn"
+										@click="((showSidebar = !showSidebar), (sidebarTab = 'participants'))"
+									></v-btn>
+									<span class="mobile-ctrl-label">参与者</span>
+								</div>
+								<!-- 聊天 -->
+								<div class="mobile-ctrl-item">
+									<v-badge :content="unreadMessages" :model-value="unreadMessages > 0" color="error" floating>
+										<v-btn icon="mdi-chat" variant="elevated" color="surface" size="default" class="mobile-ctrl-btn" @click="toggleSidebarChat"></v-btn>
+									</v-badge>
+									<span class="mobile-ctrl-label">聊天</span>
+								</div>
+								<!-- 离开 -->
+								<div class="mobile-ctrl-item">
+									<v-btn icon="mdi-phone-hangup" variant="flat" color="error" size="default" class="mobile-ctrl-btn" @click="handleLeaveMeeting"></v-btn>
+									<span class="mobile-ctrl-label">离开</span>
+								</div>
+								<!-- 更多 -->
+								<div class="mobile-ctrl-item">
+									<v-menu location="top">
+										<template #activator="{ props: menuProps }">
+											<v-btn v-bind="menuProps" icon="mdi-dots-horizontal" variant="elevated" color="surface" size="default" class="mobile-ctrl-btn"></v-btn>
+										</template>
+										<v-list density="compact" bg-color="surface">
+											<v-list-item :disabled="effectLoading" @click="toggleBackgroundPanel">
+												<template #prepend><v-icon icon="mdi-image-filter-hdr" :color="effectProducerActive ? 'success' : undefined"></v-icon></template>
+												<v-list-item-title>背景特效</v-list-item-title>
+											</v-list-item>
+											<v-list-item :disabled="!screenSharing && hasScreenShare" @click="handleScreenShareToggle">
+												<template #prepend
+													><v-icon :icon="screenSharing ? 'mdi-monitor-off' : 'mdi-monitor-share'" :color="screenSharing ? 'success' : undefined"></v-icon
+												></template>
+												<v-list-item-title>{{ screenSharing ? '停止共享' : '共享屏幕' }}</v-list-item-title>
+											</v-list-item>
+											<v-list-item v-if="isHost" @click="toggleRecording">
+												<template #prepend
+													><v-icon
+														:icon="isRecording ? 'mdi-stop-circle' : 'mdi-record-circle-outline'"
+														:color="isRecording ? 'error' : undefined"
+													></v-icon
+												></template>
+												<v-list-item-title>{{ isRecording ? '停止录制' : '开始录制' }}</v-list-item-title>
+											</v-list-item>
+											<v-list-item @click="toggleVideoLayout">
+												<template #prepend><v-icon icon="mdi-view-grid"></v-icon></template>
+												<v-list-item-title>切换布局</v-list-item-title>
+											</v-list-item>
+											<v-list-item @click="toggleHandRaise">
+												<template #prepend
+													><v-icon
+														:icon="handRaised ? 'mdi-hand-back-right' : 'mdi-hand-back-right-outline'"
+														:color="handRaised ? 'warning' : undefined"
+													></v-icon
+												></template>
+												<v-list-item-title>{{ handRaised ? '放下手' : '举手' }}</v-list-item-title>
+											</v-list-item>
+											<v-list-item v-if="!isHost" @click="handleRequestSpotlight">
+												<template #prepend><v-icon icon="mdi-spotlight" color="warning"></v-icon></template>
+												<v-list-item-title>申请聚光灯</v-list-item-title>
+											</v-list-item>
+											<v-list-item v-if="spotlightPeerId" @click="handleSetSpotlight({ targetPeerId: null, active: false })">
+												<template #prepend><v-icon icon="mdi-spotlight-off"></v-icon></template>
+												<v-list-item-title>关闭聚光灯</v-list-item-title>
+											</v-list-item>
+											<v-list-item @click="showSettings = true">
+												<template #prepend><v-icon icon="mdi-cog"></v-icon></template>
+												<v-list-item-title>设置</v-list-item-title>
+											</v-list-item>
+											<v-divider></v-divider>
+											<v-list-item @click="toggleFullscreen">
+												<template #prepend><v-icon :icon="isFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"></v-icon></template>
+												<v-list-item-title>{{ isFullscreen ? '退出全屏' : '全屏' }}</v-list-item-title>
+											</v-list-item>
+										</v-list>
+									</v-menu>
+									<span class="mobile-ctrl-label">更多</span>
+								</div>
+							</div>
 						</v-container>
 					</div>
 				</transition>
@@ -939,6 +1063,7 @@ import { uploadFile } from '@/api/file'
 import { fetchMessageHistory } from '@/api/room'
 import { $notify } from '@/plugins/notification'
 import { useUserStore } from '@/stores/user'
+import { useDisplay } from 'vuetify'
 
 const route = useRoute()
 const router = useRouter()
@@ -1083,6 +1208,7 @@ const { onlineParticipants, loadParticipants } = useParticipants(roomId, partici
 // ==================== 网络状态监控 ====================
 const online = useOnline()
 const networkState = useNetwork()
+const { mobile } = useDisplay()
 
 // 安全地解构，提供默认值
 const effectiveType = computed(() => networkState.effectiveType?.value || '4g')
@@ -1178,6 +1304,7 @@ const handleTimeup = () => {
 }
 // 页面挂载先执行会议拉取判断时间拦截
 onMounted(async () => {
+	showSidebar.value = !mobile.value
 	try {
 		loadingMessage.value = '正在加载会议信息...'
 		loadingProgress.value = 20
@@ -1665,6 +1792,9 @@ useIntervalFn(() => {
 const participantCount = computed(() => onlineParticipants.value.length)
 
 const videoContainerHeight = computed(() => {
+	if (mobile.value) {
+		return 'calc(100dvh - 48px - 72px)'
+	}
 	const topBarHeight = 48
 	const controlBarHeight = controlBarCollapsed.value ? 0 : 88
 	return `calc(100vh - ${topBarHeight}px - ${controlBarHeight}px)`
@@ -1802,6 +1932,16 @@ watch(selectedMicrophone, async deviceId => {
 	if (deviceId && localStream.value) {
 		await changeAudioDevice(deviceId)
 		$notify.success('已切换麦克风')
+	}
+})
+
+// 移动端/PC 切换时同步侧边栏状态
+watch(mobile, isMobile => {
+	if (isMobile) {
+		controlBarCollapsed.value = false
+		showSidebar.value = false
+	} else {
+		showSidebar.value = true
 	}
 })
 
@@ -2773,6 +2913,116 @@ useEventListener('beforeunload', e => {
 	.warning-icon-wrapper {
 		width: 56px;
 		height: 56px;
+	}
+}
+
+/* ==================== 移动端适配 ==================== */
+
+/* 移动端顶栏标题截断 */
+.header-title {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 160px;
+}
+
+@media (min-width: 600px) {
+	.header-title {
+		max-width: none;
+	}
+}
+
+/* 移动端侧边栏底部抽屉 */
+@media (max-width: 599px) {
+	.sidebar-container {
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		width: 100% !important;
+		height: 65vh;
+		z-index: 300;
+		border-radius: 16px 16px 0 0;
+		box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.2);
+		overflow: hidden;
+		animation: slideUpDrawer 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+	}
+}
+
+@keyframes slideUpDrawer {
+	from {
+		transform: translateY(100%);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0);
+		opacity: 1;
+	}
+}
+
+/* 移动端拖拽指示条 */
+.mobile-drawer-handle {
+	width: 36px;
+	height: 4px;
+	background: rgba(var(--v-theme-on-surface), 0.2);
+	border-radius: 2px;
+	margin: 10px auto 4px;
+	flex-shrink: 0;
+	cursor: pointer;
+}
+
+/* 移动端侧边栏遮罩 */
+.mobile-scrim {
+	position: fixed;
+	inset: 0;
+	z-index: 299;
+	background: rgba(0, 0, 0, 0.45);
+	backdrop-filter: blur(2px);
+	animation: scrimFadeIn 0.25s ease-out;
+}
+
+@keyframes scrimFadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/* 移动端控制栏 */
+.mobile-control-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-around;
+	padding: 8px 4px;
+	padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+
+.mobile-ctrl-item {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+	min-width: 52px;
+}
+
+.mobile-ctrl-btn {
+	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mobile-ctrl-label {
+	font-size: 10px;
+	color: rgb(var(--v-theme-on-surface-variant));
+	white-space: nowrap;
+	font-weight: 500;
+	line-height: 1;
+}
+
+/* 移动端控制栏容器内边距 */
+@media (max-width: 599px) {
+	.control-bar {
+		padding: 0;
 	}
 }
 </style>

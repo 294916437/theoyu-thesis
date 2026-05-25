@@ -1310,5 +1310,31 @@ onUnmounted(() => {
 	.participants-thumbnails {
 		padding: 8px;
 	}
+
+	.layout-grid {
+		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+		grid-auto-rows: minmax(120px, 1fr);
+		gap: 4px;
+		padding: 2px;
+	}
+
+	.spotlight-overlay {
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.spotlight-filmstrip {
+		width: 100%;
+		height: 90px;
+		flex-direction: row;
+		overflow-x: auto;
+		overflow-y: hidden;
+	}
+
+	.filmstrip-tile {
+		width: 120px;
+		height: 68px;
+		flex-shrink: 0;
+	}
 }
 </style>

@@ -258,7 +258,7 @@ export function useMedia() {
 	 * 渲染循环 - 应用特效
 	 */
 	function renderLoop() {
-		// 使用闭包或全局引用 sourceVideoElement
+		// 使用闭包引用 sourceVideoElement
 		const videoEl = sourceVideoElement
 		// 缓存 reactive ref 值
 		const type = effectType.value
@@ -271,22 +271,22 @@ export function useMedia() {
 		try {
 			// 只有当视频准备好且有宽/高时才绘制
 			if (videoEl.readyState >= 2 && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
-				// 1. 将源视频下采样绘制到处理 canvas（GPU 路径，无 CPU 参与）
+				// 1. 将源视频下采样绘制到处理 canvas
 				procCtx.drawImage(videoEl, 0, 0, PROC_W, PROC_H)
 
 				// 2. 应用特效 (WASM/Mask)
 				if (currentMask && effectProcessor && wasmModule) {
 					try {
-						// 3. 读取处理分辨率像素（0.9 MB，替代全分辨率的 3.5 MB，减少 75% CPU 阻塞）
+						// 3. 读取处理分辨率像素
 						const frameData = procCtx.getImageData(0, 0, PROC_W, PROC_H)
 
-						// 4. 写入 WASM 输入帧（复用缓存视图，避免每帧 new TypedArray）
+						// 4. 写入 WASM 输入帧
 						cachedInputView.set(frameData.data)
 
-						// 5. 写入分割 mask（推理循环在独立 setTimeout 中异步生成，固定 256×144）
+						// 5. 写入分割 mask
 						cachedMaskView.set(currentMask)
 
-						// 6. WASM 处理（在 PROC_W×PROC_H 分辨率下完成 JBF + blur/replace）
+						// 6. WASM 处理
 						effectProcessor.prepare_mask()
 
 						if (type === 'blur') {
@@ -302,7 +302,7 @@ export function useMedia() {
 						// 7. 将 WASM 输出回写至处理 canvas
 						procCtx.putImageData(new ImageData(cachedOutputView, PROC_W, PROC_H), 0, 0)
 
-						// 8. 等尺寸 blit：procCanvas 与 effectCanvas 均为 PROC_W×PROC_H，GPU 直接复制无需 resize
+						// 8. 等尺寸 blit
 						effectCtx.drawImage(procCanvas, 0, 0)
 					} catch (err) {
 						// 忽略单帧处理错误，防止循环中断

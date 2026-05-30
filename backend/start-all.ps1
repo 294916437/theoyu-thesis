@@ -1,6 +1,11 @@
 # 设置遇到错误不中断，但打印红字
 $ErrorActionPreference = "Continue"
 
+# 修复 PowerShell 控制台中文乱码：切换代码页为 UTF-8
+chcp 65001 >$null 2>&1
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$OutputEncoding = [Text.Encoding]::UTF8
+
 # 切换到脚本所在目录 (backend目录)
 Set-Location $PSScriptRoot
 
@@ -112,7 +117,7 @@ foreach ($dir in $selectedDirs) {
             $windowTitle = "微服务: $dir"
             
             # 使用 Start-Process 弹出一个新的 PowerShell 窗口，并限制 JVM 内存
-            Start-Process powershell -ArgumentList "-NoExit", "-Command", "`$Host.UI.RawUI.WindowTitle = '$windowTitle'; java -Xms128m -Xmx256m -jar `"$($jarFile.FullName)`""
+            Start-Process powershell -ArgumentList "-NoExit", "-Command", "chcp 65001 >`$null 2>&1; [Console]::OutputEncoding = [Text.Encoding]::UTF8; `$Host.UI.RawUI.WindowTitle = '$windowTitle'; java '-Dfile.encoding=UTF-8' -Xms128m -Xmx256m -jar `"$($jarFile.FullName)`""
         } else {
             Write-Host "[跳过] 未在 $targetPath 中找到 Jar 文件。可能它是一个没有可执行类的依赖模块，或未被编译！" -ForegroundColor Yellow
         }

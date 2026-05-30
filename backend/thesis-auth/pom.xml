@@ -126,7 +126,6 @@
                 <version>${spring-boot.version}</version>
                 <configuration>
                     <mainClass>com.theoyu.thesis.auth.AuthApplication</mainClass>
-                    <skip>true</skip>
                 </configuration>
                 <executions>
                     <execution>

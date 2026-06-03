@@ -19,7 +19,7 @@
 					<div class="flex-1 overflow-y-auto">
 						<ConversationListSkeleton v-if="initialLoadingConversations" :count="8" />
 
-						<ConversationList v-else :conversations="conversations" :active-id="activeConversationId" @select="handleSelectConversation" />
+						<ConversationList v-else :conversations="conversations" :active-id="activeConversationId" @select="handleSelectConversation" @delete="handleDeleteConversation" />
 					</div>
 				</v-sheet>
 			</v-col>
@@ -49,7 +49,7 @@ import CreateConversationDialog from '@/features/chat/components/CreateConversat
 import ConversationList from '@/features/chat/components/ConversationList.vue'
 import ChatPanel from '@/features/chat/components/ChatPanel.vue'
 import ConversationListSkeleton from '../components/ConversationListSkeleton.vue'
-import { fetchConversations, fetchConversationMessages, createConversation } from '@/api/chat'
+import { fetchConversations, fetchConversationMessages, createConversation, leaveConversation } from '@/api/chat'
 import { useUserStore } from '@/stores/user'
 import messageService from '@/services/MessageService'
 import { $notify } from '@/plugins/notification'
@@ -462,6 +462,41 @@ const handleCreateConversation = async ({ targetUserId, onSuccess, onError }) =>
 	} catch (error) {
 		console.error('创建会话失败:', error)
 		onError(error.message || '创建失败，请稍后重试')
+	}
+}
+
+/**
+ * 删除会话（乐观更新）
+ */
+const handleDeleteConversation = async id => {
+	// 备份当前状态以备失败时回滚
+	const previousConversations = [...conversations.value]
+	const previousActiveId = activeConversationId.value
+
+	// 乐观更新：从内存中移除该会话
+	conversations.value = conversations.value.filter(c => c.id !== id)
+	
+	// 如果删除的是当前选中的会话，清除选中状态
+	if (activeConversationId.value === id) {
+		activeConversationId.value = null
+	}
+
+	try {
+		const result = await leaveConversation(id)
+		if (result.success) {
+			$notify.success('会话已删除')
+		} else {
+			// 接口返回失败，回滚状态
+			conversations.value = previousConversations
+			activeConversationId.value = previousActiveId
+			$notify.error(result.message || '删除会话失败')
+		}
+	} catch (error) {
+		// 接口异常，回滚状态
+		conversations.value = previousConversations
+		activeConversationId.value = previousActiveId
+		console.error('删除会话异常:', error)
+		$notify.error('删除会话失败，请稍后重试')
 	}
 }
 

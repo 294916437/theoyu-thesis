@@ -11,9 +11,12 @@ import com.theoyu.thesis.chat.biz.model.entity.ConversationPO;
 import com.theoyu.thesis.chat.biz.model.entity.ConversationParticipantPO;
 import com.theoyu.thesis.chat.biz.model.mapper.ConversationPOMapper;
 import com.theoyu.thesis.chat.biz.model.mapper.ConversationParticipantPOMapper;
+import com.theoyu.thesis.chat.biz.model.mapper.MessagePOMapper;
 import com.theoyu.thesis.chat.biz.model.vo.*;
+import com.theoyu.thesis.chat.biz.rpc.KVRpcService;
 import com.theoyu.thesis.chat.biz.rpc.IdGeneratorRpcService;
 import com.theoyu.thesis.chat.biz.rpc.UserRpcService;
+import com.theoyu.thesis.chat.biz.model.entity.MessagePO;
 import com.theoyu.thesis.chat.biz.service.ConversationService;
 import com.theoyu.thesis.user.dto.response.FindUserByIdRspDTO;
 import jakarta.annotation.Resource;
@@ -54,6 +57,13 @@ public class ConversationServiceImpl implements ConversationService {
     
     @Resource
     private UserRpcService userRpcService;
+
+    @Resource
+    private KVRpcService kvRpcService;
+    
+    @Resource
+    private MessagePOMapper messagePOMapper;
+
     @Resource
     private IdGeneratorRpcService idGeneratorRpcService;
 
@@ -124,17 +134,57 @@ public class ConversationServiceImpl implements ConversationService {
         List<Long> targetUserIds = new ArrayList<>(conversationToTargetUserMap.values());
         
         if (targetUserIds.isEmpty()) {
-            log.warn("⚠️ 未找到任何对方用户ID，可能数据异常");
+            log.warn("未找到任何对方用户ID，可能数据异常");
         }
         
-        // 批量查询用户信息（RPC调用）
-        Map<Long, FindUserByIdRspDTO> userMap = Collections.emptyMap();
-        if (CollUtil.isNotEmpty(targetUserIds)) {
-            userMap = userRpcService.findByIds2(targetUserIds);
-        }
+        // 异步批量查询用户信息
+        CompletableFuture<Map<Long, FindUserByIdRspDTO>> userMapFuture = CompletableFuture.supplyAsync(() -> {
+            if (CollUtil.isEmpty(targetUserIds)) {
+                return Collections.emptyMap();
+            }
+            return userRpcService.findByIds2(targetUserIds);
+        }, threadPoolTaskExecutor);
+
+        // 异步批量查询最后一条消息基本信息
+        final List<ConversationPO> finalConversations = conversations;
+        CompletableFuture<Map<Long, MessagePO>> messageMapFuture = CompletableFuture.supplyAsync(() -> {
+            List<Long> lastMessageIds = finalConversations.stream()
+                    .map(ConversationPO::getLastMessageId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+            if (CollUtil.isEmpty(lastMessageIds)) {
+                return Collections.emptyMap();
+            }
+            List<MessagePO> messagePOs = messagePOMapper.selectByIds(lastMessageIds);
+            if (CollUtil.isEmpty(messagePOs)) {
+                return Collections.emptyMap();
+            }
+            return messagePOs.stream().collect(Collectors.toMap(MessagePO::getId, m -> m));
+        }, threadPoolTaskExecutor);
+
+        // 异步批量查询消息的 KV 文本内容（基于消息查询的结果）
+        CompletableFuture<Map<String, String>> contentMapFuture = messageMapFuture.thenApplyAsync(messageMap -> {
+            if (CollUtil.isEmpty(messageMap)) {
+                return Collections.emptyMap();
+            }
+            List<String> contentUuids = messageMap.values().stream()
+                    .map(MessagePO::getContentUuid)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+            if (CollUtil.isEmpty(contentUuids)) {
+                return Collections.emptyMap();
+            }
+            return kvRpcService.batchGetMessageContent(contentUuids);
+        }, threadPoolTaskExecutor);
+
+        // 并行等待所有异步任务完成
+        CompletableFuture.allOf(userMapFuture, messageMapFuture, contentMapFuture).join();
+
+        Map<Long, FindUserByIdRspDTO> finalUserMap = userMapFuture.join();
+        Map<Long, MessagePO> finalMessageMap = messageMapFuture.join();
+        Map<String, String> finalContentMap = contentMapFuture.join();
         
         // 组装返回结果
-        Map<Long, FindUserByIdRspDTO> finalUserMap = userMap;
         List<ConversationListResVO.ConversationItemVO> items = conversations.stream()
                 .map(conv -> {
                     ConversationListResVO.ConversationItemVO item = new ConversationListResVO.ConversationItemVO();
@@ -144,12 +194,23 @@ public class ConversationServiceImpl implements ConversationService {
                     item.setLastMessageId(conv.getLastMessageId());
                     item.setLastMessageTime(conv.getLastMessageTime());
                     
+                    // 填充最后一条消息的内容和类型
+                    if (conv.getLastMessageId() != null) {
+                        MessagePO lastMsg = finalMessageMap.get(conv.getLastMessageId());
+                        if (lastMsg != null) {
+                            item.setLastMessageType(lastMsg.getMessageType());
+                            if (lastMsg.getContentUuid() != null) {
+                                item.setLastMessageContent(finalContentMap.get(lastMsg.getContentUuid()));
+                            }
+                        }
+                    }
+                    
                     // 填充当前用户的参与者信息（未读数等）
                     ConversationParticipantPO currentParticipant = currentUserParticipantMap.get(conv.getId());
                     item.setUnreadCount(currentParticipant != null ? currentParticipant.getUnreadCount() : 0);
                     item.setIsActive(currentParticipant != null ? currentParticipant.getIsActive() : false);
                     
-                    // 填充对方用户信息f
+                    // 填充对方用户信息
                     Long targetUserId = conversationToTargetUserMap.get(conv.getId());
                     if (targetUserId != null) {
                         FindUserByIdRspDTO userInfo = finalUserMap.get(targetUserId);

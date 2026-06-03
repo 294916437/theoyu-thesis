@@ -27,6 +27,7 @@ public class ConversationListResVO {
         private String title;
         private Long lastMessageId;
         private String lastMessageContent;
+        private Integer lastMessageType;
         private LocalDateTime lastMessageTime;
         private Integer unreadCount;
         private Boolean isActive;

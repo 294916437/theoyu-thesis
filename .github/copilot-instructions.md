@@ -1,6 +1,6 @@
 # 项目介绍
 
-1. 题目：基于 WebRTC 的实时视频会议系统设计与优化
+1. 题目：基于 WebRTC 的实时视频会议系统设计与实现
 2. 技术栈
    - **WebRTC&Mediasoup**: 媒体通信框架
    - **Rust**: 编译为 wasm 模块，通过 WebAssembly 实现端侧的视频流处理

@@ -65,5 +65,10 @@ public interface MQConstants {
      */
     public static final String TAG_ROOM_CLOSED = "room-closed";
 
+    /**
+     * 房间分配 SFU 节点事件 Tag
+     */
+    public static final String TAG_ROOM_SFU_ASSIGNED = "sfu-assigned";
+
 
 }

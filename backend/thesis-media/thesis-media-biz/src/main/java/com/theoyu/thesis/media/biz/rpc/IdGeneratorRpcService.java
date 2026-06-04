@@ -18,6 +18,10 @@ public class IdGeneratorRpcService {
      */
     private static final String BIZ_TAG_ROOM_MSG_ID = "leaf-segment-room-message-id";
     /**
+     * Leaf 号段模式：SFU 节点 ID 业务标识
+     */
+    private static final String BIZ_TAG_SFU_NODE_ID = "leaf-segment-sfu-node-id";
+    /**
      * 调用分布式 ID 生成服务生成房间ID
      *
      * @return
@@ -34,6 +38,11 @@ public class IdGeneratorRpcService {
         return idGeneratorFeignApi.getSnowflakeId(BIZ_TAG_ROOM_MSG_ID);
     }
 
-
+    /**
+     * 生成分布式 SFU 节点主键 ID
+     */
+    public String getSfuNodeId() {
+        return idGeneratorFeignApi.getSegmentId(BIZ_TAG_SFU_NODE_ID);
+    }
 
 }

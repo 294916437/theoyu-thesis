@@ -1,6 +1,9 @@
 package com.theoyu.thesis.media.biz.model.mapper;
 
 import com.theoyu.thesis.media.biz.model.entity.SfuNodePO;
+import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
 
 public interface SfuNodePOMapper {
     int deleteByPrimaryKey(Long id);
@@ -14,4 +17,12 @@ public interface SfuNodePOMapper {
     int updateByPrimaryKeySelective(SfuNodePO record);
 
     int updateByPrimaryKey(SfuNodePO record);
+
+    SfuNodePO selectByInstanceId(@Param("instanceId") String instanceId);
+
+    List<SfuNodePO> selectAvailableNodes();
+
+    int incrementCurrentLoad(@Param("id") Long id);
+
+    int decrementCurrentLoad(@Param("id") Long id);
 }

@@ -12,6 +12,9 @@ import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
 import com.theoyu.thesis.media.biz.enums.ResponseCodeEnum;
 import com.theoyu.thesis.media.biz.grpc.SFUGrpcServer;
 import com.theoyu.thesis.media.biz.model.dto.RoomCreatedEventDTO;
+import com.theoyu.thesis.media.biz.model.dto.RoomSfuAssignedEventDTO;
+import com.theoyu.thesis.media.biz.model.entity.SfuNodePO;
+import com.theoyu.thesis.media.biz.service.SfuNodeService;
 import com.theoyu.thesis.media.biz.model.entity.RoomPO;
 import com.theoyu.thesis.media.biz.model.entity.RoomParticipantPO;
 import com.theoyu.thesis.media.biz.model.entity.RoomRecordPO;
@@ -26,13 +29,14 @@ import com.theoyu.thesis.user.dto.response.FindUserByIdRspDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -51,6 +55,9 @@ public class RoomServiceImpl implements RoomService {
     private RoomRecordPOMapper roomRecordPOMapper;
 
     @Resource
+    private SfuNodeService sfuNodeService;
+
+    @Resource
     private IdGeneratorRpcService idGeneratorRpcService;
 
     @Resource
@@ -64,9 +71,6 @@ public class RoomServiceImpl implements RoomService {
 
     @Resource(name = "taskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
-
-    @Value("${sfu.server.url:ws://localhost:3000}")
-    private String sfuServerUrl;
 
     private static final Integer MAX_ACTIVE_ROOMS_PER_USER = 10;
 
@@ -94,7 +98,7 @@ public class RoomServiceImpl implements RoomService {
         }
         RoomPO room = RoomPO.builder()
                 .id(roomId)
-                .sfuNodeId(reqVO.getSfuNodeId())
+                .sfuNodeId(0L) // 默认为0表示未分配节点
                 .roomNo(roomNo)
                 .hostId(userId)
                 .title(reqVO.getTitle())
@@ -149,7 +153,7 @@ public class RoomServiceImpl implements RoomService {
                 .roomId(roomId)
                 .roomNo(roomNo)
                 .title(room.getTitle())
-                .sfuServerUrl(sfuServerUrl)
+                .sfuServerUrl(null)
                 .maxParticipants(room.getMaxParticipants())
                 .createdTime(room.getCreatedTime())
                 .build();
@@ -191,7 +195,7 @@ public class RoomServiceImpl implements RoomService {
                 .status(room.getStatus())
                 .startTime(room.getStartTime())
                 .createdTime(room.getCreatedTime())
-                .sfuServerUrl(sfuServerUrl)
+                .sfuServerUrl(resolveSfuServerUrlForRoom(room))
                 .participants(participants)
                 .build();
     }
@@ -300,10 +304,32 @@ public class RoomServiceImpl implements RoomService {
                     .build();
         }
 
-        // 5. 返回成功响应
+        // 5. 动态分配或复用已绑定的 SFU 节点
+        String resolvedSfuUrl = null;
+        // 0 表示未分配SFU节点
+        if(room.getSfuNodeId() == 0) {
+            log.info("[RoomService] 房间首次分配 SFU 节点 - roomId: {}", roomId);
+            try {
+                SfuNodePO sfuNode = sfuNodeService.allocateNodeForRoom(roomId);
+                resolvedSfuUrl = resolveSfuServerUrl(sfuNode);
+                // 异步通知 SFU 分配结果（MQ 消息由 RoomSfuAssignedConsumer 处理）
+                asyncOnRoomSfuAssigned(room, sfuNode, resolvedSfuUrl, userId);
+            } catch (BusinessException e) {
+                log.error("[RoomService] SFU 节点分配失败 - roomId: {}", roomId, e);
+                return JoinRoomResVO.builder()
+                        .roomId(roomId)
+                        .allowed(false)
+                        .message(e.getErrorMessage())
+                        .build();
+            }
+        } else {
+            log.info("[RoomService] 房间已绑定 SFU 节点 - roomId: {}, sfuNodeId: {}",
+                    roomId, room.getSfuNodeId());
+        }
+
         return JoinRoomResVO.builder()
                 .roomId(roomId)
-                .sfuServerUrl(sfuServerUrl)
+                .sfuServerUrl(resolvedSfuUrl)
                 .allowed(true)
                 .message("验证成功")
                 .build();
@@ -343,7 +369,7 @@ public class RoomServiceImpl implements RoomService {
         if (reqVO.getStartTime() != null) {
             // 前端传入 UTC Instant，转换为 UTC+8 LocalDateTime 存储（与项目惯例一致）
             LocalDateTime startTimeLDT = LocalDateTime.ofInstant(
-                    reqVO.getStartTime(), java.time.ZoneOffset.ofHours(8));
+                    reqVO.getStartTime(), ZoneOffset.ofHours(8));
             update.setStartTime(startTimeLDT);
             // 5. 根据 duration 计算 endTime（仅预约会议需要）
             if (reqVO.getDuration() != null && reqVO.getDuration() > 0) {
@@ -777,6 +803,60 @@ public class RoomServiceImpl implements RoomService {
     // ==================== 私有辅助方法 ====================
 
     /**
+     * 解析房间对应的 SFU WebSocket 地址
+     * 若房间未分配 SFU 节点，返回空字符串
+     */
+    private String resolveSfuServerUrlForRoom(RoomPO room) {
+        if (room == null || room.getSfuNodeId() == null) {
+            return "";
+        }
+        SfuNodePO node = sfuNodeService.getNodeById(room.getSfuNodeId());
+        if (node == null) {
+            return "";
+        }
+        return sfuNodeService.buildSfuServerUrl(node);
+    }
+
+    /**
+     * 根据 SFU 节点构建 WebSocket 连接地址
+     */
+    private String resolveSfuServerUrl(SfuNodePO node) {
+        if (node == null) {
+            return "";
+        }
+        return sfuNodeService.buildSfuServerUrl(node);
+    }
+
+    /**
+     * 房间首次绑定 SFU 后的异步处理：MQ 事件 + KV 分配记录
+     */
+    private void asyncOnRoomSfuAssigned(RoomPO room, SfuNodePO sfuNode, String sfuServerUrl, Long userId) {
+        threadPoolTaskExecutor.execute(() -> {
+            LocalDateTime now = LocalDateTime.now();
+            try {
+                RoomSfuAssignedEventDTO event = RoomSfuAssignedEventDTO.builder()
+                        .roomId(room.getId())
+                        .roomNo(room.getRoomNo())
+                        .sfuNodeId(sfuNode.getId())
+                        .instanceId(sfuNode.getInstanceId())
+                        .sfuServerUrl(sfuServerUrl)
+                        .assignedByUserId(userId)
+                        .timestamp(now)
+                        .build();
+
+                rocketMQTemplate.convertAndSend(
+                        MQConstants.TOPIC_MEDIA_ROOM_EVENT + ":" + MQConstants.TAG_ROOM_SFU_ASSIGNED,
+                        JsonUtils.toJsonString(event)
+                );
+                log.info("[RoomService] 房间 SFU 分配事件已发送 MQ - roomId: {}, sfuNodeId: {}",
+                        room.getId(), sfuNode.getId());
+            } catch (Exception e) {
+                log.error("[RoomService] 发送房间 SFU 分配 MQ 事件失败 - roomId: {}", room.getId(), e);
+            }
+        });
+    }
+
+    /**
      * 实时更新用户最近参加会议缓存（ZSet）
      * 在参与者加入会议时同步调用，确保缓存与 DB 实时一致
      */
@@ -785,7 +865,7 @@ public class RoomServiceImpl implements RoomService {
             String cacheKey = String.format(RedisKeyConstants.USER_RECENT_ROOMS_KEY, userId);
 
             double score = joinedAt != null
-                    ? joinedAt.toEpochSecond(java.time.ZoneOffset.of("+8"))
+                    ? joinedAt.toEpochSecond(ZoneOffset.of("+8"))
                     : System.currentTimeMillis() / 1000.0;
 
             // 使用 ZADD，若 roomId 已存在则更新 score 为最新加入时间
@@ -970,7 +1050,7 @@ public class RoomServiceImpl implements RoomService {
             return 0;
         }
 
-        return (int) java.time.Duration.between(start, end).toMinutes();
+        return (int) Duration.between(start, end).toMinutes();
     }
 
     /**
@@ -1124,7 +1204,7 @@ public class RoomServiceImpl implements RoomService {
                 // 批量添加到 ZSet
                 for (RoomParticipantPO participant : participants) {
                     double score = participant.getJoinedAt() != null
-                            ? participant.getJoinedAt().toEpochSecond(java.time.ZoneOffset.of("+8"))
+                            ? participant.getJoinedAt().toEpochSecond(ZoneOffset.of("+8"))
                             : System.currentTimeMillis() / 1000.0;
 
                     redisTemplate.opsForZSet().add(cacheKey, participant.getRoomId(), score);
@@ -1158,7 +1238,7 @@ public class RoomServiceImpl implements RoomService {
                 // 批量添加到 ZSet
                 for (RoomPO room : rooms) {
                     double score = room.getStartTime() != null
-                            ? room.getStartTime().toEpochSecond(java.time.ZoneOffset.of("+8"))
+                            ? room.getStartTime().toEpochSecond(ZoneOffset.of("+8"))
                             : System.currentTimeMillis() / 1000.0;
 
                     redisTemplate.opsForZSet().add(cacheKey,room.getId().toString(), score);
@@ -1584,7 +1664,7 @@ public class RoomServiceImpl implements RoomService {
         if (activationTime.isBefore(now)) {
             activationTime = now;
         }
-        double score = activationTime.toEpochSecond(java.time.ZoneOffset.ofHours(8));
+        double score = activationTime.toEpochSecond(ZoneOffset.ofHours(8));
         redisTemplate.opsForZSet().add(
                 RedisKeyConstants.ROOM_ACTIVATION_QUEUE_KEY, roomId.toString(), score);
         log.info("[RoomService] 已调度会议激活任务 - roomId: {}, activationTime: {}", roomId, activationTime);

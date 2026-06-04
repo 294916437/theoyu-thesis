@@ -46,6 +46,7 @@ public enum ResponseCodeEnum implements BaseExceptionInterface {
     // ==================== SFU 节点相关 40xx ====================
     SFU_NODE_NOT_FOUND("MEDIA-4001", "SFU节点不存在"),
     SFU_NODE_UNAVAILABLE("MEDIA-4002", "SFU节点不可用"),
+    SFU_NODE_ALLOCATION_FAILED("MEDIA-4003", "SFU节点分配失败"),
 
     // ==================== 媒体相关 50xx ====================
     MEDIA_STATS_INVALID("MEDIA-5001", "媒体统计数据无效"),

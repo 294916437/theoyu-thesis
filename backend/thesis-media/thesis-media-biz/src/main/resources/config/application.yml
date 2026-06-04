@@ -35,6 +35,8 @@ grpc:
 
 
 sfu:
+  discovery:
+    service-name: sfu-server
   server:
     url: ws://localhost:3000
 

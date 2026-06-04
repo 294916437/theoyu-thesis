@@ -37,6 +37,11 @@ public interface RoomPOMapper {
     int updateStatusById(@Param("id") Long id, @Param("status") Integer status);
 
     /**
+     * 绑定房间 SFU 节点
+     */
+    int updateSfuNodeIdIfAbsent(@Param("id") Long id, @Param("sfuNodeId") Long sfuNodeId);
+
+    /**
      * 查询用户即将开始的会议
      */
     List<RoomPO> selectUpcomingRoomsByUserId(@Param("userId") Long userId,@Param("offset") Long offset,@Param("pageSize") Long pageSize);

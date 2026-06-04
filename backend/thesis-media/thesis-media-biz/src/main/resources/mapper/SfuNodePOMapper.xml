@@ -161,4 +161,34 @@
       grpc_host = #{grpcHost,jdbcType=VARCHAR}
     where id = #{id,jdbcType=BIGINT}
   </update>
+
+  <select id="selectByInstanceId" parameterType="java.lang.String" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from t_sfu_node
+    where instance_id = #{instanceId,jdbcType=VARCHAR}
+    limit 1
+  </select>
+
+  <select id="selectAvailableNodes" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from t_sfu_node
+    where `status` = 1
+    order by current_load asc, id asc
+  </select>
+
+  <update id="incrementCurrentLoad">
+    update t_sfu_node
+    set current_load = current_load + 1,
+        updated_time = now()
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <update id="decrementCurrentLoad">
+    update t_sfu_node
+    set current_load = case when current_load > 0 then current_load - 1 else 0 end,
+        updated_time = now()
+    where id = #{id,jdbcType=BIGINT}
+  </update>
 </mapper>

@@ -241,6 +241,15 @@
         updated_time = NOW()
     WHERE id = #{id}
   </update>
+
+  <!-- 首次绑定 SFU 节点（sfu_node_id 为空或 0 时才更新） -->
+  <update id="updateSfuNodeIdIfAbsent">
+    UPDATE t_room
+    SET sfu_node_id = #{sfuNodeId,jdbcType=BIGINT},
+        updated_time = NOW()
+    WHERE id = #{id,jdbcType=BIGINT}
+      AND (sfu_node_id IS NULL OR sfu_node_id = 0)
+  </update>
   <!-- 查询用户即将开始的会议（分页） -->
   <select id="selectUpcomingRoomsByUserId" resultMap="BaseResultMap">
     SELECT DISTINCT r.*

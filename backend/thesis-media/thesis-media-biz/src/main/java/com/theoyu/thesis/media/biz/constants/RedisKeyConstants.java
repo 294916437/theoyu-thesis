@@ -107,6 +107,29 @@ public class RedisKeyConstants {
      */
     public static final String SFU_NODE_INFO_KEY = "sfu:node:%s";
 
+    /**
+     * 房间已绑定的 SFU 节点 ID
+     * room:sfu:node:{roomId}
+     */
+    public static final String ROOM_SFU_NODE_KEY = "room:sfu:node:%s";
+
+    /**
+     * 房间 SFU 服务器 URL（直连地址，用于前端非代理场景）
+     * room:sfu:url:{roomId}
+     */
+    public static final String ROOM_SFU_URL_KEY = "room:sfu:url:%s";
+
+    /**
+     * 房间 SFU 分配分布式锁
+     * room:sfu:allocate:lock:{roomId}
+     */
+    public static final String ROOM_SFU_ALLOCATE_LOCK_KEY = "room:sfu:allocate:lock:%s";
+
+    /**
+     * SFU 节点负载排序 ZSet（score=currentLoad，member=nodeId）
+     */
+    public static final String SFU_NODE_LOAD_ZSET_KEY = "sfu:nodes:load";
+
     // ==================== 缓存过期时间 ====================
     /**
      * 房间所有参与者
@@ -164,6 +187,16 @@ public class RedisKeyConstants {
      * SFU 节点信息过期时间：5分钟
      */
     public static final long SFU_NODE_EXPIRE_TIME = 5 * 60;
+
+    /**
+     * 房间 SFU 绑定缓存过期时间：与房间信息一致
+     */
+    public static final long ROOM_SFU_NODE_EXPIRE_TIME = 30 * 60;
+
+    /**
+     * SFU 分配锁过期时间（秒）
+     */
+    public static final long ROOM_SFU_ALLOCATE_LOCK_EXPIRE_TIME = 15;
     /**
      * 录制状态缓存过期时间：3*24小时
      */

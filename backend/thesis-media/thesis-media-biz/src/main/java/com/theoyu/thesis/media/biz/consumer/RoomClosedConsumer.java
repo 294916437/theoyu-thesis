@@ -3,8 +3,10 @@ package com.theoyu.thesis.media.biz.consumer;
 import com.alibaba.fastjson.JSON;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
+import com.theoyu.thesis.media.biz.model.entity.RoomPO;
 import com.theoyu.thesis.media.biz.model.mapper.RoomPOMapper;
 import com.theoyu.thesis.media.biz.model.mapper.RoomParticipantPOMapper;
+import com.theoyu.thesis.media.biz.service.SfuNodeService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
@@ -52,6 +54,9 @@ public class RoomClosedConsumer extends BaseRocketMQConsumer implements RocketMQ
 
     @Resource(name = "taskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
+
+    @Resource
+    private SfuNodeService sfuNodeService;
 
     @Override
     public void onMessage(String message) {
@@ -111,13 +116,58 @@ public class RoomClosedConsumer extends BaseRocketMQConsumer implements RocketMQ
             log.info("[RoomClosedConsumer] Auto-closing empty room - roomId: {}", roomId);
         }
 
-        // 2. 更新所有在线参与者状态为"已离开"
+        // 2. 递减 SFU 节点的负载（房间关闭时释放负载资源）
+        decrementSfuNodeLoad(roomId);
+
+        // 3. 更新所有在线参与者状态为"已离开"
         updateParticipantsStatus(roomId);
-        // 3. 清理Redis缓存
+        // 4. 清理Redis缓存
         cleanupRoomCache(roomId);
 
-        // 4. 更新用户房间配额(减少计数)
+        // 5. 更新用户房间配额(减少计数)
         updateUserRoomQuota(hostId);
+    }
+
+    /**
+     * 递减 SFU 节点的负载
+     * 
+     * 在房间关闭时调用，释放该房间占用的 SFU 节点负载资源
+     */
+    private void decrementSfuNodeLoad(Long roomId) {
+        try {
+            // 1. 从房间缓存或 DB 获取 SFU 节点 ID
+            String roomKey = String.format(RedisKeyConstants.ROOM_INFO_KEY, roomId);
+            Object sfuNodeIdObj = redisTemplate.opsForHash().get(roomKey, "sfuNodeId");
+            
+            Long sfuNodeId = null;
+            if (sfuNodeIdObj != null) {
+                try {
+                    sfuNodeId = Long.valueOf(sfuNodeIdObj.toString());
+                } catch (NumberFormatException e) {
+                    log.warn("[RoomClosedConsumer] Invalid sfuNodeId in cache - roomId: {}", roomId);
+                }
+            }
+            
+            // 如果缓存中没有，则从 DB 查询
+            if (sfuNodeId == null) {
+                RoomPO room = roomPOMapper.selectByPrimaryKey(roomId);
+                if (room != null && room.getSfuNodeId() != null) {
+                    sfuNodeId = room.getSfuNodeId();
+                }
+            }
+            
+            // 2. 递减负载
+            if (sfuNodeId != null && sfuNodeId > 0) {
+                Integer newLoad = sfuNodeService.decrementNodeLoad(sfuNodeId);
+                log.info("[RoomClosedConsumer] SFU node load decremented - roomId: {}, nodeId: {}, newLoad: {}",
+                        roomId, sfuNodeId, newLoad);
+            } else {
+                log.debug("[RoomClosedConsumer] No SFU node assigned to room - roomId: {}", roomId);
+            }
+        } catch (Exception e) {
+            log.warn("[RoomClosedConsumer] Failed to decrement SFU node load - roomId: {}", roomId, e);
+            // 不影响主流程，继续处理房间关闭
+        }
     }
 
     /**

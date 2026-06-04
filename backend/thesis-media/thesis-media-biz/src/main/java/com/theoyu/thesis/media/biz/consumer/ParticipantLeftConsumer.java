@@ -3,7 +3,9 @@ package com.theoyu.thesis.media.biz.consumer;
 import com.alibaba.fastjson.JSON;
 import com.theoyu.thesis.media.biz.constants.MQConstants;
 import com.theoyu.thesis.media.biz.constants.RedisKeyConstants;
+import com.theoyu.thesis.media.biz.model.entity.RoomPO;
 import com.theoyu.thesis.media.biz.model.mapper.RoomPOMapper;
+import com.theoyu.thesis.media.biz.service.SfuNodeService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
@@ -48,6 +50,9 @@ public class ParticipantLeftConsumer extends BaseRocketMQConsumer implements Roc
     private RoomPOMapper roomPOMapper;
 
     @Resource
+    private SfuNodeService sfuNodeService;
+
+    @Resource
     private RocketMQTemplate rocketMQTemplate;
 
     @Resource(name = "taskExecutor")
@@ -55,9 +60,9 @@ public class ParticipantLeftConsumer extends BaseRocketMQConsumer implements Roc
 
     /**
      * 空房间自动关闭延迟时间（秒）
-     * 避免用户短暂离开后立即关闭房间
+     * 需要覆盖 RocketMQ 6 分钟延迟消息，确保 RoomClosedConsumer 能识别并复查自动关闭事件
      */
-    private static final long EMPTY_ROOM_AUTO_CLOSE_DELAY = 300; // 5分钟
+    private static final long EMPTY_ROOM_AUTO_CLOSE_DELAY = 7 * 60;
 
     @Override
     public void onMessage(String message) {
@@ -112,6 +117,7 @@ public class ParticipantLeftConsumer extends BaseRocketMQConsumer implements Roc
 
         // 3. 检查是否需要自动关闭房间
         if (currentOnline != null && currentOnline == 0) {
+            releaseSfuNode(roomId);
             scheduleAutoCloseRoom(roomId);
         }
 
@@ -182,13 +188,25 @@ public class ParticipantLeftConsumer extends BaseRocketMQConsumer implements Roc
     }
 
     /**
+     * 最后一个参与者离开时释放房间绑定的 SFU 节点。
+     * 房间保留自动关闭延迟；若延迟期内有人重新加入，会重新走节点分配并重新计负载。
+     */
+    private void releaseSfuNode(String roomId) {
+        try {
+            sfuNodeService.releaseNodeForRoom(Long.valueOf(roomId));
+        } catch (Exception e) {
+            log.warn("[ParticipantLeftConsumer] Failed to release SFU node - roomId: {}", roomId, e);
+        }
+    }
+
+    /**
      * 调度空房间自动关闭
      * 使用Redis过期Key + KeySpace通知实现延迟关闭
      */
     private void scheduleAutoCloseRoom(String roomId) {
         try {
             // 检查房间是否设置了自动关闭标记
-            String autoCloseKey = String.format("media:room:auto-close:%s", roomId);
+            String autoCloseKey = String.format(RedisKeyConstants.ROOM_AUTO_CLOSE_KEY, roomId);
 
             // 使用SETNX确保只有一个线程设置自动关闭
             Boolean setSuccess = redisTemplate.opsForValue()
@@ -219,6 +237,7 @@ public class ParticipantLeftConsumer extends BaseRocketMQConsumer implements Roc
         try {
             Map<String, Object> message = new HashMap<>();
             message.put("roomId", roomId);
+            message.put("hostId", resolveHostId(roomId));
             message.put("timestamp", System.currentTimeMillis());
             message.put("reason", "empty_room_auto_close");
 
@@ -241,6 +260,22 @@ public class ParticipantLeftConsumer extends BaseRocketMQConsumer implements Roc
         } catch (Exception e) {
             log.error("[ParticipantLeftConsumer] Failed to send auto-close message - roomId: {}",
                     roomId, e);
+        }
+    }
+
+    private Long resolveHostId(String roomId) {
+        try {
+            String roomKey = String.format(RedisKeyConstants.ROOM_INFO_KEY, roomId);
+            Object cachedHostId = redisTemplate.opsForHash().get(roomKey, "hostId");
+            if (cachedHostId != null) {
+                return Long.valueOf(cachedHostId.toString());
+            }
+
+            RoomPO room = roomPOMapper.selectByPrimaryKey(Long.valueOf(roomId));
+            return room == null ? 0L : room.getHostId();
+        } catch (Exception e) {
+            log.warn("[ParticipantLeftConsumer] Failed to resolve hostId - roomId: {}", roomId, e);
+            return 0L;
         }
     }
 

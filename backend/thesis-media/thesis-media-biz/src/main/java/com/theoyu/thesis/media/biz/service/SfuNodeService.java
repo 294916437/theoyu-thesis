@@ -37,4 +37,10 @@ public interface SfuNodeService {
      * @return 递减后的负载值
      */
     Integer decrementNodeLoad(Long sfuNodeId);
+
+    /**
+     * 释放房间绑定的 SFU 节点。最后一个参与者离开后调用，
+     * 用于递减节点负载并清理房间到 SFU 的缓存绑定。
+     */
+    void releaseNodeForRoom(Long roomId);
 }

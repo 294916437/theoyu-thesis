@@ -283,6 +283,28 @@ public class SfuNodeServiceImpl implements SfuNodeService {
         }
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void releaseNodeForRoom(Long roomId) {
+        if (roomId == null) {
+            return;
+        }
+
+        Long sfuNodeId = resolveRoomSfuNodeId(roomId);
+        if (!hasAssignedNode(sfuNodeId)) {
+            clearRoomSfuCache(roomId);
+            log.debug("[SfuNodeService] 房间未绑定 SFU 节点，无需释放 - roomId: {}", roomId);
+            return;
+        }
+
+        Integer newLoad = decrementNodeLoad(sfuNodeId);
+        roomPOMapper.updateSfuNodeId(roomId, 0L);
+        clearRoomSfuCache(roomId);
+
+        log.info("[SfuNodeService] 房间 SFU 节点已释放 - roomId: {}, nodeId: {}, newLoad: {}",
+                roomId, sfuNodeId, newLoad);
+    }
+
     private SfuNodePO pickLeastLoadNode() {
         try {
             var members = redisTemplate.opsForZSet().range(RedisKeyConstants.SFU_NODE_LOAD_ZSET_KEY, 0, 0);
@@ -431,6 +453,34 @@ public class SfuNodeServiceImpl implements SfuNodeService {
             redisTemplate.opsForHash().put(roomKey, "sfuNodeId", String.valueOf(sfuNodeId));
         } catch (Exception e) {
             log.warn("[SfuNodeService] 更新房间缓存 sfuNodeId 失败 - roomId: {}", roomId, e);
+        }
+    }
+
+    private Long resolveRoomSfuNodeId(Long roomId) {
+        try {
+            String roomKey = String.format(RedisKeyConstants.ROOM_INFO_KEY, roomId);
+            Object cachedNodeId = redisTemplate.opsForHash().get(roomKey, "sfuNodeId");
+            if (cachedNodeId != null) {
+                return Long.valueOf(cachedNodeId.toString());
+            }
+        } catch (Exception e) {
+            log.warn("[SfuNodeService] 从房间缓存解析 sfuNodeId 失败 - roomId: {}", roomId, e);
+        }
+
+        RoomPO room = roomPOMapper.selectByPrimaryKey(roomId);
+        return room == null ? null : room.getSfuNodeId();
+    }
+
+    private void clearRoomSfuCache(Long roomId) {
+        try {
+            String roomKey = String.format(RedisKeyConstants.ROOM_INFO_KEY, roomId);
+            redisTemplate.opsForHash().put(roomKey, "sfuNodeId", "0");
+            redisTemplate.opsForHash().delete(roomKey, "sfuInstanceId");
+
+            redisTemplate.delete(String.format(RedisKeyConstants.ROOM_SFU_NODE_KEY, roomId));
+            redisTemplate.delete(String.format(RedisKeyConstants.ROOM_SFU_URL_KEY, roomId));
+        } catch (Exception e) {
+            log.warn("[SfuNodeService] 清理房间 SFU 缓存失败 - roomId: {}", roomId, e);
         }
     }
 }

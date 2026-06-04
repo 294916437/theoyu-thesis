@@ -31,6 +31,10 @@ export function useMedia() {
 	const screenSharing = ref(false)
 	const screenStream = ref(null)
 	const originalVideoTrack = ref(null)
+	const audioNoiseSuppressionEnabled = ref(true)
+	const audioNoiseSuppressionSupported = ref(true)
+	const audioNoiseSuppressionUpdating = ref(false)
+	const audioNoiseSuppressionError = ref(null)
 	const connectionState = ref('disconnected') // disconnected | connecting | connected | failed
 	const connectionQuality = ref({
 		send: { score: 10, quality: 'excellent' },
@@ -100,6 +104,73 @@ export function useMedia() {
 	let statsIntervalId = null
 	// 维护全局视频码率 (默认 2: 高清)
 	const currentSpatialLayer = ref(2)
+
+	function createAudioConstraints(deviceId) {
+		const constraints = {
+			echoCancellation: true,
+			noiseSuppression: audioNoiseSuppressionEnabled.value,
+			autoGainControl: true,
+			sampleRate: 48000,
+		}
+
+		if (deviceId) {
+			constraints.deviceId = { exact: deviceId }
+		}
+
+		return constraints
+	}
+
+	function detectNoiseSuppressionSupport(track) {
+		if (!track?.getCapabilities) return
+
+		const capabilities = track.getCapabilities()
+		audioNoiseSuppressionSupported.value = Object.prototype.hasOwnProperty.call(capabilities, 'noiseSuppression')
+	}
+
+	async function refreshAudioTrack() {
+		const currentTrack = localStream.value?.getAudioTracks()[0]
+		if (!currentTrack) {
+			audioNoiseSuppressionError.value = '当前没有可用的麦克风轨道'
+			throw new Error(audioNoiseSuppressionError.value)
+		}
+
+		const currentSettings = currentTrack.getSettings?.() || {}
+		const shouldEnableTrack = audioEnabled.value
+		const stream = await navigator.mediaDevices.getUserMedia({
+			audio: createAudioConstraints(currentSettings.deviceId),
+			video: false,
+		})
+		const newTrack = stream.getAudioTracks()[0]
+		if (!newTrack) {
+			throw new Error('未获取到新的麦克风轨道')
+		}
+
+		newTrack.enabled = shouldEnableTrack
+		detectNoiseSuppressionSupport(newTrack)
+
+		const audioProducer = mediasoupClient?.producers.get('audio')
+		if (audioProducer) {
+			await audioProducer.replaceTrack({ track: newTrack })
+		}
+
+		currentTrack.stop()
+		localStream.value.removeTrack(currentTrack)
+		localStream.value.addTrack(newTrack)
+
+		const localPeer = participants.value.find(p => p.peerId === peerId.value)
+		if (localPeer) {
+			localPeer.streams.audio = markRaw(new MediaStream([newTrack]))
+			if (localPeer.producers?.audio) {
+				localPeer.producers.audio.appData = {
+					...(localPeer.producers.audio.appData || {}),
+					noiseSuppression: audioNoiseSuppressionEnabled.value,
+				}
+			}
+		}
+
+		participants.value = [...participants.value]
+		return newTrack
+	}
 
 	// ========== 聚光灯状态 ==========
 	const spotlightPeerId = ref(null) // 当前聚光灯的 peerId，null 表示无聚光灯
@@ -324,6 +395,9 @@ export function useMedia() {
 	async function startEffectStream() {
 		try {
 			if (effectProducerActive.value) return
+			if (screenSharing.value) {
+				throw new Error('屏幕共享期间不可开启背景特效')
+			}
 
 			await initBackgroundEffect()
 
@@ -860,7 +934,11 @@ export function useMedia() {
 
 				try {
 					if (audioTrack) {
-						const audioProducer = await publishWithTimeout(audioTrack, 'audio')
+						const audioProducer = await publishWithTimeout(audioTrack, 'audio', {
+							appData: {
+								noiseSuppression: audioNoiseSuppressionEnabled.value,
+							},
+						})
 						updateLocalProducer('audio', audioProducer)
 					}
 					if (videoTrack) {
@@ -889,6 +967,12 @@ export function useMedia() {
 					if (!localStream.value) return
 
 					try {
+						if (newType !== 'none' && screenSharing.value) {
+							effectType.value = 'none'
+							$notify.warning('屏幕共享期间不可使用背景特效')
+							return
+						}
+
 						// 情况1: 关闭所有效果
 						if (newType === 'none') {
 							// 停止特效
@@ -959,12 +1043,7 @@ export function useMedia() {
 	async function getLocalStream() {
 		try {
 			const stream = await navigator.mediaDevices.getUserMedia({
-				audio: {
-					echoCancellation: true,
-					noiseSuppression: true,
-					autoGainControl: true,
-					sampleRate: 48000,
-				},
+				audio: createAudioConstraints(),
 				video: {
 					width: { ideal: VIDEO_WIDTH, max: 1920 },
 					height: { ideal: VIDEO_HEIGHT, max: 1080 },
@@ -973,6 +1052,7 @@ export function useMedia() {
 			})
 
 			localStream.value = markRaw(stream)
+			detectNoiseSuppressionSupport(stream.getAudioTracks()[0])
 			console.log('Local stream acquired', stream.id)
 
 			// 更新本地参与者流
@@ -1413,6 +1493,38 @@ export function useMedia() {
 	}
 
 	/**
+	 * 切换浏览器原生音频降噪
+	 */
+	async function setAudioNoiseSuppression(enabled) {
+		if (audioNoiseSuppressionUpdating.value) return
+
+		const previous = audioNoiseSuppressionEnabled.value
+		audioNoiseSuppressionEnabled.value = enabled
+		audioNoiseSuppressionUpdating.value = true
+		audioNoiseSuppressionError.value = null
+
+		try {
+			await refreshAudioTrack()
+			$notify.success(enabled ? '音频降噪已开启' : '音频降噪已关闭')
+		} catch (error) {
+			audioNoiseSuppressionEnabled.value = previous
+			audioNoiseSuppressionError.value = error.message || '切换音频降噪失败'
+			console.error('[AudioNoiseSuppression] Failed to switch:', error)
+			$notify.error(audioNoiseSuppressionError.value)
+
+			try {
+				await refreshAudioTrack()
+			} catch (restoreError) {
+				console.error('[AudioNoiseSuppression] Failed to restore previous track:', restoreError)
+			}
+
+			throw error
+		} finally {
+			audioNoiseSuppressionUpdating.value = false
+		}
+	}
+
+	/**
 	 * 切换视频
 	 */
 	async function toggleVideo() {
@@ -1457,6 +1569,12 @@ export function useMedia() {
 			if (hasScreenShare.value && !screenShareInfo.value.presenter.isLocal) {
 				$notify.warning('已有参与者正在共享屏幕')
 				return
+			}
+
+			if (effectProducerActive.value || effectType.value !== 'none') {
+				await stopEffectStream()
+				effectType.value = 'none'
+				$notify.info('已关闭背景特效以开始屏幕共享')
 			}
 
 			// 1. 获取屏幕共享流
@@ -1954,6 +2072,10 @@ export function useMedia() {
 			audioEnabled.value = true
 			videoEnabled.value = true
 			screenSharing.value = false
+			audioNoiseSuppressionEnabled.value = true
+			audioNoiseSuppressionSupported.value = true
+			audioNoiseSuppressionUpdating.value = false
+			audioNoiseSuppressionError.value = null
 			connectionState.value = 'disconnected'
 			connectionQuality.value = {
 				send: { score: 10, quality: 'excellent' },
@@ -1973,10 +2095,12 @@ export function useMedia() {
 	async function changeAudioDevice(deviceId) {
 		try {
 			const stream = await navigator.mediaDevices.getUserMedia({
-				audio: { deviceId: { exact: deviceId } },
+				audio: createAudioConstraints(deviceId),
 			})
 
 			const audioTrack = stream.getAudioTracks()[0]
+			audioTrack.enabled = audioEnabled.value
+			detectNoiseSuppressionSupport(audioTrack)
 			const audioProducer = mediasoupClient.producers.get('audio')
 
 			if (audioProducer) {
@@ -2041,6 +2165,10 @@ export function useMedia() {
 		localParticipant,
 		audioEnabled,
 		videoEnabled,
+		audioNoiseSuppressionEnabled,
+		audioNoiseSuppressionSupported,
+		audioNoiseSuppressionUpdating,
+		audioNoiseSuppressionError,
 		screenSharing,
 		screenStream,
 		connectionState,
@@ -2063,6 +2191,7 @@ export function useMedia() {
 		leaveMeeting,
 		removeParticipant,
 		toggleAudio,
+		setAudioNoiseSuppression,
 		toggleVideo,
 		hostToggleAudio,
 		hostToggleVideo,

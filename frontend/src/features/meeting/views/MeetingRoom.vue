@@ -66,6 +66,7 @@
 								size="small"
 								:color="effectProducerActive ? 'success' : undefined"
 								:loading="effectLoading"
+								:disabled="backgroundEffectDisabled"
 								class="mr-2"
 								@click="toggleBackgroundPanel"
 							>
@@ -139,6 +140,10 @@
 								<v-tab value="background">
 									<v-icon icon="mdi-image-filter-hdr" size="small" class="mr-1"></v-icon>
 									<span class="text-caption">背景</span>
+								</v-tab>
+								<v-tab value="audio">
+									<v-icon icon="mdi-tune-vertical" size="small" class="mr-1"></v-icon>
+									<span class="text-caption">音频</span>
 								</v-tab>
 							</v-tabs>
 
@@ -380,6 +385,10 @@
 												<v-icon icon="mdi-check-circle" size="12" class="mr-1"></v-icon>
 												{{ effectType === 'blur' ? '虚化生效' : '背景替换中' }}
 											</v-chip>
+											<v-chip v-else-if="screenSharing" size="x-small" color="warning" variant="flat">
+												<v-icon icon="mdi-monitor-share" size="12" class="mr-1"></v-icon>
+												屏幕共享中
+											</v-chip>
 										</div>
 
 										<!-- 滚动区域 -->
@@ -387,6 +396,9 @@
 											<!-- 错误提示 -->
 											<v-alert v-if="effectError" type="error" variant="tonal" density="compact" closable class="mb-4" @click:close="effectError = null">
 												{{ effectError }}
+											</v-alert>
+											<v-alert v-if="screenSharing" type="info" variant="tonal" density="compact" class="mb-4">
+												屏幕共享期间背景特效不可用，音频降噪可继续独立使用。
 											</v-alert>
 
 											<!-- 效果选择 -->
@@ -416,7 +428,7 @@
 															'effect-card--loading': effectLoading,
 														}"
 														variant="outlined"
-														:disabled="effectLoading"
+														:disabled="effectLoading || backgroundEffectDisabled"
 														@click="changeEffect('blur')"
 													>
 														<v-icon icon="mdi-blur" size="20" class="mb-1"></v-icon>
@@ -435,7 +447,7 @@
 														density="compact"
 														size="small"
 														color="primary"
-														:disabled="effectLoading"
+														:disabled="effectLoading || backgroundEffectDisabled"
 														@click="bgFileInput?.click()"
 													>
 														自定义
@@ -454,7 +466,7 @@
 															'background-card--active': effectType === 'replace' && selectedBackground === bg.id,
 															'background-card--loading': effectLoading,
 														}"
-														:disabled="effectLoading"
+														:disabled="effectLoading || backgroundEffectDisabled"
 														@click="changeBackground(bg.id)"
 													>
 														<v-img :src="bg.thumbnail" cover aspect-ratio="1.6">
@@ -481,6 +493,88 @@
 
 										<!-- 隐藏的文件输入 -->
 										<input ref="bgFileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden @change="handleBgFileUpload" />
+									</div>
+								</v-tabs-window-item>
+								<!-- 音频处理面板 -->
+								<v-tabs-window-item value="audio" class="fill-height">
+									<div class="audio-panel">
+										<div class="audio-panel__header">
+											<v-chip size="x-small" :color="audioNoiseSuppressionEnabled ? 'success' : 'default'" variant="flat">
+												<v-icon :icon="audioNoiseSuppressionEnabled ? 'mdi-check-circle' : 'mdi-circle-outline'" size="12" class="mr-1"></v-icon>
+												{{ audioNoiseSuppressionEnabled ? '降噪开启' : '降噪关闭' }}
+											</v-chip>
+										</div>
+
+										<div class="audio-panel__content">
+											<v-alert
+												v-if="audioNoiseSuppressionError"
+												type="error"
+												variant="tonal"
+												density="compact"
+												closable
+												class="mb-4"
+												@click:close="audioNoiseSuppressionError = null"
+											>
+												{{ audioNoiseSuppressionError }}
+											</v-alert>
+
+											<div class="audio-control-card">
+												<div class="audio-control-card__icon">
+													<v-icon icon="mdi-waveform" size="26"></v-icon>
+												</div>
+												<div class="audio-control-card__body">
+													<div class="audio-control-card__title">浏览器原生降噪</div>
+													<div class="audio-control-card__subtitle">
+														使用麦克风采集约束中的 noiseSuppression，由浏览器实时处理键盘声、风扇声和环境噪声。
+													</div>
+												</div>
+												<v-switch
+													:model-value="audioNoiseSuppressionEnabled"
+													color="primary"
+													density="comfortable"
+													hide-details
+													:loading="audioNoiseSuppressionUpdating"
+													:disabled="!localStream || audioNoiseSuppressionUpdating"
+													@update:model-value="setAudioNoiseSuppression"
+												></v-switch>
+											</div>
+
+											<v-list class="audio-status-list" bg-color="transparent" density="compact">
+												<v-list-item>
+													<template #prepend>
+														<v-icon icon="mdi-microphone" color="primary"></v-icon>
+													</template>
+													<v-list-item-title>麦克风状态</v-list-item-title>
+													<template #append>
+														<v-chip size="x-small" :color="audioEnabled ? 'success' : 'error'" variant="tonal">
+															{{ audioEnabled ? '已开启' : '已静音' }}
+														</v-chip>
+													</template>
+												</v-list-item>
+
+												<v-list-item>
+													<template #prepend>
+														<v-icon icon="mdi-creation" color="primary"></v-icon>
+													</template>
+													<v-list-item-title>浏览器支持</v-list-item-title>
+													<template #append>
+														<v-chip size="x-small" :color="audioNoiseSuppressionSupported ? 'success' : 'warning'" variant="tonal">
+															{{ audioNoiseSuppressionSupported ? '支持' : '未声明' }}
+														</v-chip>
+													</template>
+												</v-list-item>
+
+												<v-list-item>
+													<template #prepend>
+														<v-icon icon="mdi-monitor-share" color="primary"></v-icon>
+													</template>
+													<v-list-item-title>屏幕共享兼容性</v-list-item-title>
+													<template #append>
+														<v-chip size="x-small" color="success" variant="tonal">可同时使用</v-chip>
+													</template>
+												</v-list-item>
+											</v-list>
+										</div>
 									</div>
 								</v-tabs-window-item>
 							</v-tabs-window>
@@ -607,7 +701,7 @@
 											</template>
 
 											<v-list density="compact" bg-color="surface">
-												<v-list-item :disabled="effectLoading" @click="toggleBackgroundPanel">
+												<v-list-item :disabled="effectLoading || backgroundEffectDisabled" @click="toggleBackgroundPanel">
 													<template #prepend>
 														<v-icon icon="mdi-image-filter-hdr" :color="effectProducerActive ? 'success' : undefined"></v-icon>
 													</template>
@@ -623,6 +717,17 @@
 													<!-- 加载状态 -->
 													<template v-else-if="effectLoading" #append>
 														<v-progress-circular indeterminate size="16" width="2" color="primary"></v-progress-circular>
+													</template>
+												</v-list-item>
+												<v-list-item @click="toggleAudioPanel">
+													<template #prepend>
+														<v-icon icon="mdi-tune-vertical" :color="audioNoiseSuppressionEnabled ? 'success' : undefined"></v-icon>
+													</template>
+													<v-list-item-title>音频降噪</v-list-item-title>
+													<template #append>
+														<v-chip size="x-small" :color="audioNoiseSuppressionEnabled ? 'success' : 'default'" variant="tonal">
+															{{ audioNoiseSuppressionEnabled ? '开启' : '关闭' }}
+														</v-chip>
 													</template>
 												</v-list-item>
 												<v-list-item @click="toggleVideoLayout">
@@ -784,9 +889,13 @@
 											<v-btn v-bind="menuProps" icon="mdi-dots-horizontal" variant="elevated" color="surface" size="default" class="mobile-ctrl-btn"></v-btn>
 										</template>
 										<v-list density="compact" bg-color="surface">
-											<v-list-item :disabled="effectLoading" @click="toggleBackgroundPanel">
+											<v-list-item :disabled="effectLoading || backgroundEffectDisabled" @click="toggleBackgroundPanel">
 												<template #prepend><v-icon icon="mdi-image-filter-hdr" :color="effectProducerActive ? 'success' : undefined"></v-icon></template>
 												<v-list-item-title>背景特效</v-list-item-title>
+											</v-list-item>
+											<v-list-item @click="toggleAudioPanel">
+												<template #prepend><v-icon icon="mdi-tune-vertical" :color="audioNoiseSuppressionEnabled ? 'success' : undefined"></v-icon></template>
+												<v-list-item-title>音频降噪</v-list-item-title>
 											</v-list-item>
 											<v-list-item :disabled="!screenSharing && hasScreenShare" @click="handleScreenShareToggle">
 												<template #prepend
@@ -1122,6 +1231,10 @@ const {
 	localParticipant,
 	audioEnabled,
 	videoEnabled,
+	audioNoiseSuppressionEnabled,
+	audioNoiseSuppressionSupported,
+	audioNoiseSuppressionUpdating,
+	audioNoiseSuppressionError,
 	screenSharing,
 	screenStream,
 	hasScreenShare,
@@ -1140,6 +1253,7 @@ const {
 	joinMeeting,
 	leaveMeeting,
 	toggleAudio,
+	setAudioNoiseSuppression,
 	toggleVideo,
 	startScreenShare,
 	stopScreenShare,
@@ -1161,6 +1275,12 @@ const {
 
 const bgFileInput = ref(null)
 const handleBgFileUpload = async event => {
+	if (backgroundEffectDisabled.value) {
+		$notify.warning('屏幕共享期间不可使用背景特效')
+		event.target.value = ''
+		return
+	}
+
 	const file = event.target.files?.[0]
 	if (!file) return
 
@@ -1196,10 +1316,20 @@ const handleBgFileUpload = async event => {
 	}
 }
 const changeEffect = async type => {
+	if (type !== 'none' && backgroundEffectDisabled.value) {
+		$notify.warning('屏幕共享期间不可使用背景特效')
+		return
+	}
+
 	effectType.value = type
 }
 
 const changeBackground = async bgId => {
+	if (backgroundEffectDisabled.value) {
+		$notify.warning('屏幕共享期间不可使用背景特效')
+		return
+	}
+
 	selectedBackground.value = bgId
 	effectType.value = 'replace'
 }
@@ -1790,6 +1920,7 @@ useIntervalFn(() => {
 
 // ==================== 计算属性 ====================
 const participantCount = computed(() => onlineParticipants.value.length)
+const backgroundEffectDisabled = computed(() => screenSharing.value)
 
 const videoContainerHeight = computed(() => {
 	if (mobile.value) {
@@ -1988,6 +2119,12 @@ const toggleSidebarChat = async () => {
 	sidebarTab.value = 'chat'
 	unreadMessages.value = 0
 }
+
+const toggleAudioPanel = () => {
+	showSidebar.value = true
+	sidebarTab.value = 'audio'
+}
+
 const toggleBackgroundPanel = () => {
 	showSidebar.value = true
 	sidebarTab.value = 'background'
@@ -2651,6 +2788,78 @@ useEventListener('beforeunload', e => {
 	background: rgba(var(--v-theme-primary), 0.5);
 }
 
+.audio-panel {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	background: rgb(var(--v-theme-surface));
+	border-left: 1px solid rgba(var(--v-theme-border), 0.5);
+}
+
+.audio-panel__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid rgba(var(--v-theme-border), 0.3);
+	flex-shrink: 0;
+}
+
+.audio-panel__content {
+	flex: 1;
+	overflow-y: auto;
+	padding: 16px;
+	min-height: 0;
+}
+
+.audio-control-card {
+	display: grid;
+	grid-template-columns: 44px minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 12px;
+	padding: 16px;
+	background: rgb(var(--v-theme-surface));
+	border: 1px solid rgba(var(--v-theme-border), 0.6);
+	border-radius: 8px;
+	box-shadow: 0 2px 8px rgba(var(--v-theme-on-surface), 0.08);
+}
+
+.audio-control-card__icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 44px;
+	height: 44px;
+	border-radius: 8px;
+	color: rgb(var(--v-theme-primary));
+	background: rgba(var(--v-theme-primary), 0.12);
+}
+
+.audio-control-card__body {
+	min-width: 0;
+}
+
+.audio-control-card__title {
+	font-size: 0.95rem;
+	font-weight: 600;
+	color: rgb(var(--v-theme-on-surface));
+}
+
+.audio-control-card__subtitle {
+	margin-top: 4px;
+	font-size: 0.8125rem;
+	line-height: 1.45;
+	color: rgb(var(--v-theme-on-surface-variant));
+}
+
+.audio-status-list {
+	margin-top: 16px;
+	border: 1px solid rgba(var(--v-theme-border), 0.45);
+	border-radius: 8px;
+	overflow: hidden;
+}
+
 /* 分区标题 */
 .effect-section-title {
 	font-size: 0.75rem;
@@ -2821,6 +3030,23 @@ useEventListener('beforeunload', e => {
 
 	.effect-panel__content {
 		padding: 12px;
+	}
+
+	.audio-panel__header {
+		padding: 12px;
+	}
+
+	.audio-panel__content {
+		padding: 12px;
+	}
+
+	.audio-control-card {
+		grid-template-columns: 40px minmax(0, 1fr);
+	}
+
+	.audio-control-card :deep(.v-switch) {
+		grid-column: 1 / -1;
+		justify-self: start;
 	}
 
 	.effects-grid {

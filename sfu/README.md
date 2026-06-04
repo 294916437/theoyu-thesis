@@ -88,7 +88,6 @@ sfu/
 │   │   ├── mediasoup-manager.ts  # Worker/Router 管理
 │   ├── features/                 # 服务模块
 │   │   └── socket-handler.ts     # Socket.io 事件处理
-│   │   └── grpc-server.ts        # grpc 服务端方法
 │   └── utils/                    # 工具模块
 │       ├── grpc-client.ts        # gRPC 客户端封装
 │       ├── nacos-client.ts       # Nacos 客户端封装
@@ -115,9 +114,9 @@ sfu/
 - **npm**: >= 9.0.0
 - **操作系统**: Linux/macOS/Windows
 - **端口需求**:
-  - 3000 (HTTP/WebSocket)
-  - 40000-49999 (RTP/UDP/TCP)
-  - 50051-50052 (gRPC)
+  - `PORT` (HTTP/WebSocket，默认 3000，可为每个实例单独指定)
+  - `RTC_MIN_PORT`-`RTC_MAX_PORT` (RTP/UDP/TCP，每个本地实例建议使用不重叠的端口段)
+  - 50051 (远程 Spring Cloud gRPC 服务端口，SFU 作为客户端调用)
 
 ### 安装依赖
 
@@ -145,6 +144,7 @@ nano .env
 # 服务器配置
 PORT=3000                           # HTTP 服务端口
 HOST=0.0.0.0                        # 监听地址
+SFU_INSTANCE_ID=sfu-local-3000       # 实例 ID，可选；默认使用 NACOS_IP:NACOS_PORT
 NODE_ENV=development                # 运行环境
 
 # Mediasoup 配置
@@ -157,12 +157,13 @@ RTC_MAX_PORT=49999                  # RTP 端口范围结束
 # gRPC 配置
 GRPC_HOST=localhost                 # Spring Cloud 服务地址
 GRPC_PORT=50051                     # 远程的 gRPC 服务端口
-GRPC_SERVER_PORT=50052              # 自身作为 gRPC 服务端口
 
 
 # Nacos 配置
 NACOS_SERVER=127.0.0.1:8848         # Nacos 服务器地址
 NACOS_NAMESPACE=public              # 命名空间
+NACOS_IP=127.0.0.1                  # 注册到 Nacos 的访问 IP
+NACOS_PORT=3000                     # 注册到 Nacos 的访问端口，默认跟随 PORT
 ```
 
 ### 开发模式运行
@@ -170,6 +171,33 @@ NACOS_NAMESPACE=public              # 命名空间
 ```bash
 # 启动开发服务器（热重载）
 npm run dev
+```
+
+### 本地多实例运行
+
+本地同时运行多个 SFU 实例时，每个实例至少需要使用不同的 `PORT`、`NACOS_PORT` 和 `RTC_MIN_PORT`/`RTC_MAX_PORT`。如果 `NACOS_PORT` 未指定，会默认跟随 `PORT`，因此常见本地场景只需要显式改 `PORT` 和 RTC 端口段。
+
+```bash
+# 终端 1
+$env:PORT="3000"; $env:NACOS_PORT="3000"; $env:SFU_INSTANCE_ID="sfu-local-3000"; $env:RTC_MIN_PORT="40000"; $env:RTC_MAX_PORT="40999"; npm run start
+
+# 终端 2
+$env:PORT="3001"; $env:NACOS_PORT="3001"; $env:SFU_INSTANCE_ID="sfu-local-3001"; $env:RTC_MIN_PORT="41000"; $env:RTC_MAX_PORT="41999"; npm run start
+
+# 终端 3
+$env:PORT="3002"; $env:NACOS_PORT="3002"; $env:SFU_INSTANCE_ID="sfu-local-3002"; $env:RTC_MIN_PORT="42000"; $env:RTC_MAX_PORT="42999"; npm run start
+```
+
+Windows PowerShell:
+
+```powershell
+$env:PORT="3001"; $env:SFU_INSTANCE_ID="sfu-local-3001"; $env:RTC_MIN_PORT="41000"; $env:RTC_MAX_PORT="41999"; npm run dev
+```
+
+每个实例会以独立的 `instanceId` 注册到 Nacos，健康检查也会返回当前实例 ID 和端口：
+
+```bash
+curl http://localhost:3001/health
 ```
 
 ### 生产模式运行
@@ -226,12 +254,7 @@ npm run start
 | 离开通知   | `NotifyParticipantLeft`   | 通知业务层用户离开事件     |
 | 统计上报   | `ReportMediaStats`        | 上报媒体质量统计数据       |
 
-#### 作为服务端，供其他客户端调用的方法
-
-| 功能     | gRPC 方法        | 说明 |
-| -------- | ---------------- | ---- |
-| 开始录制 | `startRecording` |      |
-| 停止录制 | `stopRecording`  |      |
+当前运行策略中 SFU 只作为 gRPC 客户端调用远程 Spring Cloud 服务，端口固定由 `GRPC_HOST`/`GRPC_PORT` 指向远程服务；本地多实例不需要为 SFU 分配 gRPC 服务端端口。
 
 ---
 
@@ -373,7 +396,7 @@ MEDIASOUP_LOG_LEVEL=warn  # debug | warn | error
 访问统计接口获取实时数据：
 
 ```bash
-curl http://localhost:3000/api/stats
+curl http://localhost:<PORT>/api/stats
 ```
 
 ---
@@ -441,12 +464,6 @@ RTC_MAX_PORT=49999
 
 1. 修改 `proto/sfu-service.proto`
 2. 在 `grpc-client.ts` 中添加方法
-3. 重启服务加载新定义
-
-### 扩展 gRPC 服务端接口
-
-1. 修改 `proto/sfu-service.proto`
-2. 在 `grpc-server.ts` 中添加方法
 3. 重启服务加载新定义
 
 ---

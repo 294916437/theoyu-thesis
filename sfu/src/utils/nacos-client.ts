@@ -7,6 +7,7 @@ export class NacosClient {
 	private client: NacosNamingClient | null = null;
 	private logger = new Logger("NacosClient");
 	private registered = false;
+	private heartbeatTimer: NodeJS.Timeout | null = null;
 
 	private constructor() {}
 
@@ -39,17 +40,11 @@ export class NacosClient {
 		}
 
 		try {
-			await this.client.registerInstance(config.nacos.serviceName, {
-				ip: config.nacos.ip,
-				port: config.nacos.port,
-				instanceId: `${config.nacos.ip}:${config.nacos.port}`,
-				healthy: true,
-				enabled: true,
-			});
+			await this.client.registerInstance(config.nacos.serviceName, this.buildInstance());
 
 			this.registered = true;
 			this.logger.info(
-				`Service registered: ${config.nacos.serviceName} at ${config.nacos.ip}:${config.nacos.port}`
+				`Service registered: ${config.nacos.serviceName} at ${config.nacos.ip}:${config.nacos.port}, instanceId=${config.nacos.instanceId}`
 			);
 
 			// 定期发送心跳
@@ -61,16 +56,14 @@ export class NacosClient {
 	}
 
 	private startHeartbeat(): void {
-		setInterval(async () => {
+		if (this.heartbeatTimer) {
+			clearInterval(this.heartbeatTimer);
+		}
+
+		this.heartbeatTimer = setInterval(async () => {
 			if (this.client && this.registered) {
 				try {
-					await this.client.registerInstance(config.nacos.serviceName, {
-						ip: config.nacos.ip,
-						port: config.nacos.port,
-						instanceId: `${config.nacos.ip}:${config.nacos.port}`,
-						healthy: true,
-						enabled: true,
-					});
+					await this.client.registerInstance(config.nacos.serviceName, this.buildInstance());
 					this.logger.debug("Heartbeat sent to Nacos");
 				} catch (error) {
 					this.logger.error("Failed to send heartbeat", error);
@@ -85,13 +78,7 @@ export class NacosClient {
 		}
 
 		try {
-			await this.client.deregisterInstance(config.nacos.serviceName, {
-				ip: config.nacos.ip,
-				port: config.nacos.port,
-				instanceId: `${config.nacos.ip}:${config.nacos.port}`,
-				healthy: true,
-				enabled: true,
-			});
+			await this.client.deregisterInstance(config.nacos.serviceName, this.buildInstance());
 
 			this.registered = false;
 			this.logger.info("Service deregistered from Nacos");
@@ -102,10 +89,25 @@ export class NacosClient {
 	}
 
 	public async close(): Promise<void> {
+		if (this.heartbeatTimer) {
+			clearInterval(this.heartbeatTimer);
+			this.heartbeatTimer = null;
+		}
 		await this.deregisterService();
 		if (this.client) {
 			this.client.unSubscribe(config.nacos.serviceName, () => {});
 			this.logger.info("Nacos client closed");
 		}
+	}
+
+	private buildInstance() {
+		return {
+			ip: config.nacos.ip,
+			port: config.nacos.port,
+			instanceId: config.nacos.instanceId,
+			healthy: true,
+			enabled: true,
+			metadata: config.nacos.metadata,
+		};
 	}
 }

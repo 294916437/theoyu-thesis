@@ -44,6 +44,8 @@ async function startServer() {
 		app.get("/health", (req, res) => {
 			res.json({
 				status: "healthy",
+				instanceId: config.nacos.instanceId,
+				port: config.server.port,
 				timestamp: new Date().toISOString(),
 				uptime: process.uptime(),
 			})
@@ -84,11 +86,6 @@ async function startServer() {
 			logger.warn("gRPC client initialization failed, continuing without gRPC", error)
 		}
 
-		// 初始化 gRPC 服务器
-		// logger.info("Initializing gRPC server...")
-		// const grpcServer = GrpcServer.getInstance()
-		// await grpcServer.init()
-
 		// 初始化Socket接口
 		logger.info("Initializing Socket Handler...")
 		const socketHandler = new SocketHandler(io)
@@ -98,24 +95,36 @@ async function startServer() {
 		// 启动 E2E 延迟采集（论文测试用，5 秒一次，不影响业务）
 		// LatencyCollector.getInstance().start()
 
-		// 初始化 Nacos 客户端并注册服务
-		logger.info("Initializing Nacos client...")
 		const nacosClient = NacosClient.getInstance()
-		try {
-			await nacosClient.init()
-			await nacosClient.registerService()
-			logger.info("Nacos client initialized successfully")
-		} catch (error) {
-			logger.warn("Nacos initialization failed, continuing without service registration", error)
-		}
+
+		httpServer.on("error", (error: NodeJS.ErrnoException) => {
+			if (error.code === "EADDRINUSE") {
+				logger.error(
+					`Port ${config.server.port} is already in use. Start another SFU instance with a different PORT, NACOS_PORT and RTC port range.`
+				)
+				process.exit(1)
+			}
+			logger.error("HTTP server error", error)
+			process.exit(1)
+		})
 
 		// 启动服务器
-		httpServer.listen(config.server.port, config.server.host, () => {
-			logger.info(`SFU Server is running on ${config.server.host}:${config.server.port}`)
-			logger.info(`WebSocket endpoint: ws://localhost:${config.server.port}`)
+		httpServer.listen(config.server.port, config.server.host, async () => {
+			logger.info(`SFU Server is running on ${config.server.host}:${config.server.port}, instanceId=${config.nacos.instanceId}`)
+			logger.info(`WebSocket endpoint: ws://${config.nacos.ip}:${config.nacos.port}`)
 			logger.info(`Environment: ${process.env.NODE_ENV || "development"}`)
-			logger.info(`gRPC server endpoint: ${config.grpc.host}:${config.grpc.serverPort}`)
+			logger.info(`gRPC client target: ${config.grpc.host}:${config.grpc.port}`)
 			logger.info(`Metrics: http://localhost:${config.server.port}/metrics`)
+
+			// HTTP 服务监听成功后再注册，避免端口冲突时向 Nacos 暴露不可用实例。
+			logger.info("Initializing Nacos client...")
+			try {
+				await nacosClient.init()
+				await nacosClient.registerService()
+				logger.info("Nacos client initialized successfully")
+			} catch (error) {
+				logger.warn("Nacos initialization failed, continuing without service registration", error)
+			}
 		})
 
 		// 优雅关闭

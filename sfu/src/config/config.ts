@@ -3,6 +3,18 @@ import type * as mediasoupTypes from "mediasoup/node/lib/types"
 
 dotenv.config()
 
+const parsePort = (value: string | undefined, fallback: number, name: string): number => {
+	const rawValue = value || String(fallback)
+	if (!/^\d+$/.test(rawValue)) {
+		throw new Error(`${name} must be a valid TCP/UDP port, got: ${value}`)
+	}
+	const port = parseInt(rawValue, 10)
+	if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+		throw new Error(`${name} must be a valid TCP/UDP port, got: ${value}`)
+	}
+	return port
+}
+
 export interface MediasoupConfig {
 	numWorkers: number
 	workerSettings: {
@@ -35,7 +47,6 @@ export interface ServerConfig {
 export interface GrpcConfig {
 	host: string
 	port: number
-	serverPort: number
 	serviceName: string
 }
 
@@ -45,6 +56,11 @@ export interface NacosConfig {
 	serviceName: string
 	ip: string
 	port: number
+	instanceId: string
+	metadata: {
+		httpPort: string
+		instanceId: string
+	}
 }
 export interface MinioConfig {
 	endPoint: string
@@ -64,7 +80,7 @@ export class Config {
 	}
 	public readonly minio: MinioConfig = {
 		endPoint: process.env.MINIO_ENDPOINT || "127.0.0.1",
-		port: parseInt(process.env.MINIO_PORT || "9000", 10),
+		port: parsePort(process.env.MINIO_PORT, 9000, "MINIO_PORT"),
 		useSSL: process.env.MINIO_USE_SSL === "true",
 		accessKey: process.env.MINIO_ACCESS_KEY || "test",
 		secretKey: process.env.MINIO_SECRET_KEY || "test123456",
@@ -72,7 +88,7 @@ export class Config {
 	}
 
 	public readonly server: ServerConfig = {
-		port: parseInt(process.env.PORT || "3000", 10),
+		port: parsePort(process.env.PORT, 3000, "PORT"),
 		host: process.env.HOST || "0.0.0.0",
 		cors: {
 			origin: process.env.CORS_ORIGIN || "*",
@@ -82,8 +98,7 @@ export class Config {
 
 	public readonly grpc: GrpcConfig = {
 		host: process.env.GRPC_HOST || "localhost",
-		port: parseInt(process.env.GRPC_PORT || "50051", 10),
-		serverPort: parseInt(process.env.GRPC_SERVER_PORT || "50052", 10),
+		port: parsePort(process.env.GRPC_PORT, 50051, "GRPC_PORT"),
 		serviceName: process.env.GRPC_SERVICE_NAME || "video-conference-service",
 	}
 
@@ -92,7 +107,18 @@ export class Config {
 		namespace: process.env.NACOS_NAMESPACE || "public",
 		serviceName: process.env.NACOS_SERVICE_NAME || "sfu-server",
 		ip: process.env.NACOS_IP || "127.0.0.1",
-		port: parseInt(process.env.NACOS_PORT || "3000", 10),
+		port: parsePort(process.env.NACOS_PORT, this.server.port, "NACOS_PORT"),
+		instanceId:
+			process.env.SFU_INSTANCE_ID ||
+			process.env.NACOS_INSTANCE_ID ||
+			`${process.env.NACOS_IP || "127.0.0.1"}:${parsePort(process.env.NACOS_PORT, this.server.port, "NACOS_PORT")}`,
+		metadata: {
+			httpPort: String(this.server.port),
+			instanceId:
+				process.env.SFU_INSTANCE_ID ||
+				process.env.NACOS_INSTANCE_ID ||
+				`${process.env.NACOS_IP || "127.0.0.1"}:${parsePort(process.env.NACOS_PORT, this.server.port, "NACOS_PORT")}`,
+		},
 	}
 
 	public readonly mediasoup: MediasoupConfig = {
@@ -100,8 +126,8 @@ export class Config {
 		workerSettings: {
 			logLevel: (process.env.MEDIASOUP_LOG_LEVEL as any) || "warn",
 			logTags: ["ice", "dtls", "bwe", "score"],
-			rtcMinPort: parseInt(process.env.RTC_MIN_PORT || "40000", 10),
-			rtcMaxPort: parseInt(process.env.RTC_MAX_PORT || "49999", 10),
+			rtcMinPort: parsePort(process.env.RTC_MIN_PORT, 40000, "RTC_MIN_PORT"),
+			rtcMaxPort: parsePort(process.env.RTC_MAX_PORT, 49999, "RTC_MAX_PORT"),
 		},
 		routerOptions: {
 			mediaCodecs: [
@@ -173,6 +199,13 @@ export class Config {
 			preferUdp: true,
 			initialAvailableOutgoingBitrate: 1000000,
 		},
+	}
+
+	constructor() {
+		const { rtcMinPort, rtcMaxPort } = this.mediasoup.workerSettings
+		if (rtcMinPort > rtcMaxPort) {
+			throw new Error(`RTC_MIN_PORT must be less than or equal to RTC_MAX_PORT, got ${rtcMinPort}-${rtcMaxPort}`)
+		}
 	}
 }
 

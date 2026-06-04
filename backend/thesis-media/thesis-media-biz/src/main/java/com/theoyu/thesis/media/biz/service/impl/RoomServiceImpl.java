@@ -305,26 +305,25 @@ public class RoomServiceImpl implements RoomService {
         }
 
         // 5. 动态分配或复用已绑定的 SFU 节点
-        String resolvedSfuUrl = null;
-        // 0 表示未分配SFU节点
-        if(room.getSfuNodeId() == 0) {
-            log.info("[RoomService] 房间首次分配 SFU 节点 - roomId: {}", roomId);
-            try {
-                SfuNodePO sfuNode = sfuNodeService.allocateNodeForRoom(roomId);
-                resolvedSfuUrl = resolveSfuServerUrl(sfuNode);
-                // 异步通知 SFU 分配结果（MQ 消息由 RoomSfuAssignedConsumer 处理）
+        String resolvedSfuUrl;
+        try {
+            Long previousSfuNodeId = room.getSfuNodeId();
+            SfuNodePO sfuNode = sfuNodeService.allocateNodeForRoom(roomId);
+            resolvedSfuUrl = resolveSfuServerUrl(sfuNode);
+
+            if (!hasAssignedSfuNode(previousSfuNodeId) || !Objects.equals(previousSfuNodeId, sfuNode.getId())) {
                 asyncOnRoomSfuAssigned(room, sfuNode, resolvedSfuUrl, userId);
-            } catch (BusinessException e) {
-                log.error("[RoomService] SFU 节点分配失败 - roomId: {}", roomId, e);
-                return JoinRoomResVO.builder()
-                        .roomId(roomId)
-                        .allowed(false)
-                        .message(e.getErrorMessage())
-                        .build();
             }
-        } else {
-            log.info("[RoomService] 房间已绑定 SFU 节点 - roomId: {}, sfuNodeId: {}",
-                    roomId, room.getSfuNodeId());
+
+            log.info("[RoomService] 房间 SFU 节点已解析 - roomId: {}, sfuNodeId: {}, url: {}",
+                    roomId, sfuNode.getId(), resolvedSfuUrl);
+        } catch (BusinessException e) {
+            log.error("[RoomService] SFU 节点分配失败 - roomId: {}", roomId, e);
+            return JoinRoomResVO.builder()
+                    .roomId(roomId)
+                    .allowed(false)
+                    .message(e.getErrorMessage())
+                    .build();
         }
 
         return JoinRoomResVO.builder()
@@ -807,7 +806,7 @@ public class RoomServiceImpl implements RoomService {
      * 若房间未分配 SFU 节点，返回空字符串
      */
     private String resolveSfuServerUrlForRoom(RoomPO room) {
-        if (room == null || room.getSfuNodeId() == null) {
+        if (room == null || !hasAssignedSfuNode(room.getSfuNodeId())) {
             return "";
         }
         SfuNodePO node = sfuNodeService.getNodeById(room.getSfuNodeId());
@@ -825,6 +824,10 @@ public class RoomServiceImpl implements RoomService {
             return "";
         }
         return sfuNodeService.buildSfuServerUrl(node);
+    }
+
+    private boolean hasAssignedSfuNode(Long sfuNodeId) {
+        return sfuNodeId != null && sfuNodeId > 0;
     }
 
     /**

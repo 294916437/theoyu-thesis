@@ -178,6 +178,24 @@
     order by current_load asc, id asc
   </select>
 
+  <update id="markMissingInstancesOffline">
+    update t_sfu_node
+    set `status` = 0,
+        updated_time = now()
+    where `status` = 1
+      and instance_id not in
+      <foreach collection="instanceIds" item="instanceId" open="(" separator="," close=")">
+        #{instanceId,jdbcType=VARCHAR}
+      </foreach>
+  </update>
+
+  <update id="markAllNodesOffline">
+    update t_sfu_node
+    set `status` = 0,
+        updated_time = now()
+    where `status` = 1
+  </update>
+
   <update id="incrementCurrentLoad">
     update t_sfu_node
     set current_load = current_load + 1,

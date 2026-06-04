@@ -250,6 +250,13 @@
     WHERE id = #{id,jdbcType=BIGINT}
       AND (sfu_node_id IS NULL OR sfu_node_id = 0)
   </update>
+
+  <update id="updateSfuNodeId">
+    UPDATE t_room
+    SET sfu_node_id = #{sfuNodeId,jdbcType=BIGINT},
+        updated_time = NOW()
+    WHERE id = #{id,jdbcType=BIGINT}
+  </update>
   <!-- 查询用户即将开始的会议（分页） -->
   <select id="selectUpcomingRoomsByUserId" resultMap="BaseResultMap">
     SELECT DISTINCT r.*

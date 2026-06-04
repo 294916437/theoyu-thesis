@@ -42,6 +42,11 @@ public interface RoomPOMapper {
     int updateSfuNodeIdIfAbsent(@Param("id") Long id, @Param("sfuNodeId") Long sfuNodeId);
 
     /**
+     * 替换房间 SFU 节点，用于已绑定节点离线后的重分配
+     */
+    int updateSfuNodeId(@Param("id") Long id, @Param("sfuNodeId") Long sfuNodeId);
+
+    /**
      * 查询用户即将开始的会议
      */
     List<RoomPO> selectUpcomingRoomsByUserId(@Param("userId") Long userId,@Param("offset") Long offset,@Param("pageSize") Long pageSize);

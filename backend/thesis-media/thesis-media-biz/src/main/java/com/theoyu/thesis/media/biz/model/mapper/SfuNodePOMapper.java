@@ -22,6 +22,10 @@ public interface SfuNodePOMapper {
 
     List<SfuNodePO> selectAvailableNodes();
 
+    int markMissingInstancesOffline(@Param("instanceIds") List<String> instanceIds);
+
+    int markAllNodesOffline();
+
     int incrementCurrentLoad(@Param("id") Long id);
 
     int decrementCurrentLoad(@Param("id") Long id);

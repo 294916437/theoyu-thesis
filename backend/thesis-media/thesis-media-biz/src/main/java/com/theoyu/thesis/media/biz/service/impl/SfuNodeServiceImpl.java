@@ -25,12 +25,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
 public class SfuNodeServiceImpl implements SfuNodeService {
 
     private static final int NODE_STATUS_ONLINE = 1;
+    private static final String METADATA_INSTANCE_ID = "instanceId";
+    private static final String METADATA_HTTP_PORT = "httpPort";
 
     @Resource
     private DiscoveryClient discoveryClient;
@@ -56,18 +59,29 @@ public class SfuNodeServiceImpl implements SfuNodeService {
     @Value("${sfu.server.grpc-port:50052}")
     private int defaultGrpcPort;
 
+    @Value("${sfu.server.default-http-port:3000}")
+    private int defaultHttpPort;
+
     @Override
     public void syncNodesFromNacos() {
         List<ServiceInstance> instances = discoveryClient.getInstances(sfuServiceName);
         if (instances == null || instances.isEmpty()) {
             log.warn("[SfuNodeService] Nacos 未发现 SFU 实例，serviceName={}", sfuServiceName);
+            sfuNodePOMapper.markAllNodesOffline();
+            redisTemplate.delete(RedisKeyConstants.SFU_NODE_LOAD_ZSET_KEY);
             return;
         }
 
         LocalDateTime now = LocalDateTime.now();
+        List<String> activeInstanceIds = instances.stream()
+                .map(this::resolveInstanceId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
         for (ServiceInstance instance : instances) {
             try {
                 String instanceId = resolveInstanceId(instance);
+                int httpPort = resolveHttpPort(instance);
                 SfuNodePO existing = sfuNodePOMapper.selectByInstanceId(instanceId);
 
                 if (existing == null) {
@@ -76,7 +90,7 @@ public class SfuNodeServiceImpl implements SfuNodeService {
                             .id(nodeId)
                             .instanceId(instanceId)
                             .ipAddress(instance.getHost())
-                            .httpPort(instance.getPort())
+                            .httpPort(httpPort)
                             .grpcPort(defaultGrpcPort)
                             .grpcHost(instance.getHost())
                             .region("default")
@@ -93,7 +107,7 @@ public class SfuNodeServiceImpl implements SfuNodeService {
                     SfuNodePO update = SfuNodePO.builder()
                             .id(existing.getId())
                             .ipAddress(instance.getHost())
-                            .httpPort(instance.getPort())
+                            .httpPort(httpPort)
                             .grpcHost(instance.getHost())
                             .status(NODE_STATUS_ONLINE)
                             .updatedTime(now)
@@ -101,12 +115,11 @@ public class SfuNodeServiceImpl implements SfuNodeService {
                     sfuNodePOMapper.updateByPrimaryKeySelective(update);
                     
                     // 重新从 DB 查询最新的 currentLoad，而不是保留旧值
-                    // 这样可以防止长期运行中负载数据累积不清零的问题
                     SfuNodePO latest = sfuNodePOMapper.selectByPrimaryKey(existing.getId());
                     if (latest != null) {
                         existing = latest;
                         existing.setIpAddress(instance.getHost());
-                        existing.setHttpPort(instance.getPort());
+                        existing.setHttpPort(httpPort);
                         existing.setGrpcHost(instance.getHost());
                         existing.setStatus(NODE_STATUS_ONLINE);
                     }
@@ -119,6 +132,9 @@ public class SfuNodeServiceImpl implements SfuNodeService {
                 log.error("[SfuNodeService] 同步 SFU 实例失败 - instance: {}", instance, e);
             }
         }
+
+        sfuNodePOMapper.markMissingInstancesOffline(activeInstanceIds);
+        rebuildNodeLoadZSet();
     }
 
     @Override
@@ -129,9 +145,11 @@ public class SfuNodeServiceImpl implements SfuNodeService {
             throw new BusinessException(ResponseCodeEnum.ROOM_NOT_FOUND);
         }
 
-        if (room.getSfuNodeId() != null && room.getSfuNodeId() > 0) {
+        syncNodesFromNacos();
+
+        if (hasAssignedNode(room.getSfuNodeId())) {
             SfuNodePO bound = getNodeById(room.getSfuNodeId());
-            if (bound != null && Objects.equals(bound.getStatus(), NODE_STATUS_ONLINE)) {
+            if (isOnline(bound)) {
                 cacheRoomSfuBinding(roomId, bound.getId());
                 return bound;
             }
@@ -149,27 +167,41 @@ public class SfuNodeServiceImpl implements SfuNodeService {
 
         try {
             room = roomPOMapper.selectByPrimaryKey(roomId);
-            if (room.getSfuNodeId() != null && room.getSfuNodeId() > 0) {
-                return getNodeById(room.getSfuNodeId());
+            Long oldNodeId = room.getSfuNodeId();
+            if (hasAssignedNode(oldNodeId)) {
+                SfuNodePO bound = getNodeById(oldNodeId);
+                if (isOnline(bound)) {
+                    cacheRoomSfuBinding(roomId, bound.getId());
+                    return bound;
+                }
             }
 
-            syncNodesFromNacos();
             SfuNodePO selected = pickLeastLoadNode();
             if (selected == null) {
                 throw new BusinessException(ResponseCodeEnum.SFU_NODE_UNAVAILABLE);
             }
 
-            int updated = roomPOMapper.updateSfuNodeIdIfAbsent(roomId, selected.getId());
+            boolean replaceOfflineNode = hasAssignedNode(oldNodeId);
+            int updated = replaceOfflineNode
+                    ? roomPOMapper.updateSfuNodeId(roomId, selected.getId())
+                    : roomPOMapper.updateSfuNodeIdIfAbsent(roomId, selected.getId());
             if (updated == 0) {
                 room = roomPOMapper.selectByPrimaryKey(roomId);
-                return getNodeById(room.getSfuNodeId());
+                SfuNodePO bound = getNodeById(room.getSfuNodeId());
+                if (isOnline(bound)) {
+                    return bound;
+                }
+                throw new BusinessException(ResponseCodeEnum.SFU_NODE_ALLOCATION_FAILED);
+            }
+
+            if (replaceOfflineNode && !Objects.equals(oldNodeId, selected.getId())) {
+                sfuNodePOMapper.decrementCurrentLoad(oldNodeId);
             }
 
             // 增加 DB 中的负载计数
             sfuNodePOMapper.incrementCurrentLoad(selected.getId());
             
             // 重新从 DB 查询最新的负载值，确保缓存数据的准确性
-            // 这样可以避免多实例环境下因内存数据不同步导致的缓存不一致问题
             SfuNodePO refreshed = sfuNodePOMapper.selectByPrimaryKey(selected.getId());
             if (refreshed != null) {
                 selected = refreshed;
@@ -193,20 +225,12 @@ public class SfuNodeServiceImpl implements SfuNodeService {
         if (nodeId == null) {
             return null;
         }
-        try {
-            String nodeKey = String.format(RedisKeyConstants.SFU_NODE_INFO_KEY, nodeId);
-            Map<Object, Object> hashMap = redisTemplate.opsForHash().entries(nodeKey);
-            if (!hashMap.isEmpty()) {
-                return MapUtils.mapToObject(hashMap, SfuNodePO.class);
-            }
-        } catch (Exception e) {
-            log.warn("[SfuNodeService] 从 Redis 读取节点失败 - nodeId: {}", nodeId, e);
-        }
-
         SfuNodePO node = sfuNodePOMapper.selectByPrimaryKey(nodeId);
         if (node != null) {
             cacheNodeInfo(node);
-            refreshNodeLoadZSet(node);
+            if (isOnline(node)) {
+                refreshNodeLoadZSet(node);
+            }
         }
         return node;
     }
@@ -217,7 +241,7 @@ public class SfuNodeServiceImpl implements SfuNodeService {
             return "";
         }
         String scheme = sfuUseSsl ? "wss" : "ws";
-        int port = node.getHttpPort() != null ? node.getHttpPort() : 3000;
+        int port = node.getHttpPort() != null ? node.getHttpPort() : defaultHttpPort;
         String host = node.getIpAddress();
         return scheme + "://" + host + ":" + port;
     }
@@ -265,7 +289,7 @@ public class SfuNodeServiceImpl implements SfuNodeService {
             if (members != null && !members.isEmpty()) {
                 Long nodeId = Long.valueOf(members.iterator().next().toString());
                 SfuNodePO cached = getNodeById(nodeId);
-                if (cached != null && Objects.equals(cached.getStatus(), NODE_STATUS_ONLINE)) {
+                if (isOnline(cached)) {
                     return cached;
                 }
             }
@@ -324,10 +348,54 @@ public class SfuNodeServiceImpl implements SfuNodeService {
     }
 
     private String resolveInstanceId(ServiceInstance instance) {
+        Map<String, String> metadata = instance.getMetadata();
+        String metadataInstanceId = metadata == null ? null : metadata.get(METADATA_INSTANCE_ID);
+        if (metadataInstanceId != null && !metadataInstanceId.isBlank()) {
+            return metadataInstanceId;
+        }
         if (instance.getInstanceId() != null && !instance.getInstanceId().isBlank()) {
             return instance.getInstanceId();
         }
         return instance.getHost() + ":" + instance.getPort();
+    }
+
+    private int resolveHttpPort(ServiceInstance instance) {
+        Map<String, String> metadata = instance.getMetadata();
+        String metadataHttpPort = metadata == null ? null : metadata.get(METADATA_HTTP_PORT);
+        if (metadataHttpPort != null && !metadataHttpPort.isBlank()) {
+            try {
+                int port = Integer.parseInt(metadataHttpPort);
+                if (port > 0 && port <= 65535) {
+                    return port;
+                }
+            } catch (NumberFormatException e) {
+                log.warn("[SfuNodeService] SFU metadata.httpPort 非法，使用 Nacos 实例端口 - instanceId: {}, httpPort: {}",
+                        resolveInstanceId(instance), metadataHttpPort);
+            }
+        }
+        return instance.getPort();
+    }
+
+    private boolean hasAssignedNode(Long sfuNodeId) {
+        return sfuNodeId != null && sfuNodeId > 0;
+    }
+
+    private boolean isOnline(SfuNodePO node) {
+        return node != null && Objects.equals(node.getStatus(), NODE_STATUS_ONLINE);
+    }
+
+    private void rebuildNodeLoadZSet() {
+        try {
+            redisTemplate.delete(RedisKeyConstants.SFU_NODE_LOAD_ZSET_KEY);
+            List<SfuNodePO> availableNodes = sfuNodePOMapper.selectAvailableNodes();
+            for (SfuNodePO node : availableNodes) {
+                cacheNodeInfo(node);
+                refreshNodeLoadZSet(node);
+            }
+            log.debug("[SfuNodeService] SFU 节点负载 ZSet 已重建，onlineNodes={}", availableNodes.size());
+        } catch (Exception e) {
+            log.warn("[SfuNodeService] 重建 SFU 节点负载 ZSet 失败", e);
+        }
     }
 
     private void cacheNodeInfo(SfuNodePO node) {

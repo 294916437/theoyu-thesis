@@ -34,6 +34,20 @@
 - [x] 会议参与者列表与实时状态
 - [x] 会议数据统计与监控
 
+## 项目预览
+
+### 首页
+
+![项目首页预览](assets/preview/home.png)
+
+### 会议详情
+
+![会议详情预览](assets/preview/detail.png)
+
+### 会议房间
+
+![会议房间预览](assets/preview/room.png)
+
 ## 项目结构
 
 ```

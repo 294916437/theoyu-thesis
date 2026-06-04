@@ -86,21 +86,6 @@
 							</v-expansion-panel-title>
 
 							<v-expansion-panel-text class="pt-4">
-								<!-- SFU节点ID -->
-								<v-text-field
-									v-model.number="formData.sfuNodeId"
-									label="SFU节点ID"
-									type="number"
-									variant="outlined"
-									density="comfortable"
-									color="primary"
-									prepend-inner-icon="mdi-server"
-									hint="默认0表示自动分配"
-									persistent-hint
-									clearable
-									class="mb-4"
-								></v-text-field>
-
 								<!-- 会议设置 -->
 								<div class="mb-2">
 									<v-label class="text-body-2 font-weight-medium mb-2">会议设置</v-label>
@@ -206,7 +191,6 @@ const formData = reactive({
 	title: `${props.userName}的会议`,
 	type: 1, // 默认为立即会议
 	maxParticipants: 15,
-	sfuNodeId: 0,
 	startTime: '', // 添加开始时间
 })
 
@@ -246,7 +230,6 @@ const resetForm = () => {
 	formData.title = ''
 	formData.type = 1
 	formData.maxParticipants = 15
-	formData.sfuNodeId = 0
 	formData.startTime = ''
 
 	settings.enableRecording = false
@@ -278,7 +261,6 @@ const handleSubmit = async () => {
 			title: formData.title.trim(),
 			type: formData.type,
 			maxParticipants: formData.maxParticipants,
-			sfuNodeId: formData.sfuNodeId,
 			startTime: formattedStartTime,
 			settings: JSON.stringify(settings),
 		}

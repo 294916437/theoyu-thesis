@@ -7,6 +7,7 @@ import init, { MeetProcessor, init_panic_hook } from '@/libs/meet-effect/meet_ba
 import wasmUrl from '@/libs/meet-effect/meet_background_effect_bg.wasm?url'
 import { $notify } from '@/plugins/notification'
 import router from '@/router'
+import { joinMeeting as allocateSfuAndJoin } from '@/api/room'
 
 const MASK_WIDTH = 256
 const MASK_HEIGHT = 144
@@ -771,14 +772,21 @@ export function useMedia() {
 			username.value = usernameParam
 			roomId.value = meetingId
 
-			// 1. 连接 Socket.io
-			// 开发时通过 Vite proxy 走同源 wss，生产时使用 VITE_SFU_URL
-			const sfuUrl = import.meta.env.VITE_SFU_URL || window.location.origin
+			// 1. 调用 media 服务分配 SFU 节点并获取连接地址
+			const joinAllocRes = await allocateSfuAndJoin({ roomId: meetingId })
+			if (!joinAllocRes?.data.allowed) {
+				throw new Error(joinAllocRes?.message || '无法加入会议')
+			}
+			// 优先使用分配接口返回的 SFU URL
+			const sfuUrl = joinAllocRes.data.sfuServerUrl || import.meta.env.VITE_SFU_URL || window.location.origin
+			console.log(`[Join] Allocated SFU URL: ${sfuUrl}`)
+
+			// 2. 连接 Socket.io
 			await socketClient.connect(sfuUrl, {
 				auth: { token },
 			})
 
-			// 2. 加入房间
+			// 3. 加入房间
 			const joinResponse = await socketClient.emit('joinRoom', {
 				roomId: roomId.value,
 				userId: userIdParam,

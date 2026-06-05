@@ -3,6 +3,8 @@ import { ref, shallowRef, computed, watch, nextTick, markRaw } from 'vue'
 import { socketClient } from '@/utils/SocketClient'
 import { MediasoupClient } from '@/utils/MediasoupClient'
 import { useThrottleFn } from '@vueuse/core'
+import * as ort from 'onnxruntime-web/wasm'
+import ortWasmUrl from '@ort-wasm-url'
 import init, { MeetProcessor, init_panic_hook } from '@/libs/meet-effect/meet_background_effect.js'
 import wasmUrl from '@/libs/meet-effect/meet_background_effect_bg.wasm?url'
 import { $notify } from '@/plugins/notification'
@@ -86,6 +88,7 @@ export function useMedia() {
 	let inferenceTimeoutId = null
 	let sourceVideoElement = null
 	let backgroundLoaded = false
+	let backgroundEffectInitPromise = null
 	// 缓存 TypedArray 视图——在 initBackgroundEffect 后初始化，整个 session 内复用
 	let cachedInputView = null // Uint8Array(PROC_W * PROC_H * 4) → WASM input_ptr
 	let cachedMaskView = null // Float32Array(MASK_WIDTH * MASK_HEIGHT) → WASM mask_ptr
@@ -198,69 +201,112 @@ export function useMedia() {
 	/**
 	 * 初始化背景特效资源
 	 */
-	async function initBackgroundEffect() {
+	async function initBackgroundEffect(options = {}) {
+		const { silent = false } = options
 		if (effectProcessor && onnxSession) {
 			console.log('[BackgroundEffect] Resources already initialized')
 			return true
 		}
 
-		try {
-			effectLoading.value = true
-
-			// 检查 ONNX Runtime
-			if (typeof ort === 'undefined') {
-				throw new Error('ONNX Runtime 未加载，请检查 CDN 连接')
+		if (backgroundEffectInitPromise) {
+			if (!silent) {
+				effectLoading.value = true
+				try {
+					return await backgroundEffectInitPromise
+				} finally {
+					effectLoading.value = false
+				}
 			}
-
-			// 1. 初始化 WASM
-			console.log('[BackgroundEffect] Initializing WASM...')
-			wasmModule = await init({ module_or_path: wasmUrl })
-			init_panic_hook()
-			// WASM processor 固定使用 PROC_W×PROC_H，与摄像头实际分辨率解耦
-			effectProcessor = MeetProcessor.new(PROC_W, PROC_H)
-			console.log('[BackgroundEffect] WASM initialized successfully')
-
-			// 2. 配置 ONNX Runtime WASM 路径
-			ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/'
-			ort.env.wasm.numThreads = 2
-
-			// 3. 加载 ONNX 模型
-			console.log('[BackgroundEffect] Loading ONNX model...')
-			onnxSession = await ort.InferenceSession.create('/models/model_float32_opt.onnx', {
-				executionProviders: ['wasm'],
-				graphOptimizationLevel: 'all',
-			})
-			console.log('[BackgroundEffect] ONNX session created')
-
-			// 4. 创建 Canvas
-			maskCanvas = new OffscreenCanvas(MASK_WIDTH, MASK_HEIGHT)
-			maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true, alpha: false })
-
-			// 处理 canvas
-			procCanvas = new OffscreenCanvas(PROC_W, PROC_H)
-			procCtx = procCanvas.getContext('2d', { willReadFrequently: true, alpha: false })
-
-			// 输出 canvas
-			effectCanvas = document.createElement('canvas')
-			effectCanvas.width = PROC_W
-			effectCanvas.height = PROC_H
-			effectCtx = effectCanvas.getContext('2d', { willReadFrequently: false, alpha: false })
-
-			// 缓存 TypedArray 视图
-			cachedInputView = new Uint8Array(wasmModule.memory.buffer, effectProcessor.input_ptr(), PROC_W * PROC_H * 4)
-			cachedMaskView = new Float32Array(wasmModule.memory.buffer, effectProcessor.mask_ptr(), MASK_WIDTH * MASK_HEIGHT)
-			cachedOutputView = new Uint8ClampedArray(wasmModule.memory.buffer, effectProcessor.output_ptr(), PROC_W * PROC_H * 4)
-
-			console.log('[BackgroundEffect] Canvas initialized')
-			return true
-		} catch (error) {
-			console.error('[BackgroundEffect] Initialization failed:', error)
-			effectError.value = `初始化失败: ${error.message}`
-			$notify.error(effectError.value)
-			throw error
-		} finally {
-			effectLoading.value = false
+			return backgroundEffectInitPromise
 		}
+
+		backgroundEffectInitPromise = (async () => {
+			try {
+				if (!silent) {
+					effectLoading.value = true
+				}
+
+				// 1. 初始化 WASM
+				console.log('[BackgroundEffect] Initializing WASM...')
+				wasmModule = await init({ module_or_path: wasmUrl })
+				init_panic_hook()
+				// WASM processor 固定使用 PROC_W×PROC_H，与摄像头实际分辨率解耦
+				effectProcessor = MeetProcessor.new(PROC_W, PROC_H)
+				console.log('[BackgroundEffect] WASM initialized successfully')
+
+				// 2. 配置 ONNX Runtime。onnxruntime-web 由 npm/Vite 本地打包，不再访问 CDN。
+				ort.env.wasm.numThreads = window.crossOriginIsolated ? 2 : 1
+				ort.env.wasm.proxy = false
+				ort.env.wasm.wasmPaths = {
+					wasm: ortWasmUrl,
+				}
+
+				// 3. 加载 ONNX 模型
+				console.log('[BackgroundEffect] Loading ONNX model...')
+				onnxSession = await ort.InferenceSession.create('/models/model_float32_opt.onnx', {
+					executionProviders: ['wasm'],
+					graphOptimizationLevel: 'all',
+				})
+				console.log('[BackgroundEffect] ONNX session created')
+
+				// 4. 创建 Canvas
+				maskCanvas = new OffscreenCanvas(MASK_WIDTH, MASK_HEIGHT)
+				maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true, alpha: false })
+
+				// 处理 canvas
+				procCanvas = new OffscreenCanvas(PROC_W, PROC_H)
+				procCtx = procCanvas.getContext('2d', { willReadFrequently: true, alpha: false })
+
+				// 输出 canvas
+				effectCanvas = document.createElement('canvas')
+				effectCanvas.width = PROC_W
+				effectCanvas.height = PROC_H
+				effectCtx = effectCanvas.getContext('2d', { willReadFrequently: false, alpha: false })
+
+				// 缓存 TypedArray 视图
+				cachedInputView = new Uint8Array(wasmModule.memory.buffer, effectProcessor.input_ptr(), PROC_W * PROC_H * 4)
+				cachedMaskView = new Float32Array(wasmModule.memory.buffer, effectProcessor.mask_ptr(), MASK_WIDTH * MASK_HEIGHT)
+				cachedOutputView = new Uint8ClampedArray(wasmModule.memory.buffer, effectProcessor.output_ptr(), PROC_W * PROC_H * 4)
+
+				console.log('[BackgroundEffect] Canvas initialized')
+				return true
+			} catch (error) {
+				console.error('[BackgroundEffect] Initialization failed:', error)
+				effectError.value = `初始化失败: ${error.message}`
+				if (!silent) {
+					$notify.error(effectError.value)
+				}
+				throw error
+			} finally {
+				if (!silent) {
+					effectLoading.value = false
+				}
+				backgroundEffectInitPromise = null
+			}
+		})()
+
+		return backgroundEffectInitPromise
+	}
+
+	function prewarmBackgroundEffect() {
+		const run = () => {
+			initBackgroundEffect({ silent: true }).catch(error => {
+				console.warn('[BackgroundEffect] Prewarm failed:', error)
+			})
+		}
+
+		if ('requestIdleCallback' in window) {
+			window.requestIdleCallback(run, { timeout: 1500 })
+		} else {
+			setTimeout(run, 0)
+		}
+	}
+
+	function drawInitialEffectFrame(sourceVideo) {
+		if (!sourceVideo || sourceVideo.readyState < 2 || !effectCanvas || !effectCtx) return
+
+		procCtx.drawImage(sourceVideo, 0, 0, PROC_W, PROC_H)
+		effectCtx.drawImage(procCanvas, 0, 0)
 	}
 	/**
 	 * 推理循环 - 生成分割 mask
@@ -447,48 +493,33 @@ export function useMedia() {
 			}
 
 			// 5. 启动循环
+			drawInitialEffectFrame(sourceVideoElement)
 			effectProducerActive.value = true
 			localEffectCanvas.value = effectCanvas // 通知 VideoGrid 直接展示此 canvas 元素
 			inferenceLoop(sourceVideoElement)
 			renderLoop() // 不传参，使用闭包变量
-
-			// 6. 等待稳定
-			await new Promise(resolve => setTimeout(resolve, 500))
 
 			// 7. 捕获流
 			effectStream.value = effectCanvas.captureStream(30)
 			const effectVideoTrack = effectStream.value.getVideoTracks()[0]
 			effectVideoTrack.contentHint = 'motion'
 
-			// 8. 关闭旧 Producer
-			await socketClient.emit('closeProducer', {
-				roomId: roomId.value,
-				producerId: currentVideoProducer.id,
-			})
-			currentVideoProducer.close()
-			mediasoupClient.producers.delete('video')
-
-			// 9. 创建新 Producer
-			const effectProducer = await mediasoupClient.produce(effectVideoTrack, {
-				kind: 'video',
-				encodings: SIMULCAST_ENCODINGS,
-				codecOptions: { videoGoogleStartBitrate: 1000 },
-				appData: {
-					source: 'effect',
-					effectType: effectType.value,
-				},
+			await currentVideoProducer.replaceTrack({ track: effectVideoTrack })
+			Object.assign(currentVideoProducer.appData, {
+				source: 'effect',
+				effectType: effectType.value,
 			})
 
 			effectVideoTrack.onended = () => {
 				stopEffectStream()
 			}
-			mediasoupClient.producers.set('video', effectProducer)
+			mediasoupClient.producers.set('video', currentVideoProducer)
 
 			// 10. 更新本地 Producer 状态（localStream 保持原始摄像头轨道不变， VideoGrid 通过 effectCanvas prop 直接展示特效画面）
 			const localPeer = participants.value.find(p => p.peerId === peerId.value)
 			if (localPeer) {
 				localPeer.producers.video = {
-					id: effectProducer.id,
+					id: currentVideoProducer.id,
 					kind: 'video',
 					paused: false,
 					appData: { source: 'effect', effectType: effectType.value },
@@ -497,7 +528,7 @@ export function useMedia() {
 			// 强制触发响应式更新，确保 UI 同步
 			participants.value = [...participants.value]
 
-			return effectProducer
+			return currentVideoProducer
 		} catch (error) {
 			console.error('Failed to start effect:', error)
 			await stopEffectStream()
@@ -533,55 +564,36 @@ export function useMedia() {
 
 		isInferring = false
 
-		// 3. 停止流
-		if (effectStream.value) {
-			effectStream.value.getTracks().forEach(t => t.stop())
-			effectStream.value = null
-		}
-
-		// 4. 关闭服务器 producer
 		const effectProducer = mediasoupClient.producers.get('video')
-		if (effectProducer && effectProducer.appData?.source === 'effect') {
-			try {
-				await socketClient.emit('closeProducer', {
-					roomId: roomId.value,
-					producerId: effectProducer.id,
-				})
-				effectProducer.close()
-				mediasoupClient.producers.delete('video')
-			} catch (e) {
-				console.warn(e)
-			}
-		}
 
-		// 5. 恢复原始摄像头
 		if (originalCameraTrack.value && originalCameraTrack.value.readyState === 'live') {
-			const newProducer = await mediasoupClient.produce(originalCameraTrack.value, {
-				kind: 'video',
-				encodings: SIMULCAST_ENCODINGS,
-				codecOptions: { videoGoogleStartBitrate: 1000 },
-				appData: { source: 'camera' },
-			})
-			mediasoupClient.producers.set('video', newProducer)
-			updateLocalProducer('video', newProducer)
+			if (effectProducer) {
+				await effectProducer.replaceTrack({ track: originalCameraTrack.value })
+				Object.assign(effectProducer.appData, { source: 'camera' })
+				mediasoupClient.producers.set('video', effectProducer)
+				updateLocalProducer('video', effectProducer)
+			}
 		} else {
 			// 重新请求摄像头
 			const stream = await navigator.mediaDevices.getUserMedia({
 				video: { width: VIDEO_WIDTH, height: VIDEO_HEIGHT },
 			})
 			const newTrack = stream.getVideoTracks()[0]
-			const newProducer = await mediasoupClient.produce(newTrack, {
-				kind: 'video',
-				encodings: SIMULCAST_ENCODINGS,
-				codecOptions: { videoGoogleStartBitrate: 1000 },
-				appData: { source: 'camera' },
-			})
-			mediasoupClient.producers.set('video', newProducer)
-			updateLocalProducer('video', newProducer)
+			if (effectProducer) {
+				await effectProducer.replaceTrack({ track: newTrack })
+				Object.assign(effectProducer.appData, { source: 'camera' })
+				mediasoupClient.producers.set('video', effectProducer)
+				updateLocalProducer('video', effectProducer)
+			}
 			// 摄像头需重新打开：将新轨道加入 localStream 供 VideoGrid 摄像头预览使用
 			if (localStream.value) {
 				localStream.value.addTrack(newTrack)
 			}
+		}
+
+		if (effectStream.value) {
+			effectStream.value.getTracks().forEach(t => t.stop())
+			effectStream.value = null
 		}
 
 		// 6. 重置状态
@@ -849,7 +861,7 @@ export function useMedia() {
 			// 1. 调用 media 服务分配 SFU 节点并获取连接地址
 			const joinAllocRes = await allocateSfuAndJoin({ roomId: meetingId })
 			if (!joinAllocRes?.data.allowed) {
-				throw new Error(joinAllocRes?.message || '无法加入会议')
+				throw new Error(joinAllocRes.message)
 			}
 			// 优先使用分配接口返回的 SFU URL
 			const sfuUrl = joinAllocRes.data.sfuServerUrl || import.meta.env.VITE_SFU_URL || window.location.origin
@@ -1060,6 +1072,8 @@ export function useMedia() {
 			if (localPeer) {
 				localPeer.streams.local = stream
 			}
+
+			prewarmBackgroundEffect()
 
 			return stream
 		} catch (error) {

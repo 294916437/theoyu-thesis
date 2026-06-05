@@ -1,8 +1,13 @@
 import { defineConfig, loadEnv } from 'vite'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import vuetify from 'vite-plugin-vuetify'
 import vue from '@vitejs/plugin-vue'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+
+const require = createRequire(import.meta.url)
+const onnxRuntimeWebDistDir = dirname(require.resolve('onnxruntime-web/wasm'))
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -16,6 +21,7 @@ export default defineConfig(({ mode }) => {
 		resolve: {
 			alias: {
 				'@': fileURLToPath(new URL('./src', import.meta.url)),
+				'@ort-wasm-url': `${join(onnxRuntimeWebDistDir, 'ort-wasm-simd-threaded.wasm')}?url`,
 			},
 		},
 		server: {

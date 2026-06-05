@@ -229,6 +229,7 @@ public class RoomServiceImpl implements RoomService {
                     .roomId(room.getId())
                     .roomNo(room.getRoomNo())
                     .title(room.getTitle())
+                    .maxParticipants(room.getMaxParticipants())
                     .description(room.getSettings()) // 假设 settings 包含描述信息
                     .startTime(room.getStartTime())
                     .endTime(room.getEndTime()) // 补充 endTime
@@ -250,9 +251,6 @@ public class RoomServiceImpl implements RoomService {
 
     /**
      * 加入会议（预验证阶段）
-     * 此方法不会执行持久化操作。真正的参与者记录将在用户成功连接到 SFU 服务器后，
-     * 由 SFU 通过 gRPC 调用 {@link SFUGrpcServer#notifyParticipantJoined} 时创建。
-     * 这样可以避免"幽灵参与者"问题（用户调用 API 但未实际连接）。
      * 
      * @param reqVO 加入会议请求
      * @return 验证结果，包含 SFU 服务器地址
@@ -289,20 +287,20 @@ public class RoomServiceImpl implements RoomService {
 
         // 3. 检查会议人数限制
         Integer currentCount = getCurrentParticipantCount(roomId);
-        if (currentCount >= room.getMaxParticipants()) {
+        if (currentCount > room.getMaxParticipants()) {
             return JoinRoomResVO.builder()
                     .allowed(false)
                     .message("会议已满")
                     .build();
         }
 
-        // 4. 检查用户权限
-        if (!checkUserPermission(roomId, userId, room.getHostId())) {
-            return JoinRoomResVO.builder()
-                    .allowed(false)
-                    .message("无权限访问该会议")
-                    .build();
-        }
+        // 4. 检查用户权限(当前版本不区分权限，后续可根据需求调整)
+        // if (!checkUserPermission(roomId, userId, room.getHostId())) {
+        //     return JoinRoomResVO.builder()
+        //             .allowed(false)
+        //             .message("无权限访问该会议")
+        //             .build();
+        // }
 
         // 5. 动态分配或复用已绑定的 SFU 节点
         String resolvedSfuUrl;
@@ -362,6 +360,7 @@ public class RoomServiceImpl implements RoomService {
                 .id(roomId)
                 .title(reqVO.getTitle())
                 .settings(reqVO.getDescription())
+                .maxParticipants(reqVO.getMaxParticipants())
                 .updatedTime(LocalDateTime.now())
                 .build();
 

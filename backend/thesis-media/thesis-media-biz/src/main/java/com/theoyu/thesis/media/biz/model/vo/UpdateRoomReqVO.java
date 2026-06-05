@@ -1,6 +1,8 @@
 package com.theoyu.thesis.media.biz.model.vo;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.Data;
 
 import java.time.Instant;
@@ -29,4 +31,11 @@ public class UpdateRoomReqVO {
      * 预计持续时间（分钟），用于计算 endTime
      */
     private Integer duration;
+
+    /**
+     * 最大参与者数量
+     */
+    @Min(value = 1, message = "最大参与者数量必须大于0")
+    @Max(value = 100, message = "最大参与者数量不能超过100")
+    private Integer maxParticipants;
 }

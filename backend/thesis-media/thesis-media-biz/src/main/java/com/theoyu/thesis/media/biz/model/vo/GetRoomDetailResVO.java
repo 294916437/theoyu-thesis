@@ -23,6 +23,8 @@ public class GetRoomDetailResVO {
 
     private String description;
 
+    private Integer maxParticipants;
+
     private LocalDateTime startTime;
 
     private LocalDateTime endTime;

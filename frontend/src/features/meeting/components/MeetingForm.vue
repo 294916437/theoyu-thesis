@@ -42,13 +42,25 @@
 
 				<v-select v-model="formData.duration" :items="durationOptions" label="持续时间" variant="outlined" prepend-inner-icon="mdi-timer" class="mt-4"></v-select>
 
+				<v-text-field
+					v-model.number="formData.maxParticipants"
+					label="最大参与人数"
+					type="number"
+					:rules="maxParticipantsRules"
+					variant="outlined"
+					prepend-inner-icon="mdi-account-multiple"
+					class="mt-4"
+					min="1"
+					max="100"
+					hint="最多支持 100 人"
+					persistent-hint
+				></v-text-field>
+
 				<v-divider class="mt-6 mb-4"></v-divider>
 				<div class="text-subtitle-2 text-grey-darken-2 mb-3">会议设置</div>
 
 				<v-switch v-model="formData.enableWaitingRoom" label="启用等候室" color="primary" hide-details density="comfortable"></v-switch>
-
-				<v-switch v-model="formData.enableRecording" label="自动录制" color="primary" hide-details density="comfortable" class="mt-1"></v-switch>
-
+				<v-switch v-model="formData.enableRecording" label="允许录制会议" color="primary" hide-details density="comfortable" class="mt-1"></v-switch>
 				<v-switch v-model="formData.disableCamera" label="默认关闭摄像头" color="primary" hide-details density="comfortable" class="mt-1"></v-switch>
 			</v-form>
 		</v-card-text>
@@ -92,6 +104,7 @@ const formData = ref({
 	startDate: useDateFormat(new Date(), 'YYYY-MM-DD').value,
 	startTime: useDateFormat(new Date(), 'HH:mm').value,
 	duration: 60,
+	maxParticipants: 15,
 	enableWaitingRoom: false,
 	enableRecording: false,
 	disableCamera: false,
@@ -100,6 +113,12 @@ const formData = ref({
 const rules = {
 	required: value => !!value || '此字段为必填项',
 }
+
+const maxParticipantsRules = [
+	value => !!value || '最大参与人数不能为空',
+	value => value > 0 || '最大参与人数必须大于 0',
+	value => value <= 100 || '最大参与人数不能超过 100',
+]
 
 const durationOptions = [
 	{ title: '15分钟', value: 15 },
@@ -129,6 +148,7 @@ const handleSave = async () => {
 			description,
 			startTime: new Date(`${formData.value.startDate} ${formData.value.startTime}`).toISOString(),
 			duration: formData.value.duration,
+			maxParticipants: formData.value.maxParticipants,
 		}
 
 		emit('save', meetingData)
@@ -160,6 +180,7 @@ watch(
 				startDate: useDateFormat(startDate, 'YYYY-MM-DD').value,
 				startTime: useDateFormat(startDate, 'HH:mm').value,
 				duration: meeting.duration || 60,
+				maxParticipants: meeting.maxParticipants || 15,
 				enableWaitingRoom: enableWaitingRoom ?? false,
 				enableRecording: enableRecording ?? false,
 				disableCamera: disableCamera ?? false,

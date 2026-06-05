@@ -105,7 +105,7 @@
 										<v-icon color="grey-darken-1">mdi-account-multiple</v-icon>
 										<div>
 											<div class="text-caption text-grey-darken-1">参与人数</div>
-											<div class="text-body-1 font-weight-medium">{{ meetingDetail.participantCount }} 人</div>
+											<div class="text-body-1 font-weight-medium">{{ meetingDetail.participantCount }} / {{ meetingDetail.maxParticipants || 0 }} 人</div>
 										</div>
 									</div>
 								</v-col>
@@ -476,6 +476,7 @@ const meetingStatistics = computed(() => {
 
 	return {
 		totalParticipants: meetingDetail.value.participantCount || 0,
+		maxParticipants: meetingDetail.value.maxParticipants || 0,
 		currentOnline: meetingDetail.value.participants.filter(p => p.status === 1).length,
 		duration: meetingDetail.value.duration || 0,
 		hasRecording: meetingDetail.value.recording?.available || false,

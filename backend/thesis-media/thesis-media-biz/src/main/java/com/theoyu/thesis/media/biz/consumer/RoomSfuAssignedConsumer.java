@@ -150,11 +150,13 @@ public class RoomSfuAssignedConsumer extends BaseRocketMQConsumer implements Roc
      */
     private void updateRoomSfuInfoInDB(RoomSfuAssignedEventDTO event) {
         try {
-            // 同步更新房间缓存中的 sfuNodeId
             String roomKey = String.format(RedisKeyConstants.ROOM_INFO_KEY, event.getRoomId());
+            // 同步更新房间缓存中的 sfuNodeId
             redisTemplate.opsForHash().put(roomKey, "sfuNodeId", String.valueOf(event.getSfuNodeId()));
-            redisTemplate.opsForHash().put(roomKey, "sfuInstanceId", event.getInstanceId());
-            
+            // 更新 updatedTime
+            long currentTimestamp = System.currentTimeMillis();
+            redisTemplate.opsForHash().put(roomKey, "updatedTime", String.valueOf(currentTimestamp));
+
             // 刷新房间缓存过期时间
             redisTemplate.expire(roomKey, RedisKeyConstants.ROOM_INFO_EXPIRE_TIME, TimeUnit.SECONDS);
 

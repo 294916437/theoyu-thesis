@@ -589,7 +589,7 @@ const navigateToMeeting = roomNo => {
 }
 
 const goBack = () => {
-	router.back()
+	router.push('/')
 }
 
 // 初始化

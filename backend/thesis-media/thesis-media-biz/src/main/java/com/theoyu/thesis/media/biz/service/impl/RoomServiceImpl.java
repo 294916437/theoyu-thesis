@@ -241,8 +241,6 @@ public class RoomServiceImpl implements RoomService {
                     .transcript(buildTranscriptInfo())
                     .build();
 
-        } catch (BusinessException e) {
-            throw e;
         } catch (Exception e) {
             log.error("[RoomService] 获取会议详情失败 - roomIdOrNo: {}", roomIdOrNo, e);
             throw new BusinessException(ResponseCodeEnum.ROOM_DETAIL_QUERY_FAILED);

@@ -32,6 +32,12 @@ class SocketClient {
 				resolve()
 			})
 
+			this.socket.on('connect_error', error => {
+				console.error('Socket connect error', error)
+				this.connected.value = false
+				reject(error)
+			})
+
 			this.socket.on('disconnect', reason => {
 				console.log('Socket disconnected', reason)
 				this.connected.value = false

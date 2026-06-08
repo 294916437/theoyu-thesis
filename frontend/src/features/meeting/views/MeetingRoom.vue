@@ -9,6 +9,7 @@
 				:meeting-info="meetingInfo"
 				:is-retrying="isRetrying"
 				:consent-error="consentError"
+				:join-error="joinError"
 				:media-checking="mediaChecking"
 				@confirm="handleMediaConsent"
 				@retry="handleRetryJoin"
@@ -1240,6 +1241,7 @@ const {
 	hasScreenShare,
 	getScreenSharingParticipant,
 	connectionState,
+	joinError,
 	connectionQuality,
 	stats,
 	effectType,
@@ -1411,6 +1413,7 @@ const checkMeetingEligibility = () => {
 
 const handleRetryJoin = async () => {
 	isRetrying.value = true
+	joinError.value = ''
 	try {
 		await loadMeetingDetail()
 		if (checkMeetingEligibility()) {
@@ -1470,6 +1473,7 @@ const resolveMediaError = err => {
 // 用户选择媒体权限后的处理
 const handleMediaConsent = async ({ withMedia }) => {
 	consentError.value = null
+	joinError.value = ''
 
 	// 选择使用设备时，先预检权限和设备可用性，失败则停留在 consent 展示错误
 	if (withMedia) {

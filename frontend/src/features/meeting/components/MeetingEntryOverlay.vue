@@ -50,6 +50,10 @@
 
 					<!-- 设备权限错误提示 -->
 					<v-alert v-if="consentError" type="error" variant="tonal" rounded="lg" class="mx-4 mb-3 text-left" :text="consentError" density="compact"></v-alert>
+					<v-alert v-if="joinError" type="error" variant="tonal" rounded="lg" class="mx-4 mb-3 text-left join-error-alert" density="compact">
+						<div class="text-caption font-weight-medium mb-1">加入会议失败</div>
+						<pre class="join-error-text">{{ joinError }}</pre>
+					</v-alert>
 
 					<v-card-actions class="flex-column ga-3 px-4 pb-4">
 						<v-btn color="primary" variant="flat" block size="large" rounded="pill" prepend-icon="mdi-monitor-share" :loading="mediaChecking" @click="requestAndJoin">
@@ -68,6 +72,10 @@
 				</v-progress-circular>
 
 				<div class="text-h6 text-white mt-6">{{ loadingMessage }}</div>
+				<v-alert v-if="joinError" type="error" variant="tonal" rounded="lg" class="mt-4 text-left join-error-alert" density="compact">
+					<div class="text-caption font-weight-medium mb-1">加入会议失败</div>
+					<pre class="join-error-text">{{ joinError }}</pre>
+				</v-alert>
 
 				<!-- 离开场景无进度时的补充提示 -->
 				<div v-if="!loadingProgress" class="text-body-2 text-white mt-2" style="opacity: 0.6">请稍候...</div>
@@ -103,6 +111,10 @@ const props = defineProps({
 	consentError: {
 		type: String,
 		default: null,
+	},
+	joinError: {
+		type: String,
+		default: '',
 	},
 	mediaChecking: {
 		type: Boolean,
@@ -189,6 +201,20 @@ const joinAsListener = () => {
 	white-space: normal;
 	line-height: 1.5;
 }
+
+.join-error-alert {
+	max-width: 520px;
+}
+
+.join-error-text {
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 12px;
+	line-height: 1.5;
+}
+
 .md-card {
 	border-radius: 24px !important;
 	background: rgb(var(--v-theme-surface)) !important;

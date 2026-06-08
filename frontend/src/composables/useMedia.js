@@ -38,6 +38,7 @@ export function useMedia() {
 	const audioNoiseSuppressionUpdating = ref(false)
 	const audioNoiseSuppressionError = ref(null)
 	const connectionState = ref('disconnected') // disconnected | connecting | connected | failed
+	const joinError = ref('')
 	const connectionQuality = ref({
 		send: { score: 10, quality: 'excellent' },
 		recv: { score: 10, quality: 'excellent' },
@@ -846,13 +847,30 @@ export function useMedia() {
 		return local
 	})
 
+	const formatJoinError = (error, context = {}) => {
+		const details = []
+		const message = error?.message || String(error || 'Unknown error')
+
+		details.push(`message: ${message}`)
+		if (error?.name) details.push(`name: ${error.name}`)
+		if (error?.code) details.push(`code: ${error.code}`)
+		if (error?.type) details.push(`type: ${error.type}`)
+		if (error?.description) details.push(`description: ${error.description}`)
+		if (context.sfuUrl) details.push(`sfuUrl: ${context.sfuUrl}`)
+		if (context.meetingId) details.push(`roomId: ${context.meetingId}`)
+
+		return details.join('\n')
+	}
+
 	/**
 	 * 加入房间
 	 */
 	async function joinMeeting(meetingId, userIdParam, usernameParam, token, options = {}) {
 		const { withMedia = true } = options
+		let sfuUrl = ''
 		try {
 			connectionState.value = 'connecting'
+			joinError.value = ''
 
 			userId.value = userIdParam
 			username.value = usernameParam
@@ -864,7 +882,7 @@ export function useMedia() {
 				throw new Error(joinAllocRes.message)
 			}
 			// 优先使用分配接口返回的 SFU URL
-			const sfuUrl = joinAllocRes.data.sfuServerUrl || import.meta.env.VITE_SFU_URL || window.location.origin
+			sfuUrl = joinAllocRes.data.sfuServerUrl || import.meta.env.VITE_SFU_URL || window.location.origin
 			console.log(`[Join] Allocated SFU URL: ${sfuUrl}`)
 
 			// 2. 连接 Socket.io
@@ -1041,9 +1059,11 @@ export function useMedia() {
 			}
 
 			connectionState.value = 'connected'
+			joinError.value = ''
 		} catch (error) {
 			console.error('Failed to join meeting', error)
 			connectionState.value = 'failed'
+			joinError.value = formatJoinError(error, { sfuUrl, meetingId })
 			$notify.error(`加入会议失败: ${error.message}`)
 			throw error
 		}
@@ -2186,6 +2206,7 @@ export function useMedia() {
 		screenSharing,
 		screenStream,
 		connectionState,
+		joinError,
 		connectionQuality,
 		stats,
 		hasScreenShare,

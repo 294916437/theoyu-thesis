@@ -33,13 +33,6 @@ export default defineConfig(({ mode }) => {
 					changeOrigin: true,
 					rewrite: path => path.replace(/^\/api/, ''),
 				},
-				// 将 socket.io WebSocket 请求代理到 SFU 服务
-				// 浏览器只看到 wss://frontend，Vite 内部转发到 ws://SFU，避免混合内容错误
-				'/socket.io': {
-					target: `http://${localIp}:3000`,
-					changeOrigin: true,
-					ws: true, // 开启 WebSocket 代理
-				},
 				// Spring Cloud Gateway 的 WebSocket 路径代理
 				// 覆盖 message/ws/* 和 media/ws/* 三条 STOMP/WS 连接
 				'/message/ws': {

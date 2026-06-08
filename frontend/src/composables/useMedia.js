@@ -862,12 +862,38 @@ export function useMedia() {
 		return details.join('\n')
 	}
 
+	const resolveSocketConnection = sfuUrl => {
+		const connection = {
+			url: sfuUrl,
+			path: undefined,
+		}
+
+		if (!import.meta.env.DEV || window.location.protocol !== 'https:') {
+			return connection
+		}
+
+		try {
+			const parsedUrl = new URL(sfuUrl)
+			if (parsedUrl.protocol !== 'ws:') {
+				return connection
+			}
+
+			connection.url = window.location.origin
+			connection.path = `/sfu/${parsedUrl.port || '80'}/socket.io`
+			return connection
+		} catch (error) {
+			console.warn('[Join] Failed to resolve proxied SFU connection, fallback to allocated URL', error)
+			return connection
+		}
+	}
+
 	/**
 	 * 加入房间
 	 */
 	async function joinMeeting(meetingId, userIdParam, usernameParam, token, options = {}) {
 		const { withMedia = true } = options
 		let sfuUrl = ''
+		let socketConnection = null
 		try {
 			connectionState.value = 'connecting'
 			joinError.value = ''
@@ -884,9 +910,11 @@ export function useMedia() {
 			// 优先使用分配接口返回的 SFU URL
 			sfuUrl = joinAllocRes.data.sfuServerUrl || import.meta.env.VITE_SFU_URL || window.location.origin
 			console.log(`[Join] Allocated SFU URL: ${sfuUrl}`)
+			socketConnection = resolveSocketConnection(sfuUrl)
 
 			// 2. 连接 Socket.io
-			await socketClient.connect(sfuUrl, {
+			await socketClient.connect(socketConnection.url, {
+				path: socketConnection.path,
 				auth: { token },
 			})
 
@@ -1063,7 +1091,12 @@ export function useMedia() {
 		} catch (error) {
 			console.error('Failed to join meeting', error)
 			connectionState.value = 'failed'
-			joinError.value = formatJoinError(error, { sfuUrl, meetingId })
+			joinError.value = formatJoinError(error, {
+				sfuUrl,
+				socketUrl: socketConnection?.url,
+				socketPath: socketConnection?.path,
+				meetingId,
+			})
 			$notify.error(`加入会议失败: ${error.message}`)
 			throw error
 		}

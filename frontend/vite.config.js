@@ -9,12 +9,32 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 const require = createRequire(import.meta.url)
 const onnxRuntimeWebDistDir = dirname(require.resolve('onnxruntime-web/wasm'))
 
+const parsePortList = (value = '3000,3001,3002') =>
+	value
+		.split(',')
+		.map(port => port.trim())
+		.filter(port => /^\d+$/.test(port))
+
+const createSfuProxyEntries = (host, ports) =>
+	Object.fromEntries(
+		ports.map(port => [
+			`/sfu/${port}/socket.io`,
+			{
+				target: `http://${host}:${port}`,
+				changeOrigin: true,
+				ws: true,
+				rewrite: path => path.replace(new RegExp(`^/sfu/${port}`), ''),
+			},
+		]),
+	)
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), '')
 	const isProd = mode === 'production'
 
 	const localIp = env.VITE_LOCAL_IP || '127.0.0.1'
+	const sfuProxyPorts = parsePortList(env.VITE_SFU_PROXY_PORTS)
 
 	return {
 		plugins: [vue(), vuetify({ autoImport: true }), basicSsl()],
@@ -45,6 +65,10 @@ export default defineConfig(({ mode }) => {
 					changeOrigin: true,
 					ws: true,
 				},
+				// SFU 多实例 Socket.IO 代理。
+				// HTTPS 页面不能稳定直连 ws://SFU；浏览器连同源 wss://frontend/sfu/{port}/socket.io，
+				// Vite 再按端口转发到对应的本地 SFU 实例。
+				...createSfuProxyEntries(localIp, sfuProxyPorts),
 			},
 		},
 		build: {

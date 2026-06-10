@@ -402,10 +402,10 @@ export function useMedia() {
 						// 4. 写入 WASM 输入帧
 						cachedInputView.set(frameData.data)
 
-						// 5. 写入分割 mask
+						// 5. 写入前景概率 mask
 						cachedMaskView.set(currentMask)
 
-						// 6. WASM 处理
+						// 6. Mask 增强(时域平滑、双线性上采样、原图灰度缓存和联合双边滤波)
 						effectProcessor.prepare_mask()
 
 						if (type === 'blur') {

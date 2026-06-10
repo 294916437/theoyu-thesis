@@ -118,7 +118,6 @@ impl MeetProcessor {
     }
 
     // 阶段 1: 准备 Mask (计算密集型，每帧只调一次)
-    // 优化后执行顺序：低分辨率时域平滑 → 上采样 → 灰度缓存 → 联合双边滤波
     pub fn prepare_mask(&mut self) {
         self.temporal_smooth_low_res();   // 在 256×144 上做 EMA，再上采样
         self.bilinear_upsample();
@@ -139,7 +138,7 @@ impl MeetProcessor {
             let p_mask = self.upsampled_mask.as_ptr();
 
             for i in 0..len {
-                // alpha=1 表示前景（保留原图），alpha=0 表示背景（显示模糊）
+                // Output = Input * Alpha + blur * (1 - Alpha)
                 let alpha = (*p_mask.add(i)).clamp(0.0, 1.0);
                 let inv_alpha = 1.0 - alpha;
                 let pi = i * 4;
@@ -184,7 +183,6 @@ impl MeetProcessor {
                 let inv_alpha = 1.0 - alpha;
 
                 // Output = Input * Alpha + Background * (1 - Alpha)
-                // 前景(Input) + 背景(Background)
 
                 *p_out.add(0) =
                     (*p_in.add(0) as f32 * alpha + *p_bg.add(0) as f32 * inv_alpha) as u8;
@@ -202,7 +200,7 @@ impl MeetProcessor {
         }
     }
 
-    // 低分辨率时域平滑：在 mask_width×mask_height（256×144）上对 mask_buffer 做 EMA
+    // 低分辨率时域平滑：在 256×144 上对 mask_buffer 做 EMA
     fn temporal_smooth_low_res(&mut self) {
         let len = self.mask_width * self.mask_height;
         for i in 0..len {
@@ -215,7 +213,7 @@ impl MeetProcessor {
             }
         }
     }
-
+    // 灰度缓存：为联合双边滤波预计算每个像素的灰度值，避免重复计算
     fn compute_gray_cache(&mut self) {
         let len = self.width * self.height;
         let chunks = len / 8;
@@ -242,7 +240,7 @@ impl MeetProcessor {
             self.gray_cache[idx] = 0.299 * r + 0.587 * g + 0.114 * b;
         }
     }
-
+    // 双线性上采样：将 mask_buffer 从 256×144 上采样到 width×height，结果存入 upsampled_mask
     fn bilinear_upsample(&mut self) {
         let w = self.width;
         let h = self.height;
@@ -283,7 +281,7 @@ impl MeetProcessor {
             }
         }
     }
-
+    // 联合双边滤波：在 upsampled_mask 上进行边缘保留平滑，结果存回 upsampled_mask 以供后续使用
     fn joint_bilateral_filter_opt(&mut self) {
         let w = self.width;
         let h = self.height;

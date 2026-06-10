@@ -342,10 +342,10 @@ const handleDisableAllVideo = async () => {
 							<v-list-item @click="handleSetSpotlight(participant)">
 								<template #prepend>
 									<v-icon :color="spotlightPeerId === participant.peerId ? 'on-surface-variant' : 'warning'">
-										{{ spotlightPeerId === participant.peerId ? 'mdi-spotlight-off' : 'mdi-spotlight' }}
+										mdi-spotlight
 									</v-icon>
 								</template>
-								<v-list-item-title>{{ spotlightPeerId === participant.peerId ? '取消聚光灯' : '聚光我的画面' }}</v-list-item-title>
+								<v-list-item-title>{{ spotlightPeerId === participant.peerId ? '取消聚光灯' : '开启聚光灯' }}</v-list-item-title>
 							</v-list-item>
 						</v-list>
 					</v-menu>
@@ -425,10 +425,10 @@ const handleDisableAllVideo = async () => {
 							<v-list-item @click="handleSetSpotlight(participant)">
 								<template #prepend>
 									<v-icon :color="spotlightPeerId === participant.peerId ? 'on-surface-variant' : 'warning'">
-										{{ spotlightPeerId === participant.peerId ? 'mdi-spotlight-off' : 'mdi-spotlight' }}
+										mdi-spotlight
 									</v-icon>
 								</template>
-								<v-list-item-title>{{ spotlightPeerId === participant.peerId ? '取消聚光灯' : '设为聚光灯' }}</v-list-item-title>
+								<v-list-item-title>{{ spotlightPeerId === participant.peerId ? '取消聚光灯' : '开启聚光灯' }}</v-list-item-title>
 							</v-list-item>
 
 							<!-- 移除参与者 -->

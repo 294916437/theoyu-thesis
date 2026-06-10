@@ -30,6 +30,7 @@ export function useMedia() {
 	const participants = ref([])
 	const audioEnabled = ref(true)
 	const videoEnabled = ref(true)
+	const localVideoMirrored = ref(false)
 	const screenSharing = ref(false)
 	const screenStream = ref(null)
 	const originalVideoTrack = ref(null)
@@ -1620,6 +1621,10 @@ export function useMedia() {
 		}
 	}
 
+	function setLocalVideoMirrored(enabled) {
+		localVideoMirrored.value = Boolean(enabled)
+	}
+
 	/**
 	 * 开始屏幕共享,思路如下：
 	 * 1. 关闭原 camera video producer
@@ -2232,6 +2237,7 @@ export function useMedia() {
 		localParticipant,
 		audioEnabled,
 		videoEnabled,
+		localVideoMirrored,
 		audioNoiseSuppressionEnabled,
 		audioNoiseSuppressionSupported,
 		audioNoiseSuppressionUpdating,
@@ -2261,6 +2267,7 @@ export function useMedia() {
 		toggleAudio,
 		setAudioNoiseSuppression,
 		toggleVideo,
+		setLocalVideoMirrored,
 		hostToggleAudio,
 		hostToggleVideo,
 		muteAll,

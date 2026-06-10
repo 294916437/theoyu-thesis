@@ -101,6 +101,7 @@
 							:local-stream="localStream"
 							:local-audio-enabled="audioEnabled"
 							:local-video-enabled="videoEnabled"
+							:local-video-mirrored="localVideoMirrored && !screenSharing"
 							:show-connection-quality="true"
 							:spotlight-peer-id="spotlightPeerId"
 							:is-host="isHost"
@@ -1232,6 +1233,7 @@ const {
 	localParticipant,
 	audioEnabled,
 	videoEnabled,
+	localVideoMirrored,
 	audioNoiseSuppressionEnabled,
 	audioNoiseSuppressionSupported,
 	audioNoiseSuppressionUpdating,
@@ -1257,6 +1259,7 @@ const {
 	toggleAudio,
 	setAudioNoiseSuppression,
 	toggleVideo,
+	setLocalVideoMirrored,
 	startScreenShare,
 	stopScreenShare,
 	changeAudioDevice,
@@ -2235,6 +2238,12 @@ watch(spotlightRequest, newRequest => {
 })
 
 // ==================== 设置管理 ====================
+watch(showSettings, visible => {
+	if (visible) {
+		enableMirror.value = localVideoMirrored.value
+	}
+})
+
 const saveSettings = async () => {
 	try {
 		// 应用视频质量设置 (1: 流畅/Layer 0, 2: 标清/Layer 1, 3: 高清/Layer 2)
@@ -2246,6 +2255,8 @@ const saveSettings = async () => {
 				await setAllConsumersPreferredLayers(spatialLayer)
 			}
 		}
+
+		setLocalVideoMirrored(enableMirror.value)
 
 		showSettings.value = false
 		$notify.success('设置已保存')

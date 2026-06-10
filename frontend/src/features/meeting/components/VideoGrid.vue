@@ -11,7 +11,7 @@
 				}"
 			>
 				<!-- 视频元素 -->
-				<div ref="localMediaWrapper" class="local-media-wrapper">
+				<div ref="localMediaWrapper" class="local-media-wrapper" :class="{ 'is-mirrored': localPreviewMirrored }">
 					<!-- 特效未激活时显示 <video>（srcObject = localStream） -->
 					<video v-show="!props.effectCanvas" ref="localVideoElement" autoplay playsinline muted class="video-element"></video>
 					<!-- 特效激活时：effectCanvas HTMLCanvasElement 通过 watch 内 appendChild 插入 -->
@@ -146,7 +146,14 @@
 			<!-- 参与者缩略图栏 -->
 			<div class="participants-thumbnails">
 				<div v-for="participant in allParticipantsWithLocal" :key="participant.id" class="thumbnail-tile" :class="{ 'is-local': participant.isLocal }">
-					<video :ref="el => setThumbnailRef(el, participant.id)" autoplay playsinline :muted="participant.isLocal" class="thumbnail-video"></video>
+					<video
+						:ref="el => setThumbnailRef(el, participant.id)"
+						autoplay
+						playsinline
+						:muted="participant.isLocal"
+						class="thumbnail-video"
+						:class="{ 'is-mirrored': participant.isLocal && localPreviewMirrored }"
+					></video>
 
 					<div v-if="!participant.videoEnabled" class="thumbnail-placeholder">
 						<v-avatar size="32" color="primary">
@@ -172,6 +179,7 @@
 					playsinline
 					:muted="spotlightParticipant.isLocal"
 					class="spotlight-main-video"
+					:class="{ 'is-mirrored': spotlightParticipant.isLocal && localPreviewMirrored }"
 				></video>
 				<div v-if="!spotlightParticipant.videoEnabled" class="spotlight-main-placeholder">
 					<v-avatar :size="120" color="primary">
@@ -214,6 +222,7 @@
 						playsinline
 						:muted="p.isLocal"
 						class="filmstrip-video"
+						:class="{ 'is-mirrored': p.isLocal && localPreviewMirrored }"
 					></video>
 					<div v-else class="filmstrip-placeholder">
 						<v-avatar size="36" color="primary">
@@ -260,6 +269,10 @@ const props = defineProps({
 	localVideoEnabled: {
 		type: Boolean,
 		default: true,
+	},
+	localVideoMirrored: {
+		type: Boolean,
+		default: false,
 	},
 	showConnectionQuality: {
 		type: Boolean,
@@ -398,6 +411,8 @@ const allParticipantsWithLocal = computed(() => {
 const gridLayoutClass = computed(() => {
 	return `layout-${props.layout}`
 })
+
+const localPreviewMirrored = computed(() => props.localVideoMirrored && !props.screenShare?.isLocal)
 
 // 视频块样式类
 const tileClass = computed(() => {
@@ -837,6 +852,13 @@ onUnmounted(() => {
 .local-media-wrapper {
 	width: 100%;
 	height: 100%;
+}
+
+.local-media-wrapper.is-mirrored,
+.thumbnail-video.is-mirrored,
+.spotlight-main-video.is-mirrored,
+.filmstrip-video.is-mirrored {
+	transform: scaleX(-1);
 }
 
 /* :deep() 确保 scoped 样式能匹配动态插入的外部 canvas 元素 */

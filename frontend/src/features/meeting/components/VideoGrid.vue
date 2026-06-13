@@ -12,9 +12,8 @@
 			>
 				<!-- 视频元素 -->
 				<div ref="localMediaWrapper" class="local-media-wrapper" :class="{ 'is-mirrored': localPreviewMirrored }">
-					<!-- 特效未激活时显示 <video>（srcObject = localStream） -->
-					<video v-show="!props.effectCanvas" ref="localVideoElement" autoplay playsinline muted class="video-element"></video>
-					<!-- 特效激活时：effectCanvas HTMLCanvasElement 通过 watch 内 appendChild 插入 -->
+					<canvas v-show="!props.effectCanvas" ref="localCanvasElement" class="video-element video-canvas"></canvas>
+					<!-- effectCanvas 由 useMedia 动态创建：原始预览 WebGL canvas 或背景特效输出 canvas -->
 				</div>
 
 				<!-- 无视频时的占位符 -->
@@ -63,7 +62,7 @@
 				}"
 			>
 				<!-- 视频元素：当视频启用时显示 -->
-				<video v-show="participant.videoEnabled" :ref="el => setVideoRef(el, participant.peerId)" autoplay playsinline :muted="false" class="video-element" />
+				<canvas v-show="participant.videoEnabled" :ref="el => setVideoRef(el, participant.peerId)" class="video-element video-canvas" />
 				<!-- 占位符：当视频关闭但音频开启时显示 -->
 				<div v-if="!participant.videoEnabled" class="video-placeholder">
 					<v-avatar :size="avatarSize" color="secondary">
@@ -146,14 +145,11 @@
 			<!-- 参与者缩略图栏 -->
 			<div class="participants-thumbnails">
 				<div v-for="participant in allParticipantsWithLocal" :key="participant.id" class="thumbnail-tile" :class="{ 'is-local': participant.isLocal }">
-					<video
+					<canvas
 						:ref="el => setThumbnailRef(el, participant.id)"
-						autoplay
-						playsinline
-						:muted="participant.isLocal"
 						class="thumbnail-video"
 						:class="{ 'is-mirrored': participant.isLocal && localPreviewMirrored }"
-					></video>
+					></canvas>
 
 					<div v-if="!participant.videoEnabled" class="thumbnail-placeholder">
 						<v-avatar size="32" color="primary">
@@ -208,7 +204,7 @@
 				</div>
 			</div>
 
-			<!-- 右侧纵向缩略图条 (Filmstrip) -->
+			<!-- 右侧纵向缩略图条 -->
 			<div v-if="otherParticipantsForSpotlight.length" class="spotlight-filmstrip">
 				<div class="spotlight-filmstrip-header">
 					<v-icon icon="mdi-account-multiple" size="12" class="mr-1"></v-icon>
@@ -242,6 +238,7 @@
 <script setup>
 import { useDebounceFn } from '@vueuse/core'
 import { getInitials } from '@/utils/common'
+import { createVideoCanvasRenderer } from '@/utils/videoCanvasRenderer'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 const streamCache = ref(new Map())
 const props = defineProps({
@@ -299,7 +296,7 @@ const props = defineProps({
 const emit = defineEmits(['pin-participant', 'unpin-participant', 'set-spotlight'])
 
 // ==================== 响应式状态 ====================
-const localVideoElement = ref(null)
+const localCanvasElement = ref(null)
 const localMediaWrapper = ref(null)
 const screenShareVideo = ref(null)
 const videoRefs = ref(new Map())
@@ -307,6 +304,8 @@ const thumbnailRefs = ref(new Map())
 const spotlightThumbRefs = ref(new Map())
 const spotlightVideoRef = ref(null)
 const pinnedParticipantId = ref(null)
+const localCanvasRenderer = ref(null)
+const videoRenderers = new Map()
 // 使用 WeakMap 缓存流对象，避免重复创建
 const streamObjectCache = new WeakMap()
 
@@ -485,6 +484,54 @@ const localConnectionQuality = computed(() => {
 	}
 })
 
+// ==================== 方法 ====================
+
+function getParticipantStream(participantId) {
+	if (participantId === 'local') return props.localStream
+	return formattedParticipants.value.find(p => p.peerId === participantId || p.id === participantId)?.stream || null
+}
+
+function bindCanvasRenderer(rendererMap, key, canvas, stream, options = {}) {
+	if (!canvas) {
+		const renderer = rendererMap.get(key)
+		renderer?.dispose()
+		rendererMap.delete(key)
+		return
+	}
+
+	let renderer = rendererMap.get(key)
+	if (!renderer || renderer.canvas !== canvas) {
+		renderer?.dispose()
+		renderer = createVideoCanvasRenderer(canvas, options)
+		rendererMap.set(key, renderer)
+	}
+
+	renderer.setMuted(options.muted ?? true)
+	renderer.setStream(stream)
+}
+
+function disposeRenderers(rendererMap) {
+	rendererMap.forEach(renderer => renderer.dispose())
+	rendererMap.clear()
+}
+
+function setLocalCanvasRenderer(canvas) {
+	if (!canvas) {
+		localCanvasRenderer.value?.dispose()
+		localCanvasRenderer.value = null
+		return
+	}
+
+	if (!localCanvasRenderer.value || localCanvasRenderer.value.canvas !== canvas) {
+		localCanvasRenderer.value?.dispose()
+		localCanvasRenderer.value = createVideoCanvasRenderer(canvas, { muted: true })
+	}
+
+	if (!props.effectCanvas) {
+		localCanvasRenderer.value.setStream(props.localStream)
+	}
+}
+
 // 设置聚光灯缩略图引用
 function setSpotlightThumbRef(el, participantId) {
 	if (el) {
@@ -501,8 +548,6 @@ function setSpotlightThumbRef(el, participantId) {
 		spotlightThumbRefs.value.delete(participantId)
 	}
 }
-
-// ==================== 方法 ====================
 
 // 参与者操作 tile 中的聚光灯设置按钮点击
 function handleSetSpotlight(participantId) {
@@ -598,7 +643,7 @@ function setVideoRef(el, peerId) {
 			const cachedStreamId = streamCache.value.get(peerId)
 
 			// 只在流 ID 真正变化且流对象不同时才更新
-			const currentStream = el.srcObject
+			const currentStream = videoRenderers.get(peerId)?.sourceVideo.srcObject
 			const isSameStream = currentStream && currentStream.id === newStreamId
 
 			if (!isSameStream && cachedStreamId !== newStreamId) {
@@ -608,31 +653,18 @@ function setVideoRef(el, peerId) {
 					reason: 'Stream object changed',
 				})
 
-				// 先暂停旧视频
-				if (el.srcObject && el.srcObject !== participant.stream) {
-					el.pause()
-					el.srcObject = null
-				}
-
 				// 设置新流
-				el.srcObject = participant.stream
+				bindCanvasRenderer(videoRenderers, peerId, el, participant.stream, { muted: false })
 				streamCache.value.set(peerId, newStreamId)
-
-				// 延迟播放
-				nextTick(() => {
-					el.play().catch(err => {
-						if (err.name !== 'AbortError') {
-							console.error(`Failed to play video for ${peerId}:`, err)
-						}
-					})
-				})
 			} else {
+				bindCanvasRenderer(videoRenderers, peerId, el, participant.stream, { muted: false })
 				console.log(`Stream ${newStreamId} already set for ${peerId}, skipping (same object)`)
 			}
 		}
 	} else {
 		videoRefs.value.delete(peerId)
 		streamCache.value.delete(peerId)
+		bindCanvasRenderer(videoRenderers, peerId, null)
 	}
 }
 
@@ -670,16 +702,29 @@ watch(
 	() => props.localStream,
 	async newStream => {
 		await nextTick()
-		// 特效激活时 <video> 被 v-show 隐藏，但 srcObject 仍设置以备停止特效后立即恢复
-		if (localVideoElement.value && newStream) {
-			console.log('Setting local stream', newStream.id)
-			localVideoElement.value.srcObject = newStream
+		if (localCanvasRenderer.value && !props.effectCanvas) {
+			console.log('Setting local canvas stream', newStream?.id)
+			localCanvasRenderer.value.setStream(newStream)
 		}
 	},
 	{ immediate: true },
 )
 
-// 监听特效 canvas 变化：将 effectCanvas HTMLCanvasElement 插入 / 移除本地格子
+watch(
+	[localCanvasElement, () => props.effectCanvas],
+	([canvas, effectCanvas]) => {
+		if (!canvas) return
+		setLocalCanvasRenderer(canvas)
+		if (effectCanvas) {
+			localCanvasRenderer.value?.setStream(null)
+		} else {
+			localCanvasRenderer.value?.setStream(props.localStream)
+		}
+	},
+	{ immediate: true },
+)
+
+// 监听特效 canvas 变化
 watch(
 	[() => props.effectCanvas, localMediaWrapper],
 	([canvas, wrapper]) => {
@@ -689,7 +734,7 @@ watch(
 		if (prev) prev.remove()
 		if (canvas) {
 			canvas.classList.add('local-effect-canvas')
-			// 用内联样式直接保证尺寸，完全绕过 scoped 约束。
+			// 用内联样式直接保证尺寸，绕过 scoped 约束
 			canvas.style.display = 'block'
 			canvas.style.width = '100%'
 			canvas.style.height = '100%'
@@ -716,12 +761,12 @@ watch(
 // 使用防抖处理流更新
 const handleParticipantsUpdate = useDebounceFn(newParticipants => {
 	newParticipants.forEach(participant => {
-		const videoEl = videoRefs.value.get(participant.peerId)
+		const renderer = videoRenderers.get(participant.peerId)
 
-		if (videoEl && participant.stream) {
-			const currentStreamId = videoEl.srcObject?.id
+		if (renderer && participant.stream) {
+			const currentStreamId = renderer.sourceVideo.srcObject?.id
 			const newStreamId = participant.stream.id
-			const currentStreamObj = videoEl.srcObject
+			const currentStreamObj = renderer.sourceVideo.srcObject
 
 			// 只有当流对象真正不同时才更新
 			if (currentStreamObj !== participant.stream && currentStreamId !== newStreamId) {
@@ -730,15 +775,8 @@ const handleParticipantsUpdate = useDebounceFn(newParticipants => {
 					newStreamId: newStreamId,
 				})
 
-				videoEl.pause()
-				videoEl.srcObject = participant.stream
+				renderer.setStream(participant.stream)
 				streamCache.value.set(participant.peerId, newStreamId)
-
-				videoEl.play().catch(err => {
-					if (err.name !== 'AbortError') {
-						console.error(`Play error for ${participant.name}:`, err)
-					}
-				})
 			}
 		}
 	})
@@ -752,9 +790,9 @@ watch(() => formattedParticipants.value, handleParticipantsUpdate, { deep: true 
 onMounted(async () => {
 	await nextTick()
 
-	// 设置本地视频（特效未激活时）
-	if (localVideoElement.value && props.localStream && !props.effectCanvas) {
-		localVideoElement.value.srcObject = props.localStream
+	// 设置本地 canvas（特效未激活时）
+	if (localCanvasElement.value && props.localStream && !props.effectCanvas) {
+		setLocalCanvasRenderer(localCanvasElement.value)
 	}
 
 	// 设置屏幕共享视频
@@ -765,6 +803,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
 	// 清理视频引用
+	localCanvasRenderer.value?.dispose()
+	localCanvasRenderer.value = null
+	disposeRenderers(videoRenderers)
 	videoRefs.value.clear()
 	thumbnailRefs.value.clear()
 })

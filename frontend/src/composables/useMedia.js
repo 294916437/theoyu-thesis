@@ -10,6 +10,7 @@ import wasmUrl from '@/libs/meet-effect/meet_background_effect_bg.wasm?url'
 import { $notify } from '@/plugins/notification'
 import router from '@/router'
 import { joinMeeting as allocateSfuAndJoin } from '@/api/room'
+import { createVideoCanvasRenderer,createHiddenVideo } from '@/utils/videoCanvasRenderer'
 
 const MASK_WIDTH = 256
 const MASK_HEIGHT = 144
@@ -53,7 +54,7 @@ export function useMedia() {
 	const customBackgrounds = ref([])
 	const effectLoading = ref(false)
 	const effectError = ref(null)
-	// effectCanvas 的 DOM 元素引用——特效激活时指向 HTMLCanvasElement，停止后置 null
+	// 本地预览 canvas：默认是原始摄像头 WebGL canvas，特效激活时切换为特效输出 canvas
 	const localEffectCanvas = shallowRef(null)
 
 	// 预设背景列表
@@ -91,6 +92,8 @@ export function useMedia() {
 	let sourceVideoElement = null
 	let backgroundLoaded = false
 	let backgroundEffectInitPromise = null
+	let localPreviewCanvas = null
+	let localPreviewRenderer = null
 	// 缓存 TypedArray 视图——在 initBackgroundEffect 后初始化，整个 session 内复用
 	let cachedInputView = null // Uint8Array(PROC_W * PROC_H * 4) → WASM input_ptr
 	let cachedMaskView = null // Float32Array(MASK_WIDTH * MASK_HEIGHT) → WASM mask_ptr
@@ -304,6 +307,53 @@ export function useMedia() {
 		}
 	}
 
+	function stopLocalPreviewRenderer(options = {}) {
+		const { clearCanvasRef = false } = options
+		localPreviewRenderer?.dispose()
+		localPreviewRenderer = null
+		localPreviewCanvas = null
+
+		if (clearCanvasRef && !effectProducerActive.value) {
+			localEffectCanvas.value = null
+		}
+	}
+
+	function ensureLocalPreviewRenderer(stream) {
+		if (!stream || !stream.getVideoTracks().some(track => track.readyState === 'live')) {
+			stopLocalPreviewRenderer({ clearCanvasRef: true })
+			return null
+		}
+
+		if (!localPreviewCanvas) {
+			localPreviewCanvas = document.createElement('canvas')
+			localPreviewCanvas.width = PROC_W
+			localPreviewCanvas.height = PROC_H
+			localPreviewCanvas.dataset.renderMode = 'webgl-original'
+		}
+
+		if (!localPreviewRenderer) {
+			localPreviewRenderer = createVideoCanvasRenderer(localPreviewCanvas, { muted: true })
+		}
+
+		localPreviewRenderer.setStream(stream)
+
+		if (!effectProducerActive.value) {
+			localEffectCanvas.value = localPreviewCanvas
+		}
+
+		return localPreviewCanvas
+	}
+
+	watch(
+		localStream,
+		stream => {
+			if (!effectProducerActive.value) {
+				ensureLocalPreviewRenderer(stream)
+			}
+		},
+		{ flush: 'post' },
+	)
+
 	function drawInitialEffectFrame(sourceVideo) {
 		if (!sourceVideo || sourceVideo.readyState < 2 || !effectCanvas || !effectCtx) return
 
@@ -452,27 +502,14 @@ export function useMedia() {
 			const currentVideoProducer = mediasoupClient.producers.get('video')
 			if (!currentVideoProducer) throw new Error('No camera producer found')
 
+			stopLocalPreviewRenderer()
+
 			// 1. 克隆轨道
 			originalCameraTrack.value = currentVideoProducer.track
 			const clonedTrack = currentVideoProducer.track.clone()
 
 			// 2. 创建源视频元素
-			sourceVideoElement = document.createElement('video')
-			sourceVideoElement.id = 'effect-source-hidden'
-			sourceVideoElement.autoplay = true
-			sourceVideoElement.muted = true
-			sourceVideoElement.playsInline = true
-
-			// 样式设置：不可见但占据布局（避免 display:none）
-			sourceVideoElement.style.position = 'absolute'
-			sourceVideoElement.style.top = '-9999px'
-			sourceVideoElement.style.left = '-9999px'
-			sourceVideoElement.style.width = '1px'
-			sourceVideoElement.style.height = '1px'
-			sourceVideoElement.style.opacity = '0'
-			sourceVideoElement.style.pointerEvents = 'none'
-			document.body.appendChild(sourceVideoElement)
-
+			sourceVideoElement = createHiddenVideo(true)
 			sourceVideoElement.srcObject = new MediaStream([clonedTrack])
 
 			// 3. 等待播放
@@ -497,7 +534,7 @@ export function useMedia() {
 			// 5. 启动循环
 			drawInitialEffectFrame(sourceVideoElement)
 			effectProducerActive.value = true
-			localEffectCanvas.value = effectCanvas // 通知 VideoGrid 直接展示此 canvas 元素
+			localEffectCanvas.value = effectCanvas
 			inferenceLoop(sourceVideoElement)
 			renderLoop() // 不传参，使用闭包变量
 
@@ -541,7 +578,10 @@ export function useMedia() {
 	 * 停止背景特效流
 	 */
 	async function stopEffectStream() {
-		if (!effectProducerActive.value) return
+		if (!effectProducerActive.value) {
+			ensureLocalPreviewRenderer(localStream.value)
+			return
+		}
 
 		// 1. 清理 DOM 元素
 		if (sourceVideoElement) {
@@ -602,7 +642,7 @@ export function useMedia() {
 		effectProducerActive.value = false
 		originalCameraTrack.value = null
 		backgroundLoaded = false
-		localEffectCanvas.value = null // 通知 VideoGrid 恢复显示 video 元素
+		ensureLocalPreviewRenderer(localStream.value)
 
 		// 强制触发响应式更新
 		participants.value = [...participants.value]
@@ -630,6 +670,9 @@ export function useMedia() {
 			})
 
 			localStream.value.addTrack(newTrack)
+			if (!effectProducerActive.value) {
+				ensureLocalPreviewRenderer(localStream.value)
+			}
 
 			console.log('[BackgroundEffect] Video track replaced:', newTrack.id)
 		} catch (error) {
@@ -2126,6 +2169,8 @@ export function useMedia() {
 				effectCanvas = null
 			}
 
+			stopLocalPreviewRenderer({ clearCanvasRef: true })
+
 			if (maskCanvas) {
 				maskCtx = null
 				maskCanvas = null
@@ -2206,6 +2251,11 @@ export function useMedia() {
 			const videoTrack = stream.getVideoTracks()[0]
 			const videoProducer = mediasoupClient.producers.get('video')
 
+			if (effectProducerActive.value || effectType.value !== 'none') {
+				await stopEffectStream()
+				effectType.value = 'none'
+			}
+
 			if (videoProducer) {
 				await videoProducer.replaceTrack({ track: videoTrack })
 				console.log('Video device changed', deviceId)
@@ -2216,6 +2266,7 @@ export function useMedia() {
 			oldVideoTrack?.stop()
 			localStream.value.removeTrack(oldVideoTrack)
 			localStream.value.addTrack(videoTrack)
+			ensureLocalPreviewRenderer(localStream.value)
 
 			// 强制触发响应式更新
 			participants.value = [...participants.value]

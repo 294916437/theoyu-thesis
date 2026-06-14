@@ -51,8 +51,8 @@
 					<!-- 设备权限错误提示 -->
 					<v-alert v-if="consentError" type="error" variant="tonal" rounded="lg" class="mx-4 mb-3 text-left" :text="consentError" density="compact"></v-alert>
 					<v-alert v-if="joinError" type="error" variant="tonal" rounded="lg" class="mx-4 mb-3 text-left join-error-alert" density="compact">
-						<div class="text-caption font-weight-medium mb-1">加入会议失败</div>
-						<pre class="join-error-text">{{ joinError }}</pre>
+						<div class="text-body-2 font-weight-bold mb-1">暂时无法加入会议</div>
+						<div class="join-error-text">{{ joinError }}</div>
 					</v-alert>
 
 					<v-card-actions class="flex-column ga-3 px-4 pb-4">
@@ -73,8 +73,8 @@
 
 				<div class="text-h6 text-white mt-6">{{ loadingMessage }}</div>
 				<v-alert v-if="joinError" type="error" variant="tonal" rounded="lg" class="mt-4 text-left join-error-alert" density="compact">
-					<div class="text-caption font-weight-medium mb-1">加入会议失败</div>
-					<pre class="join-error-text">{{ joinError }}</pre>
+					<div class="text-body-2 font-weight-bold mb-1">暂时无法加入会议</div>
+					<div class="join-error-text">{{ joinError }}</div>
 				</v-alert>
 
 				<!-- 离开场景无进度时的补充提示 -->
@@ -210,8 +210,7 @@ const joinAsListener = () => {
 	margin: 0;
 	white-space: pre-wrap;
 	word-break: break-word;
-	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-	font-size: 12px;
+	font-size: 14px;
 	line-height: 1.5;
 }
 

@@ -1008,7 +1008,8 @@ export function useMedia() {
 			// 1. 调用 media 服务分配 SFU 节点并获取连接地址
 			const joinAllocRes = await allocateSfuAndJoin({ roomId: meetingId })
 			if (!joinAllocRes?.data.allowed) {
-				throw new Error(joinAllocRes.message)
+				const reason = joinAllocRes?.data?.message || joinAllocRes?.message || '当前无法加入会议，请稍后重试'
+				throw new Error(reason)
 			}
 			// 优先使用分配接口返回的 SFU URL
 			sfuUrl = joinAllocRes.data.sfuServerUrl || import.meta.env.VITE_SFU_URL || window.location.origin
@@ -1141,13 +1142,14 @@ export function useMedia() {
 		} catch (error) {
 			console.error('Failed to join meeting', error)
 			connectionState.value = 'failed'
-			joinError.value = formatJoinError(error, {
+			const joinErrorDetails = formatJoinError(error, {
 				sfuUrl,
 				socketUrl: socketConnection?.url,
 				socketPath: socketConnection?.path,
 				meetingId,
 			})
-			$notify.error(`加入会议失败: ${error.message}`)
+			console.error('[Join] Error details:\n' + joinErrorDetails)
+			joinError.value = error?.message || '当前无法加入会议，请稍后重试'
 			throw error
 		}
 	}

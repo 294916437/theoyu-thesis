@@ -122,47 +122,6 @@
 			</div>
 		</div>
 
-		<!-- 屏幕共享覆盖层 -->
-		<div v-if="screenShare?.active" class="spotlight-overlay screen-share-spotlight">
-			<div class="spotlight-main">
-				<canvas ref="screenShareCanvas" class="spotlight-main-video screen-share-video"></canvas>
-
-				<div class="screen-share-info">
-					<v-chip color="success" variant="flat" size="small">
-						<template #prepend>
-							<v-icon size="small">mdi-monitor-share</v-icon>
-						</template>
-						{{ screenShare.presenter?.name || screenShare.presenter }} 正在共享屏幕
-					</v-chip>
-				</div>
-			</div>
-
-			<div v-if="allParticipantsWithLocal.length" class="spotlight-filmstrip">
-				<div class="spotlight-filmstrip-header">
-					<v-icon icon="mdi-account-multiple" size="12" class="mr-1"></v-icon>
-					{{ allParticipantsWithLocal.length }}
-				</div>
-				<div v-for="participant in allParticipantsWithLocal" :key="participant.id" class="filmstrip-tile" :class="{ 'is-local': participant.isLocal }">
-					<canvas
-						v-if="participant.videoEnabled"
-						:ref="el => setThumbnailRef(el, participant.id)"
-						class="filmstrip-video"
-						:class="{ 'is-mirrored': participant.isLocal && localPreviewMirrored }"
-					></canvas>
-
-					<div v-if="!participant.videoEnabled" class="thumbnail-placeholder">
-						<v-avatar size="32" color="primary">
-							<span class="text-caption">{{ participant.name }}</span>
-						</v-avatar>
-					</div>
-
-					<div class="thumbnail-name">
-						<span class="text-caption">{{ participant.name }}</span>
-					</div>
-				</div>
-			</div>
-		</div>
-
 		<!-- 聚光灯覆盖层：Zoom 风格 —— 中央主视频 + 右侧纵向缩略图条 -->
 		<div v-if="spotlightParticipant" class="spotlight-overlay">
 			<!-- 主视频区 -->
@@ -186,7 +145,7 @@
 				<div class="spotlight-main-header">
 					<v-chip size="small" color="warning" variant="flat" prepend-icon="mdi-spotlight" class="spotlight-badge"> 聚光灯模式 </v-chip>
 					<v-btn
-						v-if="isHost"
+						v-if="isHost && !screenShare?.active"
 						icon="mdi-close-circle"
 						size="small"
 						variant="text"
@@ -297,7 +256,6 @@ const emit = defineEmits(['pin-participant', 'unpin-participant', 'set-spotlight
 // ==================== 响应式状态 ====================
 const localCanvasElement = ref(null)
 const localMediaWrapper = ref(null)
-const screenShareCanvas = ref(null)
 const videoRefs = new Map()
 const thumbnailRefs = new Map()
 const spotlightThumbRefs = new Map()
@@ -707,19 +665,6 @@ watch(
 	{ immediate: true },
 )
 
-// 监听屏幕共享流变化，更新主画面 WebGL canvas
-watch(
-	[() => props.screenShare?.stream, screenShareCanvas],
-	async ([newStream, canvas]) => {
-		await nextTick()
-		if (canvas && newStream) {
-			console.log('Setting screen share stream', newStream.id)
-		}
-		bindCanvasRenderer(screenShareRenderers, 'main', canvas, newStream, { muted: true })
-	},
-	{ immediate: true },
-)
-
 // 使用防抖处理流更新
 const handleParticipantsUpdate = useDebounceFn(newParticipants => {
 	newParticipants.forEach(participant => {
@@ -767,10 +712,6 @@ onMounted(async () => {
 		setLocalCanvasRenderer(localCanvasElement.value)
 	}
 
-	// 设置屏幕共享 canvas
-	if (screenShareCanvas.value && props.screenShare?.stream) {
-		bindCanvasRenderer(screenShareRenderers, 'main', screenShareCanvas.value, props.screenShare.stream, { muted: true })
-	}
 })
 
 onUnmounted(() => {
@@ -778,7 +719,6 @@ onUnmounted(() => {
 	localCanvasRenderer.value?.dispose()
 	localCanvasRenderer.value = null
 	disposeRenderers(videoRenderers)
-	disposeRenderers(screenShareRenderers)
 	videoRefs.clear()
 	thumbnailRefs.clear()
 	spotlightThumbRefs.clear()
@@ -871,7 +811,6 @@ onUnmounted(() => {
 }
 
 .local-media-wrapper.is-mirrored,
-.thumbnail-video.is-mirrored,
 .spotlight-main-video.is-mirrored,
 .filmstrip-video.is-mirrored {
 	transform: scaleX(-1);
@@ -1000,96 +939,6 @@ onUnmounted(() => {
 	background: linear-gradient(135deg, rgba(var(--v-theme-primary), 0.3) 0%, rgba(var(--v-theme-secondary), 0.3) 100%);
 }
 
-/* ==================== 屏幕共享 ==================== */
-.screen-share-overlay {
-	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	background: rgba(var(--v-theme-surface), 0.98);
-	z-index: 100;
-	display: flex;
-	flex-direction: column;
-	backdrop-filter: blur(10px);
-}
-
-.screen-share-container {
-	flex: 1;
-	position: relative;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 16px;
-}
-
-.screen-share-video {
-	max-width: 100%;
-	max-height: 100%;
-	border-radius: 8px;
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-}
-
-.screen-share-info {
-	position: absolute;
-	top: 24px;
-	left: 24px;
-	z-index: 10;
-}
-
-/* ==================== 参与者缩略图 ==================== */
-.participants-thumbnails {
-	display: flex;
-	gap: 8px;
-	padding: 12px 16px;
-	overflow-x: auto;
-	background: rgba(var(--v-theme-surface-variant), 0.8);
-	border-top: 1px solid rgb(var(--v-theme-border));
-	scrollbar-width: thin;
-	scrollbar-color: rgb(var(--v-theme-primary)) transparent;
-}
-
-.participants-thumbnails::-webkit-scrollbar {
-	height: 6px;
-}
-
-.participants-thumbnails::-webkit-scrollbar-track {
-	background: transparent;
-}
-
-.participants-thumbnails::-webkit-scrollbar-thumb {
-	background: rgb(var(--v-theme-primary));
-	border-radius: 3px;
-}
-
-.thumbnail-tile {
-	position: relative;
-	flex-shrink: 0;
-	width: 120px;
-	height: 90px;
-	border-radius: 8px;
-	overflow: hidden;
-	background: rgb(var(--v-theme-surface));
-	border: 2px solid transparent;
-	transition: all 0.2s;
-	cursor: pointer;
-}
-
-.thumbnail-tile.is-local {
-	border-color: rgba(var(--v-theme-primary), 0.5);
-}
-
-.thumbnail-tile:hover {
-	border-color: rgb(var(--v-theme-primary));
-	transform: scale(1.05);
-}
-
-.thumbnail-video {
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-}
-
 .thumbnail-placeholder {
 	position: absolute;
 	top: 0;
@@ -1128,10 +977,6 @@ onUnmounted(() => {
 	gap: 8px;
 	padding: 4px;
 	background: rgb(var(--v-theme-background));
-}
-
-.screen-share-spotlight {
-	z-index: 100;
 }
 
 /* 主视频区（与 video-tile 相同风格） */
@@ -1347,10 +1192,6 @@ onUnmounted(() => {
 	.thumbnail-tile {
 		width: 80px;
 		height: 60px;
-	}
-
-	.participants-thumbnails {
-		padding: 8px;
 	}
 
 	.layout-grid {

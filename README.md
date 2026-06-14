@@ -1,115 +1,117 @@
-# 基于 WebRTC 的实时视频会议系统设计与实现
+# Design and Implementation of a WebRTC-Based Real-Time Video Conferencing System
 
-> 本科毕业论文工程实现 · 开源地址：[github.com/294916437/theoyu-thesis](https://github.com/294916437/theoyu-thesis)
+> Undergraduate thesis implementation · Open source repository: [github.com/294916437/theoyu-thesis](https://github.com/294916437/theoyu-thesis)
 
-## 项目简介
+[中文文档](README.zh-CN.md)
 
-本项目是本科毕业论文的完整工程实现，聚焦于基于WebRTC与WebAssembly技术的实时视频会议系统的设计实现与性能优化，涵盖SFU多人音视频、端侧视频处理、异构微服务通信等核心研究方向。
+## Overview
 
-## 技术栈
+This repository contains the complete engineering implementation for an undergraduate thesis project. It focuses on the design, implementation, and performance optimization of a real-time video conferencing system based on WebRTC and WebAssembly, covering SFU-based multi-party audio and video, client-side video processing, and heterogeneous microservice communication.
 
-| 层级       | 技术                                          | 说明                    |
-| ---------- | --------------------------------------------- | ----------------------- |
-| 前端       | Vue3 + Vuetify + Pinia + Vite                 | 用户交互界面            |
-| 前端通信   | mediasoup-client + Socket.io-client + StompJS | WebRTC客户端、信令      |
-| 前端渲染   | Pixi.js                                       | 欢迎页动画              |
-| 业务后端   | Spring Cloud Alibaba + MySQL + Redis          | 微服务业务逻辑          |
-| 消息队列   | RocketMQ                                      | 异步消息处理            |
-| 服务注册   | Nacos                                         | 服务注册与配置中心      |
-| 存储       | MinIO + Cassandra                             | 对象存储与会议文本数据  |
-| SFU服务    | Node.js + Mediasoup + Socket.io               | 流媒体转发服务          |
-| 跨语言通信 | gRPC                                          | SpringCloud ↔ SFU 通信 |
-| 端侧处理   | Rust → WebAssembly                            | 浏览器端视频背景分割    |
+## Technology Stack
 
-## 主要功能
+| Layer | Technology | Description |
+| --- | --- | --- |
+| Frontend | Vue 3 + Vuetify + Pinia + Vite | User interface |
+| Frontend communication | mediasoup-client + Socket.io-client + StompJS | WebRTC client and signaling |
+| Frontend rendering | Pixi.js | Welcome page animation |
+| Business backend | Spring Cloud Alibaba + MySQL + Redis | Microservice business logic |
+| Message queue | RocketMQ | Asynchronous message processing |
+| Service registry | Nacos | Service discovery and configuration center |
+| Storage | MinIO + Cassandra | Object storage and meeting text data |
+| SFU service | Node.js + Mediasoup + Socket.io | Media forwarding service |
+| Cross-language communication | gRPC | Spring Cloud to SFU communication |
+| Client-side processing | Rust to WebAssembly | Browser-side video background segmentation |
 
-- [x] 多人实时音视频会议（基于Mediasoup构建SFU服务，支持带宽自适应）
-- [x] 端侧视频处理（背景模糊与背景替换，Rust编译为WASM在浏览器运行）
-- [x] 屏幕共享
-- [x] 会议录制与回放（持久化存储至MinIO）
-- [x] P2P音视频通话（私聊场景，基于WebRTC直连）
-- [x] 会议房间聊天与文件分享
-- [x] 平台私聊中心（文字、文件、P2P音视频）
-- [x] 主持人权限控制（静音、移出、全体静音/关摄像头）
-- [x] 会议参与者列表与实时状态
-- [x] 会议数据统计与监控
+## Key Features
 
-## 项目预览
+- [x] Multi-party real-time audio and video conferencing, built on a Mediasoup SFU with adaptive bandwidth support
+- [x] Client-side video processing, including background blur and background replacement through Rust-compiled WebAssembly
+- [x] Screen sharing
+- [x] Meeting recording and playback, persisted to MinIO
+- [x] P2P audio and video calls for private chat scenarios, based on direct WebRTC connections
+- [x] Meeting room chat and file sharing
+- [x] Private messaging center with text, files, and P2P audio/video
+- [x] Host permission controls, including mute, remove participant, mute all, and turn off all cameras
+- [x] Meeting participant list and real-time status
+- [x] Meeting statistics and monitoring
 
-### 首页
+## Preview
 
-![项目首页预览](assets/preview/home.png)
+### Home
 
-### 会议详情
+![Home preview](assets/preview/home.png)
 
-![会议详情预览](assets/preview/detail.png)
+### Meeting Details
 
-### 会议房间
+![Meeting details preview](assets/preview/detail.png)
 
-![会议房间预览](assets/preview/room.png)
+### Meeting Room
 
-## 项目结构
+![Meeting room preview](assets/preview/room.png)
 
-```
+## Project Structure
+
+```text
 theoyu-thesis/
-├── frontend/                         # Vue3 前端
+├── frontend/                         # Vue 3 frontend
 │   └── src/
-│       ├── features/                 # 业务模块（meeting / chat / user）
-│       ├── components/               # 公共组件
-│       ├── stores/                   # Pinia 状态管理
-│       ├── services/                 # WebRTC / Socket.io / Stomp 服务层
-│       ├── composables/              # 组合式函数
-│       ├── api/                      # HTTP 接口封装
-│       └── utils/                    # 工具函数
+│       ├── features/                 # Business modules: meeting, chat, user
+│       ├── components/               # Shared components
+│       ├── stores/                   # Pinia state management
+│       ├── services/                 # WebRTC, Socket.io, and Stomp service layer
+│       ├── composables/              # Composables
+│       ├── api/                      # HTTP API wrappers
+│       └── utils/                    # Utilities
 │
-├── backend/                          # Spring Cloud 微服务后端
-│   ├── thesis-gateway/               # API 网关（统一鉴权、路由）
-│   ├── thesis-auth/                  # 认证授权服务
-│   ├── thesis-user/                  # 用户管理服务
-│   ├── thesis-media/                 # 会议管理服务
-│   ├── thesis-chat/                  # 聊天服务（私聊 + 房间聊天）
-│   ├── thesis-kv/                    # KV 缓存服务（Redis 封装）
-│   ├── thesis-oss/                   # 对象存储服务（MinIO 封装）
-│   ├── thesis-id-generator/          # 分布式 ID 生成服务
-│   └── thesis-framework/             # 公共基础框架（common / logger / jackson）
+├── backend/                          # Spring Cloud microservice backend
+│   ├── thesis-gateway/               # API gateway: authentication and routing
+│   ├── thesis-auth/                  # Authentication and authorization service
+│   ├── thesis-user/                  # User management service
+│   ├── thesis-media/                 # Meeting management service
+│   ├── thesis-chat/                  # Chat service: private chat and room chat
+│   ├── thesis-kv/                    # KV cache service: Redis wrapper
+│   ├── thesis-oss/                   # Object storage service: MinIO wrapper
+│   ├── thesis-id-generator/          # Distributed ID generation service
+│   └── thesis-framework/             # Shared framework: common, logger, jackson
 │
-├── sfu/                              # Node.js SFU 服务（TypeScript）
+├── sfu/                              # Node.js SFU service: TypeScript
 │   ├── src/
-│   │   ├── core/                     # Room / Peer / Mediasoup 核心管理
-│   │   ├── features/                 # Socket 处理、gRPC 服务端、录制、监控、延迟采集
-│   │   ├── config/                   # 服务配置
-│   │   └── utils/                    # 工具函数
-│   └── proto/                        # gRPC 协议定义（.proto 文件）
+│   │   ├── core/                     # Room, Peer, and Mediasoup core management
+│   │   ├── features/                 # Socket handlers, gRPC server, recording, monitoring, latency collection
+│   │   ├── config/                   # Service configuration
+│   │   └── utils/                    # Utilities
+│   └── proto/                        # gRPC protocol definitions: .proto files
 │
-├── wasm/                             # Rust → WebAssembly 端侧视频处理
+├── wasm/                             # Rust to WebAssembly client-side video processing
 │   └── src/
-│       ├── lib.rs                    # 背景模糊与背景替换实现
+│       ├── lib.rs                    # Background blur and background replacement implementation
 │
-├── test/                             # 性能测试套件
-│   ├── concurrent-stress/            # SFU 并发压力测试
-│   ├── e2e-latency/                  # 端到端延迟测试
-│   ├── edge-side-performance-comparison/  # 端侧处理性能对比
-│   └── jmeter-test/                  # 微服务接口压测
+├── test/                             # Performance test suites
+│   ├── concurrent-stress/            # SFU concurrent stress tests
+│   ├── e2e-latency/                  # End-to-end latency tests
+│   ├── edge-side-performance-comparison/  # Client-side processing performance comparison
+│   └── jmeter-test/                  # Microservice API stress tests
 │
-├── deploy/                           # 部署配置
-│   ├── docker/                       # Docker Compose 及各服务镜像配置
-│   ├── script/                       # 部署脚本
-│   └── sql/                          # 数据库初始化脚本
+├── deploy/                           # Deployment configuration
+│   ├── docker/                       # Docker Compose and service image configuration
+│   ├── script/                       # Deployment scripts
+│   └── sql/                          # Database initialization scripts
 │
-├── demos/                            # WASM 端侧效果独立演示
-└── docs/                             # 项目文档
+├── demos/                            # Standalone demos for WebAssembly client-side effects
+└── docs/                             # Project documentation
 ```
 
-## 快速开始
+## Quick Start
 
-### 环境要求
+### Requirements
 
 - Node.js >= 22
 - JDK >= 17
 - Rust + wasm-pack
-- Docker（用于中间件部署）
+- Docker, used for middleware deployment
 
-### 后端开发
+### Backend Development
 
 ```bash
 cd backend
@@ -117,7 +119,7 @@ mvn clean install
 mvn spring-boot:run
 ```
 
-### 前端开发
+### Frontend Development
 
 ```bash
 cd frontend
@@ -125,7 +127,7 @@ npm install
 npm run dev
 ```
 
-### SFU 服务
+### SFU Service
 
 ```bash
 cd sfu
@@ -133,37 +135,41 @@ npm install
 npm run dev
 ```
 
-### WASM 模块构建
+### Build the WebAssembly Module
 
 ```bash
 cd wasm
 wasm-pack build --target web
 ```
 
-## 研究重点
+## Research Focus
 
-1. 基于SFU架构的多人实时音视频，支持带宽自适应与多路媒体流转发
-2. Rust编译为WebAssembly的端侧视频背景分割与实时处理性能优化
-3. Spring Cloud Alibaba与Node.js异构微服务的gRPC跨语言通信
-4. 基于WebRTC的P2P音视频通话与信令设计
-5. 会议权限控制与主持人管理机制
+1. SFU-based multi-party real-time audio and video, with adaptive bandwidth and multi-stream media forwarding.
+2. Client-side video background segmentation and real-time processing performance optimization with Rust compiled to WebAssembly.
+3. Cross-language gRPC communication between Spring Cloud Alibaba and Node.js heterogeneous microservices.
+4. WebRTC-based P2P audio/video calls and signaling design.
+5. Meeting permission control and host management mechanisms.
 
-## 开发进度
+## Development Progress
 
-- [x] 需求分析与系统设计
-- [x] WebRTC 核心功能实现
-- [x] SFU 服务器实现
-- [x] Spring Cloud 微服务业务
-- [x] WebAssembly 模块开发
-- [x] 性能测试与优化
-- [x] 论文撰写
+- [x] Requirements analysis and system design
+- [x] WebRTC core feature implementation
+- [x] SFU server implementation
+- [x] Spring Cloud microservice business features
+- [x] WebAssembly module development
+- [x] Performance testing and optimization
+- [x] Thesis writing
 
-## 许可证
+## License
 
-MIT License
+This project is licensed under the [GNU General Public License v3.0 or later](https://www.gnu.org/licenses/gpl-3.0.html).
 
-## 作者
+see more info in [LICENSE](./LICENSE) file
 
-本科毕业论文项目
+SPDX-License-Identifier: GPL-3.0-or-later
 
-版权所有 Copyright © 2025-2026 by **[Theoyu Du](https://github.com/294916437)**
+## Author
+
+Undergraduate thesis project
+
+Copyright (C) 2025-2026 **[Theoyu Du](https://github.com/294916437)**

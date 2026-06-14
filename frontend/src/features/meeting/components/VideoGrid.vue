@@ -128,26 +128,30 @@
 		</div>
 
 		<!-- 屏幕共享覆盖层 -->
-		<div v-if="screenShare?.active" class="screen-share-overlay">
-			<div class="screen-share-container">
-				<video ref="screenShareVideo" autoplay playsinline class="screen-share-video"></video>
+		<div v-if="screenShare?.active" class="spotlight-overlay screen-share-spotlight">
+			<div class="spotlight-main">
+				<canvas ref="screenShareCanvas" class="spotlight-main-video screen-share-video"></canvas>
 
 				<div class="screen-share-info">
 					<v-chip color="success" variant="flat" size="small">
 						<template #prepend>
 							<v-icon size="small">mdi-monitor-share</v-icon>
 						</template>
-						{{ screenShare.presenter }} 正在共享屏幕
+						{{ screenShare.presenter?.name || screenShare.presenter }} 正在共享屏幕
 					</v-chip>
 				</div>
 			</div>
 
-			<!-- 参与者缩略图栏 -->
-			<div class="participants-thumbnails">
-				<div v-for="participant in allParticipantsWithLocal" :key="participant.id" class="thumbnail-tile" :class="{ 'is-local': participant.isLocal }">
+			<div v-if="allParticipantsWithLocal.length" class="spotlight-filmstrip">
+				<div class="spotlight-filmstrip-header">
+					<v-icon icon="mdi-account-multiple" size="12" class="mr-1"></v-icon>
+					{{ allParticipantsWithLocal.length }}
+				</div>
+				<div v-for="participant in allParticipantsWithLocal" :key="participant.id" class="filmstrip-tile" :class="{ 'is-local': participant.isLocal }">
 					<canvas
+						v-if="participant.videoEnabled"
 						:ref="el => setThumbnailRef(el, participant.id)"
-						class="thumbnail-video"
+						class="filmstrip-video"
 						:class="{ 'is-mirrored': participant.isLocal && localPreviewMirrored }"
 					></canvas>
 
@@ -298,7 +302,7 @@ const emit = defineEmits(['pin-participant', 'unpin-participant', 'set-spotlight
 // ==================== 响应式状态 ====================
 const localCanvasElement = ref(null)
 const localMediaWrapper = ref(null)
-const screenShareVideo = ref(null)
+const screenShareCanvas = ref(null)
 const videoRefs = new Map()
 const thumbnailRefs = new Map()
 const spotlightThumbRefs = new Map()
@@ -731,15 +735,15 @@ watch(
 	{ immediate: true },
 )
 
-// 监听屏幕共享流变化
+// 监听屏幕共享流变化，更新主画面 WebGL canvas
 watch(
-	() => props.screenShare?.stream,
-	async newStream => {
+	[() => props.screenShare?.stream, screenShareCanvas],
+	async ([newStream, canvas]) => {
 		await nextTick()
-		if (screenShareVideo.value && newStream) {
+		if (canvas && newStream) {
 			console.log('Setting screen share stream', newStream.id)
-			screenShareVideo.value.srcObject = newStream
 		}
+		bindCanvasRenderer(screenShareRenderers, 'main', canvas, newStream, { muted: true })
 	},
 	{ immediate: true },
 )
@@ -791,9 +795,9 @@ onMounted(async () => {
 		setLocalCanvasRenderer(localCanvasElement.value)
 	}
 
-	// 设置屏幕共享视频
-	if (screenShareVideo.value && props.screenShare?.stream) {
-		screenShareVideo.value.srcObject = props.screenShare.stream
+	// 设置屏幕共享 canvas
+	if (screenShareCanvas.value && props.screenShare?.stream) {
+		bindCanvasRenderer(screenShareRenderers, 'main', screenShareCanvas.value, props.screenShare.stream, { muted: true })
 	}
 })
 
@@ -802,6 +806,7 @@ onUnmounted(() => {
 	localCanvasRenderer.value?.dispose()
 	localCanvasRenderer.value = null
 	disposeRenderers(videoRenderers)
+	disposeRenderers(screenShareRenderers)
 	videoRefs.clear()
 	thumbnailRefs.clear()
 	spotlightThumbRefs.clear()
@@ -1151,6 +1156,10 @@ onUnmounted(() => {
 	gap: 8px;
 	padding: 4px;
 	background: rgb(var(--v-theme-background));
+}
+
+.screen-share-spotlight {
+	z-index: 100;
 }
 
 /* 主视频区（与 video-tile 相同风格） */

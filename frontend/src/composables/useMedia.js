@@ -33,8 +33,6 @@ export function useMedia() {
 	const videoEnabled = ref(true)
 	const localVideoMirrored = ref(false)
 	const screenSharing = ref(false)
-	const screenStream = ref(null)
-	const originalVideoTrack = ref(null)
 	const audioNoiseSuppressionEnabled = ref(true)
 	const audioNoiseSuppressionSupported = ref(true)
 	const audioNoiseSuppressionUpdating = ref(false)
@@ -46,8 +44,6 @@ export function useMedia() {
 		recv: { score: 10, quality: 'excellent' },
 	})
 	// ========== 背景特效状态 ==========
-	const effectStream = ref(null) // 特效流
-	const originalCameraTrack = ref(null) // 保存原始摄像头轨道
 	const effectProducerActive = ref(false) // 特效 producer 是否激活
 	const effectType = ref('none') // 'none' | 'blur' | 'replace'
 	const selectedBackground = ref(null)
@@ -94,6 +90,11 @@ export function useMedia() {
 	let backgroundEffectInitPromise = null
 	let localPreviewCanvas = null
 	let localPreviewRenderer = null
+	let effectStream = null
+	let originalCameraTrack = null
+	let screenStream = null
+	let originalVideoTrack = null
+	let stopEffectWatcher = null
 	// 缓存 TypedArray 视图——在 initBackgroundEffect 后初始化，整个 session 内复用
 	let cachedInputView = null // Uint8Array(PROC_W * PROC_H * 4) → WASM input_ptr
 	let cachedMaskView = null // Float32Array(MASK_WIDTH * MASK_HEIGHT) → WASM mask_ptr
@@ -103,12 +104,6 @@ export function useMedia() {
 	// Mediasoup 客户端实例
 	let mediasoupClient = null
 
-	// 统计信息
-	const stats = ref({
-		audio: null,
-		video: null,
-		screen: null,
-	})
 	let statsIntervalId = null
 	// 维护全局视频码率 (默认 2: 高清)
 	const currentSpatialLayer = ref(2)
@@ -505,7 +500,7 @@ export function useMedia() {
 			stopLocalPreviewRenderer()
 
 			// 1. 克隆轨道
-			originalCameraTrack.value = currentVideoProducer.track
+			originalCameraTrack = currentVideoProducer.track
 			const clonedTrack = currentVideoProducer.track.clone()
 
 			// 2. 创建源视频元素
@@ -539,8 +534,8 @@ export function useMedia() {
 			renderLoop() // 不传参，使用闭包变量
 
 			// 7. 捕获流
-			effectStream.value = effectCanvas.captureStream(30)
-			const effectVideoTrack = effectStream.value.getVideoTracks()[0]
+			effectStream = effectCanvas.captureStream(30)
+			const effectVideoTrack = effectStream.getVideoTracks()[0]
 			effectVideoTrack.contentHint = 'motion'
 
 			await currentVideoProducer.replaceTrack({ track: effectVideoTrack })
@@ -608,9 +603,9 @@ export function useMedia() {
 
 		const effectProducer = mediasoupClient.producers.get('video')
 
-		if (originalCameraTrack.value && originalCameraTrack.value.readyState === 'live') {
+		if (originalCameraTrack && originalCameraTrack.readyState === 'live') {
 			if (effectProducer) {
-				await effectProducer.replaceTrack({ track: originalCameraTrack.value })
+				await effectProducer.replaceTrack({ track: originalCameraTrack })
 				Object.assign(effectProducer.appData, { source: 'camera' })
 				mediasoupClient.producers.set('video', effectProducer)
 				updateLocalProducer('video', effectProducer)
@@ -633,14 +628,14 @@ export function useMedia() {
 			}
 		}
 
-		if (effectStream.value) {
-			effectStream.value.getTracks().forEach(t => t.stop())
-			effectStream.value = null
+		if (effectStream) {
+			effectStream.getTracks().forEach(t => t.stop())
+			effectStream = null
 		}
 
 		// 6. 重置状态
 		effectProducerActive.value = false
-		originalCameraTrack.value = null
+		originalCameraTrack = null
 		backgroundLoaded = false
 		ensureLocalPreviewRenderer(localStream.value)
 
@@ -679,6 +674,70 @@ export function useMedia() {
 			console.error('[BackgroundEffect] Failed to replace track:', error)
 			throw error
 		}
+	}
+
+	function ensureEffectWatcher() {
+		if (stopEffectWatcher) return
+
+		stopEffectWatcher = watch([effectType, selectedBackground], async ([newType, newBg], [oldType, oldBg]) => {
+			if (!localStream.value) return
+
+			try {
+				if (newType !== 'none' && screenSharing.value) {
+					effectType.value = 'none'
+					$notify.warning('屏幕共享期间不可使用背景特效')
+					return
+				}
+
+				// 情况1: 关闭所有效果
+				if (newType === 'none') {
+					// 停止特效
+					await stopEffectStream()
+
+					// 重新获取原始摄像头轨道
+					const stream = await navigator.mediaDevices.getUserMedia({
+						video: {
+							width: { ideal: VIDEO_WIDTH, max: 1920 },
+							height: { ideal: VIDEO_HEIGHT, max: 1080 },
+							frameRate: { ideal: 30, max: 60 },
+						},
+					})
+
+					const newVideoTrack = stream.getVideoTracks()[0]
+					await replaceVideoTrack(newVideoTrack)
+
+					console.log('[BackgroundEffect] Original camera restored')
+					return
+				}
+
+				// 情况2: 仅背景图片变化（replace -> replace）
+				if (newType === 'replace' && oldType === 'replace' && newBg !== oldBg) {
+					// 只需重新加载背景，无需重建流
+					await loadBackgroundImage(newBg)
+					return
+				}
+
+				// 情况3: 效果类型变化或首次启用
+				if (newType !== oldType || (newType === 'replace' && !oldBg)) {
+					// 先停止旧效果（如果有）
+					if (effectProducerActive.value) {
+						await stopEffectStream()
+						await new Promise(resolve => setTimeout(resolve, 200))
+					}
+
+					// 启动新效果
+					await startEffectStream()
+				}
+			} catch (error) {
+				console.error('[BackgroundEffect] Failed to switch effect:', error)
+				effectType.value = 'none'
+			}
+		})
+	}
+
+	function stopEffectStateWatcher() {
+		stopEffectWatcher?.()
+		stopEffectWatcher = null
 	}
 
 	/**
@@ -1065,60 +1124,7 @@ export function useMedia() {
 
 			// 10. 监听特效相关状态变化（仅 withMedia 时有意义）
 			if (withMedia) {
-				watch([effectType, selectedBackground], async ([newType, newBg], [oldType, oldBg]) => {
-					if (!localStream.value) return
-
-					try {
-						if (newType !== 'none' && screenSharing.value) {
-							effectType.value = 'none'
-							$notify.warning('屏幕共享期间不可使用背景特效')
-							return
-						}
-
-						// 情况1: 关闭所有效果
-						if (newType === 'none') {
-							// 停止特效
-							await stopEffectStream()
-
-							// 重新获取原始摄像头轨道
-							const stream = await navigator.mediaDevices.getUserMedia({
-								video: {
-									width: { ideal: VIDEO_WIDTH, max: 1920 },
-									height: { ideal: VIDEO_HEIGHT, max: 1080 },
-									frameRate: { ideal: 30, max: 60 },
-								},
-							})
-
-							const newVideoTrack = stream.getVideoTracks()[0]
-							await replaceVideoTrack(newVideoTrack)
-
-							console.log('[BackgroundEffect] Original camera restored')
-							return
-						}
-
-						// 情况2: 仅背景图片变化（replace -> replace）
-						if (newType === 'replace' && oldType === 'replace' && newBg !== oldBg) {
-							// 只需重新加载背景，无需重建流
-							await loadBackgroundImage(newBg)
-							return
-						}
-
-						// 情况3: 效果类型变化或首次启用
-						if (newType !== oldType || (newType === 'replace' && !oldBg)) {
-							// 先停止旧效果（如果有）
-							if (effectProducerActive.value) {
-								await stopEffectStream()
-								await new Promise(resolve => setTimeout(resolve, 200))
-							}
-
-							// 启动新效果
-							await startEffectStream()
-						}
-					} catch (error) {
-						console.error('[BackgroundEffect] Failed to switch effect:', error)
-						effectType.value = 'none'
-					}
-				})
+				ensureEffectWatcher()
 			}
 
 			// 11. 订阅现有参与者的媒体流
@@ -1704,14 +1710,14 @@ export function useMedia() {
 				audio: false,
 			})
 
-			screenStream.value = markRaw(stream)
+			screenStream = stream
 			const screenVideoTrack = stream.getVideoTracks()[0]
 
 			// 2. 保存并关闭原 camera producer
 			const currentVideoProducer = mediasoupClient.producers.get('video')
 			if (currentVideoProducer) {
 				// 保存原始轨道（用于恢复）
-				originalVideoTrack.value = currentVideoProducer.track
+				originalVideoTrack = currentVideoProducer.track
 
 				// 通知服务器关闭原 producer
 				await socketClient.emit('closeProducer', {
@@ -1808,7 +1814,7 @@ export function useMedia() {
 	 */
 	async function stopScreenShare() {
 		try {
-			if (!screenSharing.value && !screenStream.value) {
+			if (!screenSharing.value && !screenStream) {
 				console.log('Screen share already stopped')
 				return
 			}
@@ -1816,12 +1822,12 @@ export function useMedia() {
 			console.log('Stopping screen share...')
 
 			// 1. 停止屏幕共享流
-			if (screenStream.value) {
-				screenStream.value.getTracks().forEach(track => {
+			if (screenStream) {
+				screenStream.getTracks().forEach(track => {
 					track.stop()
 					console.log('Stopped screen track:', track.id)
 				})
-				screenStream.value = null
+				screenStream = null
 			}
 
 			// 2. 关闭屏幕共享 producer
@@ -1838,9 +1844,9 @@ export function useMedia() {
 			}
 
 			// 3. 重新创建摄像头 producer
-			if (originalVideoTrack.value && originalVideoTrack.value.readyState === 'live') {
+			if (originalVideoTrack && originalVideoTrack.readyState === 'live') {
 				// 如果原轨道还活着，直接复用
-				const newProducer = await mediasoupClient.produce(originalVideoTrack.value, {
+				const newProducer = await mediasoupClient.produce(originalVideoTrack, {
 					kind: 'video',
 					encodings: SIMULCAST_ENCODINGS,
 					codecOptions: { videoGoogleStartBitrate: 1000 },
@@ -1857,13 +1863,13 @@ export function useMedia() {
 						const videoStream = localPeer.streams.video
 						const oldTracks = videoStream.getVideoTracks()
 						oldTracks.forEach(track => videoStream.removeTrack(track))
-						videoStream.addTrack(originalVideoTrack.value)
+						videoStream.addTrack(originalVideoTrack)
 					}
 
 					if (localStream.value) {
 						const oldTracks = localStream.value.getVideoTracks()
 						oldTracks.forEach(track => localStream.value.removeTrack(track))
-						localStream.value.addTrack(originalVideoTrack.value)
+						localStream.value.addTrack(originalVideoTrack)
 					}
 				}
 
@@ -1920,7 +1926,7 @@ export function useMedia() {
 
 			// 4. 更新状态
 			screenSharing.value = false
-			originalVideoTrack.value = null
+			originalVideoTrack = null
 
 			// 强制更新 UI
 			participants.value = [...participants.value]
@@ -1929,16 +1935,9 @@ export function useMedia() {
 		} catch (error) {
 			console.error('Failed to stop screen share:', error)
 			screenSharing.value = false
-			screenStream.value = null
+			screenStream = null
 			$notify.error('停止屏幕共享失败')
 		}
-	}
-
-	/**
-	 * 获取当前正在共享屏幕的参与者
-	 */
-	function getScreenSharingParticipant() {
-		return participants.value.find(p => p.producers?.screen || p.streams?.screen)
 	}
 
 	/**
@@ -2051,7 +2050,6 @@ export function useMedia() {
 				results.screen = screenStats.stats
 			}
 
-			stats.value = results
 			return results
 		} catch (error) {
 			console.error('Failed to get stats', error)
@@ -2109,6 +2107,7 @@ export function useMedia() {
 		try {
 			// 1. 先同步停止背景特效
 			await stopEffectStream()
+			stopEffectStateWatcher()
 
 			// 2. 通知服务器离开(只有非强制离开才需要主动通知)
 			if (reason !== 'removed_by_host' && socketClient.connected.value) {
@@ -2124,7 +2123,7 @@ export function useMedia() {
 
 			// 3. 停止所有本地流
 			localStream.value?.getTracks().forEach(track => track.stop())
-			screenStream.value?.getTracks().forEach(track => track.stop())
+			screenStream?.getTracks().forEach(track => track.stop())
 
 			// 4. 清理所有参与者的流和消费者
 			participants.value.forEach(participant => {
@@ -2184,7 +2183,7 @@ export function useMedia() {
 			userId.value = null
 			username.value = null
 			localStream.value = null
-			screenStream.value = null
+			screenStream = null
 			participants.value = []
 			audioEnabled.value = true
 			videoEnabled.value = true
@@ -2294,11 +2293,9 @@ export function useMedia() {
 		audioNoiseSuppressionUpdating,
 		audioNoiseSuppressionError,
 		screenSharing,
-		screenStream,
 		connectionState,
 		joinError,
 		connectionQuality,
-		stats,
 		hasScreenShare,
 		effectType,
 		effectProducerActive,
@@ -2331,7 +2328,6 @@ export function useMedia() {
 		getStats,
 		changeAudioDevice,
 		changeVideoDevice,
-		getScreenSharingParticipant,
 		uploadCustomBackground,
 		requestSpotlight,
 		setSpotlight,

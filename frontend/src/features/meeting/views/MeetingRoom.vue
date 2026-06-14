@@ -1239,13 +1239,10 @@ const {
 	audioNoiseSuppressionUpdating,
 	audioNoiseSuppressionError,
 	screenSharing,
-	screenStream,
 	hasScreenShare,
-	getScreenSharingParticipant,
 	connectionState,
 	joinError,
 	connectionQuality,
-	stats,
 	effectType,
 	selectedBackground,
 	allBackgrounds,
@@ -1981,33 +1978,6 @@ const handleScreenShareToggle = async () => {
 		console.error('Screen share toggle failed', error)
 	}
 }
-
-// 综合连接质量
-const overallConnectionQuality = computed(() => {
-	const sendScore = connectionQuality.value.send.score
-	const recvScore = connectionQuality.value.recv.score
-	const avgScore = (sendScore + recvScore) / 2
-
-	let color = 'success'
-	let icon = 'mdi-wifi-strength-4'
-	let text = '连接优秀'
-
-	if (avgScore < 4) {
-		color = 'error'
-		icon = 'mdi-wifi-strength-1'
-		text = '连接较差'
-	} else if (avgScore < 6) {
-		color = 'warning'
-		icon = 'mdi-wifi-strength-2'
-		text = '连接一般'
-	} else if (avgScore < 8) {
-		color = 'info'
-		icon = 'mdi-wifi-strength-3'
-		text = '连接良好'
-	}
-
-	return { color, icon, text }
-})
 
 // ==================== 工具函数 ====================
 const formatDate = date => {

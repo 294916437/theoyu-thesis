@@ -239,8 +239,8 @@
 import { useDebounceFn } from '@vueuse/core'
 import { getInitials } from '@/utils/common'
 import { createVideoCanvasRenderer } from '@/utils/videoCanvasRenderer'
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-const streamCache = ref(new Map())
+import { ref, shallowRef, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+const streamCache = new Map()
 const props = defineProps({
 	participants: {
 		type: Array,
@@ -299,12 +299,12 @@ const emit = defineEmits(['pin-participant', 'unpin-participant', 'set-spotlight
 const localCanvasElement = ref(null)
 const localMediaWrapper = ref(null)
 const screenShareVideo = ref(null)
-const videoRefs = ref(new Map())
-const thumbnailRefs = ref(new Map())
-const spotlightThumbRefs = ref(new Map())
+const videoRefs = new Map()
+const thumbnailRefs = new Map()
+const spotlightThumbRefs = new Map()
 const spotlightVideoRef = ref(null)
 const pinnedParticipantId = ref(null)
-const localCanvasRenderer = ref(null)
+const localCanvasRenderer = shallowRef(null)
 const videoRenderers = new Map()
 // 使用 WeakMap 缓存流对象，避免重复创建
 const streamObjectCache = new WeakMap()
@@ -535,7 +535,7 @@ function setLocalCanvasRenderer(canvas) {
 // 设置聚光灯缩略图引用
 function setSpotlightThumbRef(el, participantId) {
 	if (el) {
-		spotlightThumbRefs.value.set(participantId, el)
+		spotlightThumbRefs.set(participantId, el)
 		if (participantId === 'local' && props.localStream) {
 			el.srcObject = props.localStream
 		} else {
@@ -545,7 +545,7 @@ function setSpotlightThumbRef(el, participantId) {
 			}
 		}
 	} else {
-		spotlightThumbRefs.value.delete(participantId)
+		spotlightThumbRefs.delete(participantId)
 	}
 }
 
@@ -635,12 +635,12 @@ function getConnectionQuality(participant) {
 // 设置视频引用
 function setVideoRef(el, peerId) {
 	if (el) {
-		videoRefs.value.set(peerId, el)
+		videoRefs.set(peerId, el)
 
 		const participant = formattedParticipants.value.find(p => p.peerId === peerId)
 		if (participant?.stream) {
 			const newStreamId = participant.stream.id
-			const cachedStreamId = streamCache.value.get(peerId)
+			const cachedStreamId = streamCache.get(peerId)
 
 			// 只在流 ID 真正变化且流对象不同时才更新
 			const currentStream = videoRenderers.get(peerId)?.sourceVideo.srcObject
@@ -655,15 +655,15 @@ function setVideoRef(el, peerId) {
 
 				// 设置新流
 				bindCanvasRenderer(videoRenderers, peerId, el, participant.stream, { muted: false })
-				streamCache.value.set(peerId, newStreamId)
+				streamCache.set(peerId, newStreamId)
 			} else {
 				bindCanvasRenderer(videoRenderers, peerId, el, participant.stream, { muted: false })
 				console.log(`Stream ${newStreamId} already set for ${peerId}, skipping (same object)`)
 			}
 		}
 	} else {
-		videoRefs.value.delete(peerId)
-		streamCache.value.delete(peerId)
+		videoRefs.delete(peerId)
+		streamCache.delete(peerId)
 		bindCanvasRenderer(videoRenderers, peerId, null)
 	}
 }
@@ -671,7 +671,7 @@ function setVideoRef(el, peerId) {
 // 设置缩略图引用
 function setThumbnailRef(el, participantId) {
 	if (el) {
-		thumbnailRefs.value.set(participantId, el)
+		thumbnailRefs.set(participantId, el)
 
 		if (participantId === 'local' && props.localStream) {
 			el.srcObject = props.localStream
@@ -705,20 +705,6 @@ watch(
 		if (localCanvasRenderer.value && !props.effectCanvas) {
 			console.log('Setting local canvas stream', newStream?.id)
 			localCanvasRenderer.value.setStream(newStream)
-		}
-	},
-	{ immediate: true },
-)
-
-watch(
-	[localCanvasElement, () => props.effectCanvas],
-	([canvas, effectCanvas]) => {
-		if (!canvas) return
-		setLocalCanvasRenderer(canvas)
-		if (effectCanvas) {
-			localCanvasRenderer.value?.setStream(null)
-		} else {
-			localCanvasRenderer.value?.setStream(props.localStream)
 		}
 	},
 	{ immediate: true },
@@ -776,14 +762,24 @@ const handleParticipantsUpdate = useDebounceFn(newParticipants => {
 				})
 
 				renderer.setStream(participant.stream)
-				streamCache.value.set(participant.peerId, newStreamId)
+				streamCache.set(participant.peerId, newStreamId)
 			}
 		}
 	})
 }, 150) // 防抖延迟
 
-// 监听参与者流变化
-watch(() => formattedParticipants.value, handleParticipantsUpdate, { deep: true })
+const participantStreamSignature = computed(() =>
+	formattedParticipants.value
+		.map(participant => {
+			const tracks = participant.stream?.getTracks() || []
+			const trackSignature = tracks.map(track => `${track.id}:${track.readyState}:${track.enabled}`).join(',')
+			return `${participant.peerId}:${participant.stream?.id || ''}:${trackSignature}`
+		})
+		.join('|'),
+)
+
+// 监听参与者流变化，避免 deep watch 遍历 MediaStream/MediaStreamTrack 对象
+watch(participantStreamSignature, () => handleParticipantsUpdate(formattedParticipants.value))
 
 // ==================== 生命周期 ====================
 
@@ -806,8 +802,10 @@ onUnmounted(() => {
 	localCanvasRenderer.value?.dispose()
 	localCanvasRenderer.value = null
 	disposeRenderers(videoRenderers)
-	videoRefs.value.clear()
-	thumbnailRefs.value.clear()
+	videoRefs.clear()
+	thumbnailRefs.clear()
+	spotlightThumbRefs.clear()
+	streamCache.clear()
 })
 </script>
 

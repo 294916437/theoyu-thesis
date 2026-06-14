@@ -107,11 +107,6 @@
 
 				<!-- 操作按钮(悬停时显示) -->
 				<div class="tile-actions">
-					<v-btn icon size="x-small" variant="flat" color="surface" @click="handlePin(participant.id)">
-						<v-icon size="small">
-							{{ pinnedParticipantId === participant.id ? 'mdi-pin-off' : 'mdi-pin' }}
-						</v-icon>
-					</v-btn>
 					<v-btn v-if="isHost" icon size="x-small" variant="flat" color="warning" class="ml-1" @click="handleSetSpotlight(participant.peerId)">
 						<v-icon size="small">mdi-spotlight</v-icon>
 					</v-btn>
@@ -307,7 +302,6 @@ const videoRefs = new Map()
 const thumbnailRefs = new Map()
 const spotlightThumbRefs = new Map()
 const spotlightVideoRef = ref(null)
-const pinnedParticipantId = ref(null)
 const localCanvasRenderer = shallowRef(null)
 const videoRenderers = new Map()
 // 使用 WeakMap 缓存流对象，避免重复创建
@@ -465,12 +459,6 @@ const maxVisible = computed(() => {
 
 // 可见参与者
 const visibleParticipants = computed(() => {
-	if (pinnedParticipantId.value) {
-		const pinned = formattedParticipants.value.find(p => p.id === pinnedParticipantId.value)
-		if (pinned) {
-			return [pinned]
-		}
-	}
 	return formattedParticipants.value.slice(0, maxVisible.value)
 })
 
@@ -489,11 +477,6 @@ const localConnectionQuality = computed(() => {
 })
 
 // ==================== 方法 ====================
-
-function getParticipantStream(participantId) {
-	if (participantId === 'local') return props.localStream
-	return formattedParticipants.value.find(p => p.peerId === participantId || p.id === participantId)?.stream || null
-}
 
 function bindCanvasRenderer(rendererMap, key, canvas, stream, options = {}) {
 	if (!canvas) {
@@ -685,17 +668,6 @@ function setThumbnailRef(el, participantId) {
 				el.srcObject = participant.stream
 			}
 		}
-	}
-}
-
-// 固定/取消固定参与者
-function handlePin(participantId) {
-	if (pinnedParticipantId.value === participantId) {
-		pinnedParticipantId.value = null
-		emit('unpin-participant', participantId)
-	} else {
-		pinnedParticipantId.value = participantId
-		emit('pin-participant', participantId)
 	}
 }
 

@@ -107,8 +107,6 @@
 							:is-host="isHost"
 							:local-peer-id="peerId"
 							:effect-canvas="localEffectCanvas"
-							@pin-participant="handlePinParticipant"
-							@unpin-participant="handleUnpinParticipant"
 							@set-spotlight="handleSetSpotlight"
 						/>
 
@@ -2148,17 +2146,6 @@ const confirmLeaveMeeting = async () => {
 }
 // 判断当前用户是否为主持人
 const isHost = computed(() => currentUserId.value === meetingInfo.value.hostId)
-
-const handlePinParticipant = participantId => {
-	console.log('Pin participant', participantId)
-	$notify.success('已固定参与者视图')
-	// TODO: 实现固定视图
-}
-const handleUnpinParticipant = participantId => {
-	console.log('Unpin participant', participantId)
-	$notify.info('已取消固定')
-	// TODO: 实现取消固定逻辑
-}
 
 // ==================== 聚光灯功能 ====================
 const showSpotlightRequestDialog = ref(false)

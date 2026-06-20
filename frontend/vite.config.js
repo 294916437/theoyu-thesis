@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import vuetify from 'vite-plugin-vuetify'
 import vue from '@vitejs/plugin-vue'
+import VueDevTools from 'vite-plugin-vue-devtools'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 
 const require = createRequire(import.meta.url)
@@ -37,7 +38,7 @@ export default defineConfig(({ mode }) => {
 	const sfuProxyPorts = parsePortList(env.VITE_SFU_PROXY_PORTS)
 
 	return {
-		plugins: [vue(), vuetify({ autoImport: true }), basicSsl()],
+		plugins: [vue(), vuetify({ autoImport: true }), VueDevTools(),basicSsl()],
 		resolve: {
 			alias: {
 				'@': fileURLToPath(new URL('./src', import.meta.url)),

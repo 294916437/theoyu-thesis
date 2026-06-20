@@ -1,12 +1,40 @@
 import axios from 'axios'
 import { useUserStore } from '@/stores/user'
 import { $notify } from '@/plugins/notification'
+import router from '@/router'
 
 // 创建 Axios 实例
 const instance = axios.create({
 	baseURL: '/api',
 	timeout: 15000, // 请求超时时间
 })
+
+let isRedirectingToLogin = false
+
+const redirectToLogin = async () => {
+	const currentRoute = router.currentRoute.value
+
+	if (currentRoute.name === 'Login') {
+		return
+	}
+
+	if (isRedirectingToLogin) {
+		return
+	}
+
+	isRedirectingToLogin = true
+
+	try {
+		await router.replace({
+			name: 'Login',
+			query: {
+				redirect: currentRoute.fullPath,
+			},
+		})
+	} finally {
+		isRedirectingToLogin = false
+	}
+}
 
 // 添加请求拦截器
 instance.interceptors.request.use(
@@ -39,15 +67,15 @@ instance.interceptors.response.use(
 	function (error) {
 		// 超出 2xx 范围的状态码都会触发该函数。
 		// 对响应错误做点什么
-		const status = error.response.status
+		const status = error.response?.status
 
 		if (status === 401) {
-			console.log('====================== 401')
-			$notify.info('请先登录')
-
 			// 获取 store 实例并清除登录状态
 			const userStore = useUserStore()
 			userStore.logout()
+
+			$notify.info(error.response?.data?.message || '登录已过期，请重新登录')
+			redirectToLogin()
 		} else {
 			// 显示错误信息
 			const msg = error.response?.data?.message || '请求失败'

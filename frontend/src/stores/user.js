@@ -31,6 +31,7 @@ export const useUserStore = defineStore(
 			token.value = ''
 			// 删除用户信息
 			profile.value = {}
+			userId.value = undefined
 		}
 
 		return {

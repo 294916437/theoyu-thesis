@@ -19,6 +19,9 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Service
 public class VerificationCodeServiceImpl implements VerificationCodeService {
+    private static final long VERIFICATION_CODE_EXPIRE_MINUTES = 5L;
+    private static final long VERIFICATION_CODE_SEND_INTERVAL_MINUTES = 3L;
+
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
     @Resource(name = "taskExecutor")
@@ -31,9 +34,10 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
     public Response<?> sendVerificationCode(SendVerificationCodeReqVO reqVO) {
         // 获取手机号和构造 Redis Key
         String phone = reqVO.getPhone();
-        String redisKey = RedisKeyConstants.buildVerificationCodeKey(phone); // 生成验证码
+        String verificationCodeKey = RedisKeyConstants.buildVerificationCodeKey(phone);
+        String sendLimitKey = RedisKeyConstants.buildVerificationCodeSendLimitKey(phone);
 
-        boolean isSend = redisTemplate.hasKey(redisKey);
+        boolean isSend = Boolean.TRUE.equals(redisTemplate.hasKey(sendLimitKey));
 
         if (isSend) {
             throw new BusinessException(ResponseCodeEnum.VERIFICATION_CODE_SEND_FREQUENTLY);
@@ -51,8 +55,9 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
 //            aliyunSmsHelper.sendTextMessage(signName, templateCode, phone, templateParam);
 //        });
 
-        // 将验证码存入 Redis，设置过期时间为 5 分钟
-        redisTemplate.opsForValue().set(redisKey, verificationCode,5, TimeUnit.MINUTES);
+        // 验证码有效期和发送冷却分开管理，避免验证码未过期时阻塞下一次发送。
+        redisTemplate.opsForValue().set(verificationCodeKey, verificationCode, VERIFICATION_CODE_EXPIRE_MINUTES, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(sendLimitKey, "1", VERIFICATION_CODE_SEND_INTERVAL_MINUTES, TimeUnit.MINUTES);
         return Response.success();
     }
 }

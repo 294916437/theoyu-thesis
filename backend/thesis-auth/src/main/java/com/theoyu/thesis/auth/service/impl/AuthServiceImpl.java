@@ -21,6 +21,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Arrays;
 import java.util.Objects;
 
 @Service
@@ -44,15 +45,18 @@ public class AuthServiceImpl implements AuthService {
         }
 
         Long userId = null;
+        String verificationCodeKey = null;
+        String verificationCodeSendLimitKey = null;
 
         if (loginTypeEnum == LoginTypeEnum.PHONE_CODE) {
             // 手机号+验证码登录
             String code = userLoginReqVO.getCode();
             // 校验入参验证码是否为空，抛出全局的IllegalArgumentException异常，可以在全局异常处理器中捕获并返回自定义的错误响应
             Preconditions.checkArgument(StringUtils.isNotBlank(code), "验证码不能为空");
-            String key = RedisKeyConstants.buildVerificationCodeKey(phone);
+            verificationCodeKey = RedisKeyConstants.buildVerificationCodeKey(phone);
+            verificationCodeSendLimitKey = RedisKeyConstants.buildVerificationCodeSendLimitKey(phone);
             // 查询存储在 Redis 中该用户的登录验证码
-            String sentCode = (String) redisTemplate.opsForValue().get(key);
+            String sentCode = (String) redisTemplate.opsForValue().get(verificationCodeKey);
 
             // 判断用户提交的验证码，与 Redis 中的验证码是否一致
             if (!StringUtils.equals(code, sentCode)) {
@@ -63,6 +67,8 @@ public class AuthServiceImpl implements AuthService {
             if(Objects.isNull(userIdTmp)) {
                 throw new BusinessException(ResponseCodeEnum.LOGIN_FAIL);
             }
+            // 删除 Redis 中的验证码的两种缓存（验证码本身 + 验证码发送频率限制）
+            redisTemplate.delete(Arrays.asList(verificationCodeKey, verificationCodeSendLimitKey));
             userId = userIdTmp;
 
         } else if (loginTypeEnum == LoginTypeEnum.ACCOUNT_PASSWORD) {

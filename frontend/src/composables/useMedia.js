@@ -1351,6 +1351,19 @@ export function useMedia() {
 			}, 3000)
 		})
 
+		socketClient.on('roomClosed', async data => {
+			console.log('Room closed', data)
+			$notify.info('会议已由主持人关闭', {
+				timeout: 3000,
+			})
+
+			await leaveMeeting({ reason: 'meeting_closed', notifyServer: false })
+
+			setTimeout(() => {
+				router.push('/')
+			}, 3000)
+		})
+
 		// 新生产者
 		socketClient.on('newProducer', async data => {
 			console.log('New producer', data)
@@ -2105,14 +2118,14 @@ export function useMedia() {
 	 * 离开会议
 	 */
 	async function leaveMeeting(options = {}) {
-		const { reason = 'self_leave' } = options
+		const { reason = 'self_leave', notifyServer = true } = options
 		try {
 			// 1. 先同步停止背景特效
 			await stopEffectStream()
 			stopEffectStateWatcher()
 
 			// 2. 通知服务器离开(只有非强制离开才需要主动通知)
-			if (reason !== 'removed_by_host' && socketClient.connected.value) {
+			if (notifyServer && reason !== 'removed_by_host' && socketClient.connected.value) {
 				try {
 					await socketClient.emit('leaveRoom', {
 						roomId: roomId.value,
@@ -2205,6 +2218,18 @@ export function useMedia() {
 			console.error('Failed to leave meeting', error)
 			throw error
 		}
+	}
+
+	async function closeRoom(options = {}) {
+		const { reason = 'host_closed' } = options
+		if (!socketClient.connected.value) {
+			throw new Error('Socket not connected')
+		}
+
+		return socketClient.emit('closeRoom', {
+			roomId: roomId.value,
+			reason,
+		})
 	}
 
 	/**
@@ -2313,6 +2338,7 @@ export function useMedia() {
 		// 方法
 		joinMeeting,
 		leaveMeeting,
+		closeRoom,
 		removeParticipant,
 		toggleAudio,
 		setAudioNoiseSuppression,

@@ -71,6 +71,7 @@ export class SocketHandler {
 		// 房间相关
 		socket.on("joinRoom", (data, callback) => this.withErrorHandling(socket, "joinRoom", data, callback, this.handleJoinRoom))
 		socket.on("leaveRoom", (data, callback) => this.withErrorHandling(socket, "leaveRoom", data, callback, this.handleLeaveRoom))
+		socket.on("closeRoom", (data, callback) => this.withErrorHandling(socket, "closeRoom", data, callback, this.handleCloseRoom))
 		socket.on("removeParticipant", (data, callback) => this.withErrorHandling(socket, "removeParticipant", data, callback, this.handleRemoveParticipant))
 
 		// 媒体协商相关
@@ -1153,6 +1154,48 @@ export class SocketHandler {
 			success: true,
 			message: `Participant ${targetPeerId} has been removed`,
 		})
+	}
+
+	private async handleCloseRoom(socket: Socket, data: { roomId?: string; reason?: string }, callback: Function): Promise<void> {
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
+		}
+
+		const roomId = data.roomId || session.roomId
+		if (roomId !== session.roomId) {
+			const error: any = new Error("Cannot close a room that the user has not joined")
+			error.code = "FORBIDDEN"
+			throw error
+		}
+
+		// TODO: 从业务系统验证是否为主持人
+		const room = this.roomManager.getRoom(roomId)
+		const sessions = this.sessionManager.getSessionsByRoom(roomId)
+		const reason = data.reason || "host_closed"
+
+		socket.to(roomId).emit("roomClosed", {
+			roomId,
+			closedBy: session.userId,
+			username: session.username,
+			reason,
+			timestamp: Date.now(),
+		})
+
+		if (room) {
+			this.roomManager.removeRoom(roomId)
+		}
+
+		for (const roomSession of sessions) {
+			const roomSocket = this.io.sockets.sockets.get(roomSession.socketId)
+			if (roomSocket) {
+				roomSocket.leave(roomId)
+			}
+			this.sessionManager.destroySession(roomSession.socketId)
+		}
+
+		this.logger.info(`Room ${roomId} closed by ${session.userId} (reason: ${reason})`)
+		callback({ success: true })
 	}
 
 	private async handleDisconnect(socket: Socket, reason: string): Promise<void> {

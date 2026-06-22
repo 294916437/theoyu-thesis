@@ -1059,7 +1059,15 @@
 							<span class="text-h6 font-weight-semibold">离开会议</span>
 							<span class="text-caption text-medium-emphasis mt-1">会议时长：{{ meetingDuration }}</span>
 						</div>
-						<v-btn icon="mdi-close" variant="text" size="small" density="comfortable" class="leave-dialog-close" @click="showLeaveConfirm = false"></v-btn>
+						<v-btn
+							icon="mdi-close"
+							variant="text"
+							size="small"
+							density="comfortable"
+							class="leave-dialog-close"
+							:disabled="leavingMeeting || closingMeeting"
+							@click="showLeaveConfirm = false"
+						></v-btn>
 					</div>
 
 					<v-divider></v-divider>
@@ -1073,12 +1081,45 @@
 						</v-list>
 					</v-card-text>
 
-					<v-card-actions class="px-5 pb-5 pt-0 ga-3">
-						<v-btn variant="tonal" color="primary" size="large" rounded="lg" class="flex-1-1" prepend-icon="mdi-arrow-left" @click="showLeaveConfirm = false">
+					<v-card-actions class="px-5 pb-5 pt-0 ga-3 flex-wrap">
+						<v-btn
+							variant="tonal"
+							color="primary"
+							size="large"
+							rounded="lg"
+							class="flex-1-1"
+							prepend-icon="mdi-arrow-left"
+							:disabled="leavingMeeting || closingMeeting"
+							@click="showLeaveConfirm = false"
+						>
 							留在会议
 						</v-btn>
-						<v-btn variant="outlined" color="on-surface-variant" size="large" rounded="lg" class="flex-1-1" prepend-icon="mdi-exit-to-app" @click="confirmLeaveMeeting">
+						<v-btn
+							variant="outlined"
+							color="on-surface-variant"
+							size="large"
+							rounded="lg"
+							class="flex-1-1"
+							prepend-icon="mdi-exit-to-app"
+							:loading="leavingMeeting"
+							:disabled="closingMeeting"
+							@click="confirmLeaveMeeting"
+						>
 							确认离开
+						</v-btn>
+						<v-btn
+							v-if="isHost"
+							variant="flat"
+							color="error"
+							size="large"
+							rounded="lg"
+							class="w-100"
+							prepend-icon="mdi-close-circle-outline"
+							:loading="closingMeeting"
+							:disabled="leavingMeeting"
+							@click="confirmCloseMeeting"
+						>
+							关闭会议
 						</v-btn>
 					</v-card-actions>
 				</v-card>
@@ -1167,9 +1208,8 @@ import { useParticipants } from '@/composables/useParticipants'
 import { useMediaDevices } from '@/composables/useMediaDevices'
 import RoomMessageService from '@/services/RoomMessageService'
 import { useMedia } from '@/composables/useMedia'
-import { fetchMeetingInfo } from '@/api/room'
+import { fetchMeetingInfo, fetchMessageHistory, closeMeeting as closeMeetingApi } from '@/api/room'
 import { uploadFile } from '@/api/file'
-import { fetchMessageHistory } from '@/api/room'
 import { $notify } from '@/plugins/notification'
 import { useUserStore } from '@/stores/user'
 import { useDisplay } from 'vuetify'
@@ -1251,6 +1291,7 @@ const {
 	currentSpatialLayer,
 	joinMeeting,
 	leaveMeeting,
+	closeRoom,
 	toggleAudio,
 	setAudioNoiseSuppression,
 	toggleVideo,
@@ -1385,6 +1426,8 @@ const loadingMessage = ref('')
 const loadingProgress = ref(0)
 const controlBarCollapsed = ref(false)
 const showLeaveConfirm = ref(false)
+const leavingMeeting = ref(false)
+const closingMeeting = ref(false)
 
 // 视频设置 (初始化时与底层状态同步: layer 0->1, 1->2, 2->3)
 const videoQuality = ref(currentSpatialLayer.value + 1)
@@ -2124,6 +2167,7 @@ const handleLeaveMeeting = () => {
 
 const confirmLeaveMeeting = async () => {
 	showLeaveConfirm.value = false
+	leavingMeeting.value = true
 
 	entryPhase.value = 'loading'
 	loadingProgress.value = 0
@@ -2142,6 +2186,38 @@ const confirmLeaveMeeting = async () => {
 	} catch (error) {
 		console.error('Failed to leave meeting', error)
 		router.push('/')
+	} finally {
+		leavingMeeting.value = false
+	}
+}
+
+const confirmCloseMeeting = async () => {
+	showLeaveConfirm.value = false
+	closingMeeting.value = true
+
+	entryPhase.value = 'loading'
+	loadingProgress.value = 0
+	loadingMessage.value = '正在关闭会议...'
+
+	try {
+		loadingProgress.value = 30
+		await closeMeetingApi(meetingInfo.value.roomId)
+		loadingProgress.value = 60
+		await closeRoom({ reason: 'host_closed' })
+		loadingProgress.value = 80
+
+		await leaveMeeting({ reason: 'meeting_closed', notifyServer: false })
+		RoomMessageService.disconnect()
+		loadingProgress.value = 100
+
+		await new Promise(resolve => setTimeout(resolve, 300))
+		router.push('/')
+	} catch (error) {
+		console.error('Failed to close meeting', error)
+		$notify.error(error?.message || '关闭会议失败')
+		entryPhase.value = 'hidden'
+	} finally {
+		closingMeeting.value = false
 	}
 }
 // 判断当前用户是否为主持人

@@ -33,7 +33,12 @@ export function fetchMeetingDetail(roomIdOrNo) {
 	return axios.get(`${API_PREFIX}/detail/${roomIdOrNo}`)
 }
 
-//
+/**
+ * 关闭会议
+ */
+export function closeMeeting(roomId) {
+	return axios.post(`${API_PREFIX}/close`, { roomId })
+}
 
 /**
  * 创建会议

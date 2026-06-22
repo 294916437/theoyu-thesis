@@ -32,18 +32,7 @@
 							</template>
 							我 (本地)
 						</v-chip>
-					</div>
-
-					<!-- 连接质量指示器 -->
-					<div v-if="showConnectionQuality" class="connection-quality">
-						<v-tooltip location="top">
-							<template #activator="{ props: tooltipProps }">
-								<v-icon v-bind="tooltipProps" size="small" :color="localConnectionQuality.color">
-									{{ localConnectionQuality.icon }}
-								</v-icon>
-							</template>
-							<span>{{ localConnectionQuality.text }}</span>
-						</v-tooltip>
+						<RaisedHandStatus v-if="isLocalHandRaised" compact class="raised-hand-overlay">我 (本地)</RaisedHandStatus>
 					</div>
 				</div>
 			</div>
@@ -90,18 +79,9 @@
 							{{ participant.name }}
 							<span v-if="participant.isScreenSharing" class="ml-1 text-caption"> - 屏幕共享 </span>
 						</v-chip>
-					</div>
-
-					<!-- 连接质量指示器 -->
-					<div v-if="showConnectionQuality" class="connection-quality">
-						<v-tooltip location="top">
-							<template #activator="{ props: tooltipProps }">
-								<v-icon v-bind="tooltipProps" size="small" :color="getConnectionQuality(participant).color">
-									{{ getConnectionQuality(participant).icon }}
-								</v-icon>
-							</template>
-							<span>{{ getConnectionQuality(participant).text }}</span>
-						</v-tooltip>
+						<RaisedHandStatus v-if="isParticipantHandRaised(participant.peerId)" compact class="raised-hand-overlay">
+							{{ participant.name }}
+						</RaisedHandStatus>
 					</div>
 				</div>
 
@@ -198,6 +178,7 @@ import { useDebounceFn } from '@vueuse/core'
 import { getInitials } from '@/utils/common'
 import { createVideoCanvasRenderer } from '@/utils/videoCanvasRenderer'
 import { ref, shallowRef, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import RaisedHandStatus from './RaisedHandStatus.vue'
 const streamCache = new Map()
 const props = defineProps({
 	participants: {
@@ -248,6 +229,10 @@ const props = defineProps({
 	effectCanvas: {
 		type: Object,
 		default: null,
+	},
+	raisedHandPeerIds: {
+		type: Array,
+		default: () => [],
 	},
 })
 
@@ -368,6 +353,8 @@ const gridLayoutClass = computed(() => {
 })
 
 const localPreviewMirrored = computed(() => props.localVideoMirrored && !props.screenShare?.isLocal)
+const raisedHandPeerIdSet = computed(() => new Set(props.raisedHandPeerIds))
+const isLocalHandRaised = computed(() => props.localPeerId && raisedHandPeerIdSet.value.has(props.localPeerId))
 
 // 视频块样式类
 const tileClass = computed(() => {
@@ -423,15 +410,6 @@ const visibleParticipants = computed(() => {
 // 隐藏的参与者数量
 const hiddenParticipantCount = computed(() => {
 	return Math.max(0, formattedParticipants.value.length - maxVisible.value)
-})
-
-// 本地连接质量
-const localConnectionQuality = computed(() => {
-	return {
-		icon: 'mdi-wifi-strength-4',
-		color: 'success',
-		text: '连接优秀',
-	}
 })
 
 // ==================== 方法 ====================
@@ -499,6 +477,10 @@ function handleSetSpotlight(participantId) {
 	emit('set-spotlight', { targetPeerId: participantId, active: true })
 }
 
+function isParticipantHandRaised(participantId) {
+	return raisedHandPeerIdSet.value.has(participantId)
+}
+
 // ==================== 聚光灯计算属性 ====================
 
 // 当前聚光灯的参与者对象
@@ -546,36 +528,6 @@ watch(
 	},
 	{ immediate: true },
 )
-
-// 获取连接质量
-function getConnectionQuality(participant) {
-	const quality = participant.connectionQuality || 'good'
-
-	const qualityMap = {
-		excellent: {
-			icon: 'mdi-wifi-strength-4',
-			color: 'success',
-			text: '连接优秀',
-		},
-		good: {
-			icon: 'mdi-wifi-strength-3',
-			color: 'success',
-			text: '连接良好',
-		},
-		fair: {
-			icon: 'mdi-wifi-strength-2',
-			color: 'warning',
-			text: '连接一般',
-		},
-		poor: {
-			icon: 'mdi-wifi-strength-1',
-			color: 'error',
-			text: '连接较差',
-		},
-	}
-
-	return qualityMap[quality] || qualityMap.good
-}
 
 // 设置视频引用
 function setVideoRef(el, peerId) {
@@ -854,7 +806,6 @@ onUnmounted(() => {
 	left: 0;
 	right: 0;
 	padding: 12px;
-	background: linear-gradient(to top, rgba(var(--v-theme-surface), 0.9), transparent);
 	display: flex;
 	justify-content: space-between;
 	align-items: flex-end;
@@ -862,20 +813,24 @@ onUnmounted(() => {
 }
 
 .user-info {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 6px;
 	flex: 1;
 	min-width: 0;
 }
 
+.raised-hand-overlay {
+	max-width: min(220px, 100%);
+}
+
 .user-name-chip {
+	max-width: 100%;
 	font-weight: 500;
 	backdrop-filter: blur(8px);
 }
 
-.connection-quality {
-	display: flex;
-	align-items: center;
-	margin-left: 8px;
-}
 
 /* ==================== 操作按钮 ==================== */
 .tile-actions {

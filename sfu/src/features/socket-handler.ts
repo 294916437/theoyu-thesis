@@ -104,6 +104,7 @@ export class SocketHandler {
 		// 聚光灯模式
 		socket.on("requestSpotlight", (data, callback) => this.withErrorHandling(socket, "requestSpotlight", data, callback, this.handleRequestSpotlight))
 		socket.on("setSpotlight", (data, callback) => this.withErrorHandling(socket, "setSpotlight", data, callback, this.handleSetSpotlight))
+		socket.on("setHandRaised", (data, callback) => this.withErrorHandling(socket, "setHandRaised", data, callback, this.handleSetHandRaised))
 
 		// 统计和监控
 		socket.on("getStats", (data, callback) => this.withErrorHandling(socket, "getStats", data, callback, this.handleGetStats))
@@ -1041,6 +1042,30 @@ export class SocketHandler {
 		}
 
 		callback({ stats })
+	}
+
+	private async handleSetHandRaised(socket: Socket, data: { raised: boolean }, callback: Function): Promise<void> {
+		const session = this.sessionManager.getSession(socket.id)
+		if (!session) {
+			throw new Error("Session not found")
+		}
+
+		const room = this.roomManager.getRoom(session.roomId)
+		const peer = room?.getPeer(session.userId)
+		if (!room || !peer) {
+			throw new Error("Room or peer not found")
+		}
+
+		const raised = Boolean(data.raised)
+		this.io.to(session.roomId).emit("handRaiseChanged", {
+			peerId: peer.id,
+			userId: peer.userId,
+			username: peer.username,
+			raised,
+			raisedAt: Date.now(),
+		})
+
+		callback({ success: true, raised })
 	}
 
 	private async handleLeaveRoom(

@@ -178,6 +178,10 @@ export function useMedia() {
 	// ========== 聚光灯状态 ==========
 	const spotlightPeerId = ref(null) // 当前聚光灯的 peerId，null 表示无聚光灯
 	const spotlightRequest = ref(null) // { requesterId, requesterUsername } | null，主持人收到申请时置位
+	const raisedHandQueue = ref([])
+	const raisedHandStates = ref({})
+	const raisedHandPeerIds = computed(() => Object.entries(raisedHandStates.value).filter(([, raised]) => raised).map(([raisedPeerId]) => raisedPeerId))
+	const handRaised = computed(() => Boolean(peerId.value && raisedHandPeerIds.value.includes(peerId.value)))
 
 	// ========== 延迟测试配置 ==========
 	// true  → 单层编码，禁用 Simulcast
@@ -1335,6 +1339,12 @@ export function useMedia() {
 
 				participants.value.splice(index, 1)
 			}
+
+			if (raisedHandStates.value[data.peerId]) {
+				const nextStates = { ...raisedHandStates.value }
+				delete nextStates[data.peerId]
+				raisedHandStates.value = nextStates
+			}
 		})
 		// 监听被踢出事件
 		socketClient.on('removedFromRoom', async data => {
@@ -1466,6 +1476,25 @@ export function useMedia() {
 		// 监听聚光灯状态变化
 		socketClient.on('spotlightChanged', data => {
 			spotlightPeerId.value = data.active ? data.targetPeerId : null
+		})
+
+		socketClient.on('handRaiseChanged', data => {
+			raisedHandStates.value = {
+				...raisedHandStates.value,
+				[data.peerId]: Boolean(data.raised),
+			}
+
+			if (data.raised) {
+				raisedHandQueue.value = [
+					...raisedHandQueue.value,
+					{
+						peerId: data.peerId,
+						userId: data.userId,
+						username: data.username,
+						raisedAt: data.raisedAt || Date.now(),
+					},
+				]
+			}
 		})
 
 		// 监听 Simulcast 层级变化 (码率自适应)
@@ -2200,6 +2229,8 @@ export function useMedia() {
 			localStream.value = null
 			screenStream = null
 			participants.value = []
+			raisedHandQueue.value = []
+			raisedHandStates.value = {}
 			audioEnabled.value = true
 			videoEnabled.value = true
 			screenSharing.value = false
@@ -2231,6 +2262,22 @@ export function useMedia() {
 			reason,
 		})
 	}
+
+	async function setHandRaised(raised) {
+		if (!socketClient.connected.value) {
+			throw new Error('Socket not connected')
+		}
+
+		const response = await socketClient.emit('setHandRaised', {
+			raised,
+		})
+
+		return response
+	}
+
+	const toggleHandRaised = useThrottleFn(async () => {
+		return setHandRaised(!handRaised.value)
+	}, 600)
 
 	/**
 	 * 更换音频设备
@@ -2334,6 +2381,9 @@ export function useMedia() {
 		currentSpatialLayer,
 		spotlightPeerId,
 		spotlightRequest,
+		raisedHandQueue,
+		raisedHandPeerIds,
+		handRaised,
 
 		// 方法
 		joinMeeting,
@@ -2359,5 +2409,7 @@ export function useMedia() {
 		uploadCustomBackground,
 		requestSpotlight,
 		setSpotlight,
+		setHandRaised,
+		toggleHandRaised,
 	}
 }

@@ -1,6 +1,8 @@
 <script setup>
+import { createConversation } from '@/api/chat'
 import { $notify } from '@/plugins/notification'
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 
 const props = defineProps({
 	participants: {
@@ -41,6 +43,8 @@ const props = defineProps({
 	},
 })
 const emit = defineEmits(['host-toggle-audio', 'host-toggle-video', 'mute-all', 'disable-all-video', 'remove-participant', 'set-spotlight'])
+const router = useRouter()
+
 // 按角色分组
 const participantsByRole = computed(() => {
 	const hosts = props.participants.filter(p => String(p.userId) === String(props.hostId))
@@ -55,7 +59,7 @@ const showInviteDialog = ref(false)
  */
 const canControlOtherParticipant = targetParticipant => {
 	// 主持人可以控制普通成员（非自己）
-	return props.isHost && targetParticipant.role === 1 && targetParticipant.userId !== props.currentUserId
+	return props.isHost && targetParticipant.role === 1 && !isCurrentUser(targetParticipant)
 }
 
 /**
@@ -63,6 +67,10 @@ const canControlOtherParticipant = targetParticipant => {
  */
 const isCurrentUser = targetParticipant => {
 	return targetParticipant.userId === props.currentUserId
+}
+
+const canShowParticipantMenu = targetParticipant => {
+	return !isCurrentUser(targetParticipant) || props.isHost
 }
 
 const meetingLink = computed(() => {
@@ -120,6 +128,52 @@ const shareInvite = () => {
 		copyMeetingLink()
 	}
 }
+
+const getChatCenterUrl = conversationId => {
+	const route = router.resolve({
+		name: 'ChatCenter',
+		query: {
+			conversationId: String(conversationId),
+		},
+	})
+	return new URL(route.href, window.location.origin).href
+}
+
+const handleStartPrivateChat = async participant => {
+	if (isCurrentUser(participant)) {
+		$notify.warning('不能和自己发起私聊')
+		return
+	}
+
+	const targetUserId = participant.userId
+	const chatWindow = window.open('', '_blank')
+	if (chatWindow) {
+		chatWindow.opener = null
+	}
+
+	try {
+		const result = await createConversation({ targetUserId })
+		if (!result.success || !result.data?.conversationId) {
+			chatWindow?.close()
+			$notify.error(result.message || '创建私聊会话失败')
+			return
+		}
+
+		const chatCenterUrl = getChatCenterUrl(result.data.conversationId)
+		if (chatWindow) {
+			chatWindow.location.href = chatCenterUrl
+		} else {
+			window.open(chatCenterUrl, '_blank')
+		}
+
+		$notify.success(result.data.isNew ? '私聊会话已创建' : '已打开私聊会话')
+	} catch (error) {
+		chatWindow?.close()
+		console.error('Start private chat failed:', error)
+		$notify.error(error.message || '发起私聊失败')
+	}
+}
+
 /**
  * 获取参与者的媒体状态（统一判断逻辑）
  */
@@ -253,7 +307,8 @@ const handleDisableAllVideo = async () => {
 				<!-- 邀请按钮 -->
 				<v-tooltip location="bottom">
 					<template #activator="{ props }">
-						<v-btn v-bind="props" icon="mdi-account-plus" size="small" variant="text" color="primary" @click="showInviteDialog = true"></v-btn>
+						<v-btn v-bind="props" icon="mdi-account-plus" size="small" variant="text" color="primary"
+							@click="showInviteDialog = true"></v-btn>
 					</template>
 					<span>邀请参与者</span>
 				</v-tooltip>
@@ -261,7 +316,8 @@ const handleDisableAllVideo = async () => {
 				<!-- 主持人针对全体的操作(不包括主持人自己 ) -->
 				<v-menu v-if="isHost">
 					<template #activator="{ props }">
-						<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text" color="primary"></v-btn>
+						<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text"
+							color="primary"></v-btn>
 					</template>
 
 					<v-list density="compact" class="menu-list">
@@ -296,14 +352,10 @@ const handleDisableAllVideo = async () => {
 					<span>主持人 ({{ participantsByRole.hosts.length }})</span>
 				</div>
 
-				<div
-					v-for="participant in participantsByRole.hosts"
-					:key="participant.userId"
-					class="participant-item"
+				<div v-for="participant in participantsByRole.hosts" :key="participant.userId" class="participant-item"
 					:class="{
 						'current-user': isCurrentUser(participant),
-					}"
-				>
+					}">
 					<!-- 头像 -->
 					<v-avatar color="primary" size="36">
 						<v-img v-if="participant.avatar" :src="participant.avatar"></v-img>
@@ -318,34 +370,53 @@ const handleDisableAllVideo = async () => {
 								<span v-if="isCurrentUser(participant)" class="text-caption text-primary"> （我） </span>
 							</span>
 							<v-chip size="x-small" color="primary" variant="flat" class="ml-2"> 主持人 </v-chip>
-							<v-icon v-if="participant.handRaised" size="small" color="warning" class="ml-1"> mdi-hand-back-right </v-icon>
+							<v-icon v-if="participant.handRaised" size="small" color="warning" class="ml-1">
+								mdi-hand-back-right
+							</v-icon>
 						</div>
 						<div class="participant-status">
-							<v-icon size="small" :color="getMediaState(participant, 'audio').enabled ? 'success' : 'error'">
-								{{ getMediaState(participant, 'audio').enabled ? 'mdi-microphone' : 'mdi-microphone-off' }}
+							<v-icon size="small"
+								:color="getMediaState(participant, 'audio').enabled ? 'success' : 'error'">
+								{{ getMediaState(participant, 'audio').enabled ? 'mdi-microphone' : 'mdi-microphone-off'
+								}}
 							</v-icon>
-							<v-icon size="small" :color="getMediaState(participant, 'video').enabled ? 'success' : 'error'" class="ml-1">
+							<v-icon size="small"
+								:color="getMediaState(participant, 'video').enabled ? 'success' : 'error'" class="ml-1">
 								{{ getMediaState(participant, 'video').enabled ? 'mdi-video' : 'mdi-video-off' }}
 							</v-icon>
-							<v-icon v-if="participant.connectionQuality" size="small" :color="getConnectionColor(participant.connectionQuality)" class="ml-2">
+							<v-icon v-if="participant.connectionQuality" size="small"
+								:color="getConnectionColor(participant.connectionQuality)" class="ml-2">
 								{{ getConnectionIcon(participant.connectionQuality) }}
 							</v-icon>
 						</div>
 					</div>
 
-					<!-- 主持人自身的聚光灯菜单 -->
-					<v-menu v-if="isHost && isCurrentUser(participant)">
+					<!-- 参与者操作菜单 -->
+					<v-menu v-if="canShowParticipantMenu(participant)">
 						<template #activator="{ props }">
-							<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text" color="primary"></v-btn>
+							<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text"
+								color="primary"></v-btn>
 						</template>
 						<v-list density="compact" class="menu-list">
-							<v-list-item @click="handleSetSpotlight(participant)">
+							<v-list-item v-if="!isCurrentUser(participant)"
+								@click="handleStartPrivateChat(participant)">
 								<template #prepend>
-									<v-icon :color="spotlightPeerId === participant.peerId ? 'on-surface-variant' : 'warning'">
+									<v-icon color="primary">mdi-message-text</v-icon>
+								</template>
+								<v-list-item-title>发起私聊</v-list-item-title>
+							</v-list-item>
+
+							<v-divider v-if="!isCurrentUser(participant) && isHost" class="my-1"></v-divider>
+
+							<v-list-item v-if="isHost" @click="handleSetSpotlight(participant)">
+								<template #prepend>
+									<v-icon
+										:color="spotlightPeerId === participant.peerId ? 'on-surface-variant' : 'warning'">
 										mdi-spotlight
 									</v-icon>
 								</template>
-								<v-list-item-title>{{ spotlightPeerId === participant.peerId ? '取消聚光灯' : '开启聚光灯' }}</v-list-item-title>
+								<v-list-item-title>{{ spotlightPeerId === participant.peerId ? '取消聚光灯' : '开启聚光灯'
+								}}</v-list-item-title>
 							</v-list-item>
 						</v-list>
 					</v-menu>
@@ -359,14 +430,10 @@ const handleDisableAllVideo = async () => {
 					<span>参与者 ({{ participantsByRole.members.length }})</span>
 				</div>
 
-				<div
-					v-for="participant in participantsByRole.members"
-					:key="participant.userId"
-					class="participant-item"
-					:class="{
+				<div v-for="participant in participantsByRole.members" :key="participant.userId"
+					class="participant-item" :class="{
 						'current-user': isCurrentUser(participant),
-					}"
-				>
+					}">
 					<!-- 头像 -->
 					<v-avatar color="secondary" size="36">
 						<v-img v-if="participant.avatar" :src="participant.avatar"></v-img>
@@ -380,38 +447,56 @@ const handleDisableAllVideo = async () => {
 								{{ participant.username }}
 								<span v-if="isCurrentUser(participant)" class="text-caption text-primary"> （我） </span>
 							</span>
-							<v-icon v-if="participant.handRaised" size="small" color="warning" class="ml-2"> mdi-hand-back-right </v-icon>
+							<v-icon v-if="participant.handRaised" size="small" color="warning" class="ml-2">
+								mdi-hand-back-right
+							</v-icon>
 						</div>
 						<div class="participant-status">
-							<v-icon size="small" :color="getMediaState(participant, 'audio').enabled ? 'success' : 'error'">
-								{{ getMediaState(participant, 'audio').enabled ? 'mdi-microphone' : 'mdi-microphone-off' }}
+							<v-icon size="small"
+								:color="getMediaState(participant, 'audio').enabled ? 'success' : 'error'">
+								{{ getMediaState(participant, 'audio').enabled ? 'mdi-microphone' : 'mdi-microphone-off'
+								}}
 							</v-icon>
-							<v-icon size="small" :color="getMediaState(participant, 'video').enabled ? 'success' : 'error'" class="ml-1">
+							<v-icon size="small"
+								:color="getMediaState(participant, 'video').enabled ? 'success' : 'error'" class="ml-1">
 								{{ getMediaState(participant, 'video').enabled ? 'mdi-video' : 'mdi-video-off' }}
 							</v-icon>
-							<v-icon v-if="participant.connectionQuality" size="small" :color="getConnectionColor(participant.connectionQuality)" class="ml-2">
+							<v-icon v-if="participant.connectionQuality" size="small"
+								:color="getConnectionColor(participant.connectionQuality)" class="ml-2">
 								{{ getConnectionIcon(participant.connectionQuality) }}
 							</v-icon>
 						</div>
 					</div>
 
-					<!-- 操作菜单（仅主持人显示） -->
-					<v-menu v-if="props.isHost">
+					<!-- 操作菜单 -->
+					<v-menu v-if="canShowParticipantMenu(participant)">
 						<template #activator="{ props }">
-							<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text" color="primary"></v-btn>
+							<v-btn v-bind="props" icon="mdi-dots-vertical" size="small" variant="text"
+								color="primary"></v-btn>
 						</template>
 
 						<v-list density="compact" class="menu-list">
+							<v-list-item v-if="isCurrentUser(participant)" @click="handleStartPrivateChat(participant)">
+								<template #prepend>
+									<v-icon color="primary">mdi-message-text</v-icon>
+								</template>
+								<v-list-item-title>发起私聊</v-list-item-title>
+							</v-list-item>
+
+							<v-divider v-if="canShowParticipantMenu(participant)" class="my-1"></v-divider>
+
 							<!-- 主持人对其他参与者的控制 -->
 							<template v-if="canControlOtherParticipant(participant)">
-								<v-list-item v-if="getMediaState(participant, 'audio').enabled" @click="handleHostToggleAudio(participant)">
+								<v-list-item v-if="getMediaState(participant, 'audio').enabled"
+									@click="handleHostToggleAudio(participant)">
 									<template #prepend>
 										<v-icon color="warning">mdi-microphone-off</v-icon>
 									</template>
 									<v-list-item-title> 静音 </v-list-item-title>
 								</v-list-item>
 
-								<v-list-item v-if="getMediaState(participant, 'video').enabled" @click="handleHostToggleVideo(participant)">
+								<v-list-item v-if="getMediaState(participant, 'video').enabled"
+									@click="handleHostToggleVideo(participant)">
 									<template #prepend>
 										<v-icon color="warning">mdi-video-off</v-icon>
 									</template>
@@ -424,11 +509,13 @@ const handleDisableAllVideo = async () => {
 							<!-- 聚光灯控制（对所有参与者可用） -->
 							<v-list-item @click="handleSetSpotlight(participant)">
 								<template #prepend>
-									<v-icon :color="spotlightPeerId === participant.peerId ? 'on-surface-variant' : 'warning'">
+									<v-icon
+										:color="spotlightPeerId === participant.peerId ? 'on-surface-variant' : 'warning'">
 										mdi-spotlight
 									</v-icon>
 								</template>
-								<v-list-item-title>{{ spotlightPeerId === participant.peerId ? '取消聚光灯' : '开启聚光灯' }}</v-list-item-title>
+								<v-list-item-title>{{ spotlightPeerId === participant.peerId ? '取消聚光灯' : '开启聚光灯'
+								}}</v-list-item-title>
 							</v-list-item>
 
 							<!-- 移除参与者 -->
@@ -451,7 +538,8 @@ const handleDisableAllVideo = async () => {
 			<div v-if="onlineParticipants.length === 0" class="empty-state">
 				<v-icon size="64" color="primary-lighten-1">mdi-account-group-outline</v-icon>
 				<div class="text-body-2 text-medium-emphasis mt-4">暂无其他参与者</div>
-				<v-btn color="primary" variant="elevated" prepend-icon="mdi-account-plus" class="mt-4" @click="showInviteDialog = true"> 邀请参与者 </v-btn>
+				<v-btn color="primary" variant="elevated" prepend-icon="mdi-account-plus" class="mt-4"
+					@click="showInviteDialog = true"> 邀请参与者 </v-btn>
 			</div>
 		</div>
 
@@ -460,7 +548,8 @@ const handleDisableAllVideo = async () => {
 			<v-card class="invite-dialog">
 				<v-card-title class="d-flex align-center justify-space-between bg-primary">
 					<span class="text-h6 text-white">邀请参与者</span>
-					<v-btn icon="mdi-close" variant="text" size="small" color="white" @click="showInviteDialog = false"></v-btn>
+					<v-btn icon="mdi-close" variant="text" size="small" color="white"
+						@click="showInviteDialog = false"></v-btn>
 				</v-card-title>
 
 				<v-divider></v-divider>
@@ -468,18 +557,22 @@ const handleDisableAllVideo = async () => {
 				<v-card-text class="pa-6">
 					<div class="mb-4">
 						<label class="text-subtitle-2 mb-2 d-block text-primary">会议链接</label>
-						<v-text-field :model-value="meetingLink" readonly variant="outlined" density="comfortable" color="primary" hide-details>
+						<v-text-field :model-value="meetingLink" readonly variant="outlined" density="comfortable"
+							color="primary" hide-details>
 							<template #append-inner>
-								<v-btn icon="mdi-content-copy" size="small" variant="text" color="primary" @click="copyMeetingLink"></v-btn>
+								<v-btn icon="mdi-content-copy" size="small" variant="text" color="primary"
+									@click="copyMeetingLink"></v-btn>
 							</template>
 						</v-text-field>
 					</div>
 
 					<div>
 						<label class="text-subtitle-2 mb-2 d-block text-primary">会议号</label>
-						<v-text-field :model-value="meetingNo" readonly variant="outlined" density="comfortable" color="primary" hide-details>
+						<v-text-field :model-value="meetingNo" readonly variant="outlined" density="comfortable"
+							color="primary" hide-details>
 							<template #append-inner>
-								<v-btn icon="mdi-content-copy" size="small" variant="text" color="primary" @click="copyMeetingNo"></v-btn>
+								<v-btn icon="mdi-content-copy" size="small" variant="text" color="primary"
+									@click="copyMeetingNo"></v-btn>
 							</template>
 						</v-text-field>
 					</div>
@@ -636,7 +729,7 @@ const handleDisableAllVideo = async () => {
 	overflow: hidden;
 }
 
-.participant-name > span:first-child {
+.participant-name>span:first-child {
 	overflow: hidden;
 	text-overflow: ellipsis;
 }

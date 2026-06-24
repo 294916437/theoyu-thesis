@@ -10,7 +10,8 @@
 							<h2 class="text-h6 font-weight-bold text-primary">私信</h2>
 							<div class="d-flex ga-2">
 								<v-btn icon="mdi-magnify" variant="text" size="large" density="comfortable" />
-								<v-btn icon="mdi-plus" variant="text" size="large" density="comfortable" color="primary" @click="dialogOpen = true" />
+								<v-btn icon="mdi-plus" variant="text" size="large" density="comfortable" color="primary"
+									@click="dialogOpen = true" />
 							</div>
 						</div>
 					</div>
@@ -19,14 +20,16 @@
 					<div class="flex-1 overflow-y-auto">
 						<ConversationListSkeleton v-if="initialLoadingConversations" :count="8" />
 
-						<ConversationList v-else :conversations="conversations" :active-id="activeConversationId" @select="handleSelectConversation" @delete="handleDeleteConversation" />
+						<ConversationList v-else :conversations="conversations" :active-id="activeConversationId"
+							@select="handleSelectConversation" @delete="handleDeleteConversation" />
 					</div>
 				</v-sheet>
 			</v-col>
 
 			<!-- 右侧聊天面板 -->
 			<v-col cols="12" md="8" lg="9" class="align-center">
-				<ChatPanel v-if="activeConversation" :conversation="activeConversation" @send-message="handleSendMessage" @load-more="handleLoadMoreMessages" />
+				<ChatPanel v-if="activeConversation" :conversation="activeConversation"
+					@send-message="handleSendMessage" @load-more="handleLoadMoreMessages" />
 
 				<!-- 空状态 -->
 				<v-sheet v-else color="background" class="fill-height d-flex align-center justify-center">
@@ -34,7 +37,8 @@
 						<v-icon icon="mdi-message-text-outline" size="80" color="grey-lighten-1"></v-icon>
 						<h3 class="text-h6 mt-4 text-medium-emphasis">选择一个对话开始聊天</h3>
 						<p class="text-body-2 text-disabled mt-2">或者创建新的对话</p>
-						<v-btn color="primary" variant="elevated" class="mt-6" prepend-icon="mdi-plus" rounded="lg" @click="dialogOpen = true"> 新建对话 </v-btn>
+						<v-btn color="primary" variant="elevated" class="mt-6" prepend-icon="mdi-plus" rounded="lg"
+							@click="dialogOpen = true"> 新建对话 </v-btn>
 					</div>
 				</v-sheet>
 			</v-col>
@@ -45,6 +49,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import CreateConversationDialog from '@/features/chat/components/CreateConversationDialog.vue'
 import ConversationList from '@/features/chat/components/ConversationList.vue'
 import ChatPanel from '@/features/chat/components/ChatPanel.vue'
@@ -57,6 +62,7 @@ import { $notify } from '@/plugins/notification'
 // ==================== 状态管理 ====================
 
 const userStore = useUserStore()
+const route = useRoute()
 const currentUserId = userStore.userId
 const activeConversationId = ref(null)
 const conversations = ref([])
@@ -435,6 +441,21 @@ const handleLoadMoreMessages = async () => {
 	await loadMessages(activeConversationId.value, true)
 }
 
+const selectInitialConversationFromRoute = async () => {
+	const routeConversationId = route.query.conversationId
+	if (!routeConversationId) {
+		return
+	}
+
+	const conversation = conversations.value.find(c => c.id === routeConversationId)
+	if (!conversation) {
+		$notify.warning('未找到指定私聊会话')
+		return
+	}
+
+	await handleSelectConversation(conversation.id)
+}
+
 /**
  * 创建新会话
  */
@@ -475,7 +496,7 @@ const handleDeleteConversation = async id => {
 
 	// 乐观更新：从内存中移除该会话
 	conversations.value = conversations.value.filter(c => c.id !== id)
-	
+
 	// 如果删除的是当前选中的会话，清除选中状态
 	if (activeConversationId.value === id) {
 		activeConversationId.value = null
@@ -508,6 +529,9 @@ onMounted(async () => {
 
 	// 2. 加载会话列表
 	await loadConversations()
+
+	// 3. 如果从会议参与者入口进入，自动定位到对应私聊会话
+	await selectInitialConversationFromRoute()
 })
 onUnmounted(() => {
 	// 断开 WebSocket 连接
@@ -564,6 +588,7 @@ onUnmounted(() => {
 		opacity: 0;
 		transform: translateY(20px);
 	}
+
 	to {
 		opacity: 1;
 		transform: translateY(0);

@@ -416,8 +416,6 @@ const handleImageUpload = async file => {
 
 			// 发送图片消息
 			await handleSendImageMessage(imageUrl)
-
-			$notify.success('图片发送成功')
 		} else {
 			throw new Error(response.message || '上传失败')
 		}
@@ -487,10 +485,6 @@ const handleVideoUpload = async file => {
 
 			// 发送视频消息
 			await handleSendVideoMessage(videoUrl)
-
-			$notify.success('视频发送成功')
-		} else {
-			throw new Error(response.message || '上传失败')
 		}
 	} catch (error) {
 		console.error('视频上传失败:', error)
@@ -744,7 +738,8 @@ watch(
 			<div class="d-flex align-center justify-space-between">
 				<div class="d-flex align-center ga-3">
 					<v-avatar size="42" color="primary">
-						<v-img v-if="conversation.user.avatar" :src="conversation.user.avatar" :alt="conversation.user.userName">
+						<v-img v-if="conversation.user.avatar" :src="conversation.user.avatar"
+							:alt="conversation.user.userName">
 							<template #error>
 								<v-icon icon="mdi-account" size="16"></v-icon>
 							</template>
@@ -758,14 +753,16 @@ watch(
 						</h3>
 						<!-- 在线状态文本 -->
 						<div class="d-flex align-center ga-1">
-							<v-icon :icon="targetUserOnlineStatus ? 'mdi-circle' : 'mdi-circle-outline'" :color="userOnlineStatusColor" size="12"></v-icon>
+							<v-icon :icon="targetUserOnlineStatus ? 'mdi-circle' : 'mdi-circle-outline'"
+								:color="userOnlineStatusColor" size="12"></v-icon>
 							<p class="text-caption text-medium-emphasis">{{ userOnlineStatus }}</p>
 						</div>
 					</div>
 				</div>
 
 				<div class="d-flex ga-2">
-					<v-btn icon="mdi-video-outline" variant="text" size="default" color="primary" @click="handleVideoCall">
+					<v-btn icon="mdi-video-outline" variant="text" size="default" color="primary"
+						@click="handleVideoCall">
 						<v-icon size="22"></v-icon>
 					</v-btn>
 					<v-btn icon="mdi-information-outline" variant="text" size="default" color="primary">
@@ -787,7 +784,8 @@ watch(
 			<div v-else class="message-list-content px-4 py-3">
 				<!-- 加载更多按钮 -->
 				<div v-if="conversation.hasMore" class="text-center py-3">
-					<v-btn variant="text" size="small" color="primary" prepend-icon="mdi-chevron-up" :loading="isLoadingMore" @click="handleScroll"> 加载更多消息 </v-btn>
+					<v-btn variant="text" size="small" color="primary" prepend-icon="mdi-chevron-up"
+						:loading="isLoadingMore" @click="handleScroll"> 加载更多消息 </v-btn>
 				</div>
 				<div v-for="(item, index) in messagesWithDividers" :key="item.id || `divider-${index}`">
 					<!-- 日期分隔线 -->
@@ -799,7 +797,8 @@ watch(
 					</div>
 
 					<!-- 消息气泡 -->
-					<MessageBubble v-else :message="item" :user="conversation.user" @preview-file="handleFilePreview" @download-file="handleFileDownload" />
+					<MessageBubble v-else :message="item" :user="conversation.user" @preview-file="handleFilePreview"
+						@download-file="handleFileDownload" />
 				</div>
 			</div>
 		</div>
@@ -810,10 +809,12 @@ watch(
 			<input ref="imageInputRef" type="file" accept="image/*" style="display: none" @change="handleFileChange" />
 
 			<!-- 隐藏的视频选择器 -->
-			<input ref="videoInputRef" type="file" accept="video/mp4,video/webm,video/ogg" style="display: none" @change="handleVideoFileChange" />
+			<input ref="videoInputRef" type="file" accept="video/mp4,video/webm,video/ogg" style="display: none"
+				@change="handleVideoFileChange" />
 
 			<!-- 隐藏的通用文件选择器 -->
-			<input ref="fileInputRef" type="file" :accept="FILE_CONFIG.acceptTypes.join(',')" style="display: none" @change="handleGeneralFileChange" />
+			<input ref="fileInputRef" type="file" :accept="FILE_CONFIG.acceptTypes.join(',')" style="display: none"
+				@change="handleGeneralFileChange" />
 			<div class="input-wrapper">
 				<!-- 左侧功能按钮 -->
 				<!-- 左侧功能按钮 -->
@@ -821,16 +822,8 @@ watch(
 					<!-- 视频按钮 -->
 					<v-tooltip text="发送视频" location="top">
 						<template #activator="{ props }">
-							<v-btn
-								v-bind="props"
-								icon="mdi-video-image"
-								variant="text"
-								size="default"
-								color="primary"
-								:loading="uploadingVideo"
-								:disabled="uploadingVideo"
-								@click="handleAddVideo"
-							>
+							<v-btn v-bind="props" icon="mdi-video-image" variant="text" size="default" color="primary"
+								:loading="uploadingVideo" :disabled="uploadingVideo" @click="handleAddVideo">
 								<v-icon size="22"></v-icon>
 							</v-btn>
 						</template>
@@ -839,16 +832,8 @@ watch(
 					<!-- 图片按钮 -->
 					<v-tooltip text="发送图片" location="top">
 						<template #activator="{ props }">
-							<v-btn
-								v-bind="props"
-								icon="mdi-image"
-								variant="text"
-								size="default"
-								color="primary"
-								:loading="uploadingImage"
-								:disabled="uploadingImage"
-								@click="handleAddMedia"
-							>
+							<v-btn v-bind="props" icon="mdi-image" variant="text" size="default" color="primary"
+								:loading="uploadingImage" :disabled="uploadingImage" @click="handleAddMedia">
 								<v-icon size="22"></v-icon>
 							</v-btn>
 						</template>
@@ -857,16 +842,8 @@ watch(
 					<!-- 文件按钮 (新增) -->
 					<v-tooltip text="发送文件" location="top">
 						<template #activator="{ props }">
-							<v-btn
-								v-bind="props"
-								icon="mdi-file-document"
-								variant="text"
-								size="default"
-								color="primary"
-								:loading="uploadingFile"
-								:disabled="uploadingFile"
-								@click="handleAddFile"
-							>
+							<v-btn v-bind="props" icon="mdi-file-document" variant="text" size="default" color="primary"
+								:loading="uploadingFile" :disabled="uploadingFile" @click="handleAddFile">
 								<v-icon size="22"></v-icon>
 							</v-btn>
 						</template>
@@ -875,58 +852,33 @@ watch(
 
 				<!-- 输入框 -->
 				<div class="input-field-wrapper">
-					<v-textarea
-						v-model="messageText"
-						placeholder="发送一条消息..."
-						variant="solo"
-						flat
-						hide-details
-						auto-grow
-						rows="1"
-						max-rows="4"
-						bg-color="surface-variant"
-						rounded="xl"
-						class="flex-1"
-						@keydown.enter.exact.prevent="handleSendTextMessage"
-					></v-textarea>
+					<v-textarea v-model="messageText" placeholder="发送一条消息..." variant="solo" flat hide-details auto-grow
+						rows="1" max-rows="4" bg-color="surface-variant" rounded="xl" class="flex-1"
+						@keydown.enter.exact.prevent="handleSendTextMessage"></v-textarea>
 				</div>
 
 				<!-- 发送按钮 -->
-				<v-btn icon size="large" color="primary" elevation="0" class="send-btn" :disabled="!messageText.trim()" @click="handleSendTextMessage">
+				<v-btn icon size="large" color="primary" elevation="0" class="send-btn" :disabled="!messageText.trim()"
+					@click="handleSendTextMessage">
 					<v-icon size="24">mdi-send</v-icon>
 				</v-btn>
 			</div>
 		</v-sheet>
 
 		<!-- 视频对话框 -->
-		<VideoCall
-			v-model:is-active="isVideoCallActive"
-			:local-stream="localStream"
-			:remote-stream="remoteStream"
-			:remote-name="conversation.user.name"
-			:call-state="callState"
-			:show-duration="true"
-			:initial-audio-muted="false"
-			:initial-video-muted="false"
-			@end="endVideoCall"
-			@toggle-audio="handleToggleAudio"
-			@toggle-video="handleToggleVideo"
-			@state-change="handleStateChange"
-			@error="handleVideoError"
-		/>
+		<VideoCall v-model:is-active="isVideoCallActive" :local-stream="localStream" :remote-stream="remoteStream"
+			:remote-name="conversation.user.name" :call-state="callState" :show-duration="true"
+			:initial-audio-muted="false" :initial-video-muted="false" @end="endVideoCall"
+			@toggle-audio="handleToggleAudio" @toggle-video="handleToggleVideo" @state-change="handleStateChange"
+			@error="handleVideoError" />
 
 		<!-- 来电通知 -->
-		<IncomingCallNotification v-if="incomingCall" :caller-name="incomingCall.callerName" @accept="acceptCall" @reject="rejectCall" />
+		<IncomingCallNotification v-if="incomingCall" :caller-name="incomingCall.callerName" @accept="acceptCall"
+			@reject="rejectCall" />
 		<!-- 文件预览对话框 -->
-		<FilePreview
-			v-model="filePreviewVisible"
-			:file-url="previewFileUrl"
-			:file-name="previewFileName"
-			:file-type="previewFileType"
-			:download-progress="fileDownloadProgress"
-			@download="downloadFile"
-			@close="closePreview"
-		/>
+		<FilePreview v-model="filePreviewVisible" :file-url="previewFileUrl" :file-name="previewFileName"
+			:file-type="previewFileType" :download-progress="fileDownloadProgress" @download="downloadFile"
+			@close="closePreview" />
 	</v-sheet>
 </template>
 
@@ -935,8 +887,10 @@ watch(
 	display: flex;
 	flex-direction: column;
 	position: relative;
-	height: calc(100vh - 64px); /* 减去顶部导航栏 */
+	height: calc(100vh - 64px);
+	/* 减去顶部导航栏 */
 }
+
 /* 聊天头部样式 */
 .chat-header {
 	border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
@@ -959,7 +913,8 @@ watch(
 	overflow-y: scroll;
 	display: flex;
 	flex-direction: column;
-	justify-content: flex-end; /* 消息从底部开始排列 */
+	justify-content: flex-end;
+	/* 消息从底部开始排列 */
 }
 
 /* 空状态 */
@@ -975,6 +930,7 @@ watch(
 	padding: 48px 24px;
 	pointer-events: none;
 }
+
 /* 消息输入容器 */
 .message-input-container {
 	border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);

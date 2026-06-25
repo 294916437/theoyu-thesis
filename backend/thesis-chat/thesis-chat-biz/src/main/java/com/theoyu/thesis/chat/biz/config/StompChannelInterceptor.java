@@ -70,7 +70,7 @@ public class StompChannelInterceptor implements ChannelInterceptor {
             });
             
             // 设置用户在线状态
-            userOnlineService.setUserOnline(userId);
+            userOnlineService.setUserOnline(userId, sessionId);
         } catch (NumberFormatException e) {
             log.error(String.valueOf(e));
         }
@@ -90,7 +90,7 @@ public class StompChannelInterceptor implements ChannelInterceptor {
                 Long userId = Long.parseLong(userIdObj.toString());
                 String sessionId = accessor.getSessionId();
                 
-                userOnlineService.setUserOffline(userId);
+                userOnlineService.setUserOffline(userId, sessionId);
                 
             } catch (NumberFormatException e) {
                 log.error("userId 格式错误: {}", userIdObj);

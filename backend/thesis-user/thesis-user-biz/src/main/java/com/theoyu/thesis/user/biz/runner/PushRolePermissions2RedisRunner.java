@@ -17,10 +17,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -42,7 +45,10 @@ public class PushRolePermissions2RedisRunner implements ApplicationRunner {
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
 
-    private static final String PUSH_PERMISSION_FLAG = "push.permission.flag";
+    private static final String PUSH_PERMISSION_LOCK = "push.permission.lock";
+    private static final DefaultRedisScript<Long> RELEASE_LOCK_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+            Long.class);
 
 
     public PushRolePermissions2RedisRunner(RolePOMapper rolePOMapper) {
@@ -53,13 +59,14 @@ public class PushRolePermissions2RedisRunner implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         log.info("==> 服务启动，开始同步角色权限数据到 Redis 中...");
 
+        String lockValue = UUID.randomUUID().toString();
+        boolean locked = false;
         try {
-            // 是否已经同步过角色权限数据到 Redis 中
-            // 判断逻辑：只有在键 PUSH_PERMISSION_FLAG 不存在时，才会设置该键的值为 "1"，并设置过期时间为 1 hour
-            boolean canPushed = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(PUSH_PERMISSION_FLAG, "1", 1, TimeUnit.HOURS));
+            // 多实例启动时只允许一个实例同步，避免并发重复写入 Redis。
+            locked = Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(PUSH_PERMISSION_LOCK, lockValue, 10, TimeUnit.MINUTES));
 
             // 无法同步权限数据
-            if (!canPushed) {
+            if (!locked) {
                 log.warn("==> 角色权限数据已经同步至 Redis 中，不再同步...");
                 return;
             }
@@ -119,6 +126,10 @@ public class PushRolePermissions2RedisRunner implements ApplicationRunner {
             log.info("==> 服务启动，成功同步角色权限数据到 Redis 中...");
         } catch (Exception e) {
             log.error("==> 同步角色权限数据到 Redis 中失败: ", e);
+        } finally {
+            if (locked) {
+                redisTemplate.execute(RELEASE_LOCK_SCRIPT, Collections.singletonList(PUSH_PERMISSION_LOCK), lockValue);
+            }
         }
 
 

@@ -242,6 +242,14 @@
     WHERE id = #{id}
   </update>
 
+  <update id="updateStatusByIdAndCurrentStatus">
+    UPDATE t_room
+    SET status = #{status},
+        updated_time = NOW()
+    WHERE id = #{id}
+      AND status = #{currentStatus}
+  </update>
+
   <!-- 首次绑定 SFU 节点（sfu_node_id 为空或 0 时才更新） -->
   <update id="updateSfuNodeIdIfAbsent">
     UPDATE t_room

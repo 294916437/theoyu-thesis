@@ -2,8 +2,10 @@ package com.theoyu.thesis.user.biz.consumer;
 
 import com.theoyu.thesis.user.biz.constants.MQConstants;
 import com.theoyu.thesis.user.biz.constants.RedisKeyConstants;
+import com.theoyu.thesis.user.biz.service.impl.UserServiceImpl;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.spring.annotation.MessageModel;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -14,7 +16,8 @@ import java.util.Arrays;
 @Component
 @Slf4j
 @RocketMQMessageListener(consumerGroup = "user-cache-group", // Group
-        topic = MQConstants.TOPIC_DELAY_DELETE_USER_REDIS_CACHE // 消费的主题 Topic
+        topic = MQConstants.TOPIC_DELAY_DELETE_USER_REDIS_CACHE, // 消费的主题 Topic
+        messageModel = MessageModel.BROADCASTING
 )
 public class DelayDeleteUserRedisCacheConsumer implements RocketMQListener<String> {
 
@@ -31,5 +34,6 @@ public class DelayDeleteUserRedisCacheConsumer implements RocketMQListener<Strin
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
         // 批量删除
         redisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey));
+        UserServiceImpl.invalidateLocalCache(userId);
     }
 }

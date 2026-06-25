@@ -1649,7 +1649,11 @@ public class RoomServiceImpl implements RoomService {
             // 会议不存在或状态已变更（已开始、已结束、已取消），跳过
             return;
         }
-        roomPOMapper.updateStatusById(roomId, 1);
+        int updated = roomPOMapper.updateStatusByIdAndCurrentStatus(roomId, 1, 0);
+        if (updated == 0) {
+            log.info("[RoomService] 预约会议已被其他实例处理，跳过激活 - roomId: {}", roomId);
+            return;
+        }
         updateRoomStatusInCache(roomId, 1);
         log.info("[RoomService] 预约会议自动激活 - roomId: {}", roomId);
     }

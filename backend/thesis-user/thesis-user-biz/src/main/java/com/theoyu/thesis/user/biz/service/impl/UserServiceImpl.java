@@ -223,6 +223,15 @@ public class UserServiceImpl implements UserService {
 
         // 批量删除
         redisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey));
+        invalidateLocalCache(userId);
+    }
+
+    public static void invalidateLocalCache(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        LOCAL_CACHE.invalidate(userId);
+        PROFILE_LOCAL_CACHE.invalidate(userId);
     }
 
     @Override

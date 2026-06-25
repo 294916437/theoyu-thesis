@@ -37,6 +37,13 @@ public interface RoomPOMapper {
     int updateStatusById(@Param("id") Long id, @Param("status") Integer status);
 
     /**
+     * 按当前状态条件更新房间状态，用于多实例下的幂等状态流转。
+     */
+    int updateStatusByIdAndCurrentStatus(@Param("id") Long id,
+                                         @Param("status") Integer status,
+                                         @Param("currentStatus") Integer currentStatus);
+
+    /**
      * 绑定房间 SFU 节点
      */
     int updateSfuNodeIdIfAbsent(@Param("id") Long id, @Param("sfuNodeId") Long sfuNodeId);

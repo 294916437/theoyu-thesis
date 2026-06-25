@@ -1,0 +1,70 @@
+logging:
+  level:
+    com.theoyu.thesis.media.model.mapper: info
+
+storage:
+  minio:
+    endpoint: ${MINIO_ENDPOINT}
+    accessKey: ${MINIO_ACCESS_KEY}
+    secretKey: ${MINIO_SECRET_KEY}
+  aliyun-oss:
+    endpoint: ${ALIYUN_OSS_ENDPOINT:}
+    accessKey: ${ALIYUN_OSS_ACCESS_KEY:}
+    secretKey: ${ALIYUN_OSS_SECRET_KEY:}
+
+rocketmq:
+  name-server: ${ROCKETMQ_NAME_SERVER}
+  producer:
+    group: ${ROCKETMQ_PRODUCER_GROUP:thesis_media_producer_group}
+    send-message-timeout: ${ROCKETMQ_SEND_TIMEOUT:3000}
+    retry-times-when-send-failed: ${ROCKETMQ_RETRY_TIMES:3}
+    retry-times-when-send-async-failed: ${ROCKETMQ_ASYNC_RETRY_TIMES:3}
+    max-message-size: ${ROCKETMQ_MAX_MESSAGE_SIZE:4096}
+  consumer:
+    group: ${ROCKETMQ_CONSUMER_GROUP:thesis_media_consumer_group}
+    pull-batch-size: ${ROCKETMQ_PULL_BATCH_SIZE:5}
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${MYSQL_URL}
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
+    type: com.alibaba.druid.pool.DruidDataSource
+    druid:
+      initial-size: ${MYSQL_POOL_INITIAL_SIZE:2}
+      min-idle: ${MYSQL_POOL_MIN_IDLE:2}
+      max-active: ${MYSQL_POOL_MAX_ACTIVE:20}
+      max-wait: ${MYSQL_POOL_MAX_WAIT:60000}
+      test-while-idle: true
+      time-between-eviction-runs-millis: 60000
+      min-evictable-idle-time-millis: 300000
+      max-evictable-idle-time-millis: 900000
+      validation-query: SELECT 1
+      test-on-borrow: false
+      test-on-return: false
+      pool-prepared-statements: false
+      web-stat-filter:
+        enabled: false
+      stat-view-servlet:
+        enabled: false
+      filter:
+        stat:
+          enabled: true
+          log-slow-sql: true
+          slow-sql-millis: ${MYSQL_SLOW_SQL_MILLIS:2000}
+          merge-sql: true
+  data:
+    redis:
+      database: ${REDIS_DATABASE:0}
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: ${REDIS_TIMEOUT:5s}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:5s}
+      lettuce:
+        pool:
+          max-active: ${REDIS_POOL_MAX_ACTIVE:64}
+          max-wait: ${REDIS_POOL_MAX_WAIT:2s}
+          min-idle: ${REDIS_POOL_MIN_IDLE:4}
+          max-idle: ${REDIS_POOL_MAX_IDLE:16}

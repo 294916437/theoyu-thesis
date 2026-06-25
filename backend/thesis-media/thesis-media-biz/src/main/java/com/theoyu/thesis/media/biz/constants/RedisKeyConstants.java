@@ -210,4 +210,9 @@ public class RedisKeyConstants {
      */
     public static final String ROOM_ACTIVATION_QUEUE_KEY = "room:activation:queue";
 
+    /**
+     * 预约会议激活调度器分布式锁，避免多实例重复扫描同一批任务。
+     */
+    public static final String ROOM_ACTIVATION_SCHEDULER_LOCK_KEY = "room:activation:scheduler:lock";
+
 }

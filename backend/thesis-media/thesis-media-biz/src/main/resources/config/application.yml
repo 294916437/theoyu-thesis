@@ -1,5 +1,5 @@
 server:
-  port: 8086 # 项目启动的端口F
+  port: ${SERVER_PORT:8086} # 项目启动的端口F
 
 mybatis:
   mapper-locations: classpath:/mapper/**/*.xml
@@ -8,7 +8,7 @@ mybatis:
 grpc:
   # 作为grpc服务端的配置
   server:
-    port: 50051
+    port: ${GRPC_SERVER_PORT:50051}
     # 启用反射服务（开发环境）
     enable-reflection: true
     # 最大消息大小 (10MB)
@@ -22,7 +22,7 @@ grpc:
   client:
     # 配置 Node.js SFU 服务端
     sfu-node-service:
-      address: 'static://localhost:50052'
+      address: ${SFU_NODE_GRPC_ADDRESS:static://localhost:50052}
       negotiation-type: plaintext
       max-inbound-message-size: 10485760
       # 启用 keep-alive
@@ -36,7 +36,7 @@ grpc:
 
 sfu:
   discovery:
-    service-name: sfu-server
+    service-name: ${SFU_DISCOVERY_SERVICE_NAME:sfu-server}
   server:
-    url: ws://localhost:3000
+    url: ${SFU_SERVER_URL:ws://localhost:3000}
 

@@ -5,6 +5,7 @@ import com.theoyu.thesis.chat.biz.model.dto.MessageSendDTO;
 import com.theoyu.thesis.chat.biz.service.MessagePushService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.spring.annotation.MessageModel;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
@@ -14,7 +15,8 @@ import org.springframework.stereotype.Component;
 @RocketMQMessageListener(
     consumerGroup = MQConstants.CONSUMER_GROUP_MESSAGE_SEND,
     topic = MQConstants.TOPIC_MESSAGE_SEND,
-    selectorExpression = MQConstants.TAG_MESSAGE_SEND
+    selectorExpression = MQConstants.TAG_MESSAGE_SEND,
+    messageModel = MessageModel.BROADCASTING
 )
 public class MessageSendConsumer implements RocketMQListener<MessageSendDTO> {
     

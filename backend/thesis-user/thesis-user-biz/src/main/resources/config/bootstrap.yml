@@ -17,4 +17,7 @@ spring:
         group: DEFAULT_GROUP # 所属组
         namespace: thesis # 命名空间
         server-addr: 127.0.0.1:8848 # 指定 Nacos 配置中心的服务器地址
-        ip: 127.0.0.1 # 强制注册 IP，避免多网卡时 Nacos 自动检测到错误的网卡地址
+        ip: ${NACOS_DISCOVERY_IP:127.0.0.1} # 多实例部署时由环境变量指定真实 Pod/主机 IP
+        port: ${server.port}
+        metadata:
+          instanceId: ${APP_INSTANCE_ID:${spring.application.name}:${spring.cloud.client.ip-address}:${server.port}:${random.uuid}}

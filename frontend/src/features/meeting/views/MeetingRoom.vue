@@ -149,10 +149,11 @@
 					</div>
 
 					<!-- 侧边栏 -->
-					<div v-if="showSidebar" class="sidebar-container">
+					<div v-if="showSidebar" class="sidebar-container"
+						:class="{ 'sidebar-container--overlay': isSidebarDrawerMode }">
 						<div class="sidebar">
 							<!-- 移动端底部抝抽指示条 -->
-							<div class="mobile-drawer-handle d-sm-none" @click="showSidebar = false"></div>
+							<div v-if="isSidebarDrawerMode" class="mobile-drawer-handle" @click="showSidebar = false"></div>
 							<v-tabs v-model="sidebarTab" bg-color="surface" color="primary" density="compact"
 								class="sidebar-tabs">
 								<v-tab value="participants">
@@ -585,22 +586,23 @@
 			</v-container>
 
 			<!-- 移动端抽屉遮罩 -->
-			<div v-if="mobile && showSidebar" class="mobile-scrim" @click="showSidebar = false"></div>
+			<div v-if="isSidebarDrawerMode && showSidebar" class="mobile-scrim" @click="showSidebar = false"></div>
 
 			<!-- 底部控制栏 -->
-			<div class="control-bar-wrapper" :class="{ collapsed: controlBarCollapsed }">
-				<!-- 收起/展开按钮 (PC 专用) -->
-				<v-btn icon variant="elevated" color="primary" size="small" class="collapse-toggle d-none d-sm-block"
+			<div class="control-bar-wrapper"
+				:class="{ collapsed: controlBarCollapsed, 'control-bar-wrapper--compact': isMobileControlLayout }">
+				<!-- 收起/展开按钮 -->
+				<v-btn icon variant="elevated" color="primary" size="small" class="collapse-toggle"
 					@click="controlBarCollapsed = !controlBarCollapsed">
 					<v-icon>{{ controlBarCollapsed ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
 				</v-btn>
 
 				<!-- 控制栏主体 -->
 				<transition name="slide-up">
-					<div v-show="!controlBarCollapsed || mobile" class="control-bar">
+					<div v-show="!controlBarCollapsed" class="control-bar">
 						<v-container fluid class="pa-0">
 							<!-- PC 布局 -->
-							<v-row v-if="!mobile" no-gutters align="center" justify="center">
+							<v-row v-if="!isMobileControlLayout" no-gutters align="center" justify="center">
 								<!-- 左侧：待定 -->
 								<v-col cols="auto" class="d-flex align-center"> </v-col>
 								<v-spacer></v-spacer>
@@ -846,8 +848,7 @@
 								<!-- 参与者 -->
 								<div class="mobile-ctrl-item">
 									<v-btn icon="mdi-account-multiple" variant="elevated" color="surface" size="default"
-										class="mobile-ctrl-btn"
-										@click="((showSidebar = !showSidebar), (sidebarTab = 'participants'))"></v-btn>
+										class="mobile-ctrl-btn" @click="toggleParticipantsSidebar"></v-btn>
 									<span class="mobile-ctrl-label">参与者</span>
 								</div>
 								<!-- 聊天 -->
@@ -1298,6 +1299,10 @@ const online = useOnline()
 const networkState = useNetwork()
 const { mobile } = useDisplay()
 
+// 使用统一的紧凑布局判定，避免交互逻辑和样式断点分叉。
+const isMobileControlLayout = computed(() => mobile.value)
+const isSidebarDrawerMode = computed(() => isMobileControlLayout.value)
+
 // 安全地解构，提供默认值
 const effectiveType = computed(() => networkState.effectiveType?.value || '4g')
 const downlink = computed(() => networkState.downlink?.value || 10)
@@ -1395,7 +1400,7 @@ const handleTimeup = () => {
 }
 // 页面挂载先执行会议拉取判断时间拦截
 onMounted(async () => {
-	showSidebar.value = !mobile.value
+	showSidebar.value = !isSidebarDrawerMode.value
 	try {
 		loadingMessage.value = '正在加载会议信息...'
 		loadingProgress.value = 20
@@ -1902,12 +1907,15 @@ const formatRaisedHandTime = value => {
 }
 
 const videoContainerHeight = computed(() => {
-	if (mobile.value) {
-		return 'calc(100dvh - 48px - 72px)'
-	}
 	const topBarHeight = 48
-	const controlBarHeight = controlBarCollapsed.value ? 0 : 88
-	return `calc(100vh - ${topBarHeight}px - ${controlBarHeight}px)`
+	const controlBarHeight = controlBarCollapsed.value ? 0 : 72
+
+	if (isMobileControlLayout.value) {
+		return `calc(100dvh - ${topBarHeight}px - ${controlBarHeight}px)`
+	}
+
+	const desktopControlBarHeight = controlBarCollapsed.value ? 0 : 88
+	return `calc(100vh - ${topBarHeight}px - ${desktopControlBarHeight}px)`
 })
 
 // 屏幕共享
@@ -2019,8 +2027,8 @@ watch(selectedMicrophone, async deviceId => {
 })
 
 // 移动端/PC 切换时同步侧边栏状态
-watch(mobile, isMobile => {
-	if (isMobile) {
+watch(isMobileControlLayout, isCompactLayout => {
+	if (isCompactLayout) {
 		controlBarCollapsed.value = false
 		showSidebar.value = false
 	} else {
@@ -2066,20 +2074,35 @@ const handleClearChat = () => {
 }
 
 // ==================== 会议控制 ====================
-const toggleSidebarChat = async () => {
+const openSidebarTab = tab => {
 	showSidebar.value = true
-	sidebarTab.value = 'chat'
+	sidebarTab.value = tab
+}
+
+const toggleSidebarTab = tab => {
+	if (isSidebarDrawerMode.value && showSidebar.value && sidebarTab.value === tab) {
+		showSidebar.value = false
+		return
+	}
+
+	openSidebarTab(tab)
+}
+
+const toggleParticipantsSidebar = () => {
+	toggleSidebarTab('participants')
+}
+
+const toggleSidebarChat = () => {
+	toggleSidebarTab('chat')
 	unreadMessages.value = 0
 }
 
 const toggleAudioPanel = () => {
-	showSidebar.value = true
-	sidebarTab.value = 'audio'
+	openSidebarTab('audio')
 }
 
 const toggleBackgroundPanel = () => {
-	showSidebar.value = true
-	sidebarTab.value = 'background'
+	openSidebarTab('background')
 }
 
 const toggleVideoLayout = () => {
@@ -2351,6 +2374,25 @@ useEventListener('beforeunload', e => {
 	display: flex;
 	flex-direction: column;
 	height: 100%;
+}
+
+.sidebar-container--overlay {
+	position: fixed;
+	left: 50%;
+	bottom: 0;
+	transform: translateX(-50%);
+	width: min(560px, calc(100vw - 24px)) !important;
+	height: min(65vh, 560px);
+	z-index: 300;
+	border-radius: 16px 16px 0 0;
+	box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.2);
+	overflow: hidden;
+	animation: slideUpDrawer 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-container--overlay .sidebar {
+	border-left: none;
+	border-radius: 16px 16px 0 0;
 }
 
 .sidebar {
@@ -3159,6 +3201,10 @@ useEventListener('beforeunload', e => {
 	box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.1);
 }
 
+.control-bar-wrapper--compact .control-bar {
+	padding: 0;
+}
+
 .control-btn {
 	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -3226,18 +3272,9 @@ useEventListener('beforeunload', e => {
 		height: 180px;
 	}
 
-	.sidebar-container {
-		position: fixed;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		width: 100% !important;
+	.sidebar-container--overlay {
+		width: calc(100vw - 12px) !important;
 		height: 65vh;
-		z-index: 300;
-		border-radius: 16px 16px 0 0;
-		box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.2);
-		overflow: hidden;
-		animation: slideUpDrawer 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 }
 
@@ -3311,12 +3348,5 @@ useEventListener('beforeunload', e => {
 	white-space: nowrap;
 	font-weight: 500;
 	line-height: 1;
-}
-
-/* 移动端控制栏容器内边距 */
-@media (max-width: 599px) {
-	.control-bar {
-		padding: 0;
-	}
 }
 </style>

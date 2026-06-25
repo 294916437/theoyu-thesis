@@ -34,6 +34,10 @@ public class SegmentService {
             dataSource.setUrl(properties.getProperty(Constants.LEAF_JDBC_URL));
             dataSource.setUsername(properties.getProperty(Constants.LEAF_JDBC_USERNAME));
             dataSource.setPassword(properties.getProperty(Constants.LEAF_JDBC_PASSWORD));
+            dataSource.setInitialSize(Integer.parseInt(properties.getProperty("leaf.jdbc.initialSize", "5")));
+            dataSource.setMinIdle(Integer.parseInt(properties.getProperty("leaf.jdbc.minIdle", "5")));
+            dataSource.setMaxActive(Integer.parseInt(properties.getProperty("leaf.jdbc.maxActive", "50")));
+            dataSource.setMaxWait(Long.parseLong(properties.getProperty("leaf.jdbc.maxWait", "3000")));
             dataSource.setValidationQuery("select 1");
             dataSource.init();
 

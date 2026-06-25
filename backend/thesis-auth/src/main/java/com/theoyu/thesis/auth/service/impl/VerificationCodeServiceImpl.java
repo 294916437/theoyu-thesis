@@ -37,9 +37,9 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         String verificationCodeKey = RedisKeyConstants.buildVerificationCodeKey(phone);
         String sendLimitKey = RedisKeyConstants.buildVerificationCodeSendLimitKey(phone);
 
-        boolean isSend = Boolean.TRUE.equals(redisTemplate.hasKey(sendLimitKey));
-
-        if (isSend) {
+        Boolean acquiredSendQuota = redisTemplate.opsForValue()
+                .setIfAbsent(sendLimitKey, "1", VERIFICATION_CODE_SEND_INTERVAL_MINUTES, TimeUnit.MINUTES);
+        if (!Boolean.TRUE.equals(acquiredSendQuota)) {
             throw new BusinessException(ResponseCodeEnum.VERIFICATION_CODE_SEND_FREQUENTLY);
         }
         String verificationCode = RandomUtil.randomNumbers(6);
@@ -57,7 +57,6 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
 
         // 验证码有效期和发送冷却分开管理，避免验证码未过期时阻塞下一次发送。
         redisTemplate.opsForValue().set(verificationCodeKey, verificationCode, VERIFICATION_CODE_EXPIRE_MINUTES, TimeUnit.MINUTES);
-        redisTemplate.opsForValue().set(sendLimitKey, "1", VERIFICATION_CODE_SEND_INTERVAL_MINUTES, TimeUnit.MINUTES);
         return Response.success();
     }
 }

@@ -1,6 +1,19 @@
-server:
-  port: 8080
-
 spring:
-  profiles:
-    active: prod
+  data:
+    redis:
+      database: ${REDIS_DATABASE:0}
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: ${REDIS_TIMEOUT:5s}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:5s}
+      lettuce:
+        pool:
+          max-active: ${REDIS_POOL_MAX_ACTIVE:200}
+          max-wait: ${REDIS_POOL_MAX_WAIT:2s}
+          min-idle: ${REDIS_POOL_MIN_IDLE:8}
+          max-idle: ${REDIS_POOL_MAX_IDLE:32}
+
+aliyun:
+  accessKeyId: ${ALIYUN_ACCESS_KEY_ID:}
+  accessKeySecret: ${ALIYUN_ACCESS_KEY_SECRET:}

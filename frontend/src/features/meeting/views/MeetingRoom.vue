@@ -11,7 +11,7 @@
 				<v-toolbar-title class="d-flex align-center">
 					<v-icon icon="mdi-video" color="primary" class="mr-2"></v-icon>
 					<span class="text-subtitle-1 text-sm-h6 font-weight-medium header-title">{{ meetingInfo.title
-						}}</span>
+					}}</span>
 				</v-toolbar-title>
 
 				<v-spacer></v-spacer>
@@ -55,7 +55,7 @@
 							<div class="raised-hand-history-card__header">
 								<span class="text-subtitle-2 font-weight-bold">举手记录</span>
 								<v-chip size="x-small" color="success" variant="tonal">{{ raisedHandQueue.length
-									}}</v-chip>
+								}}</v-chip>
 							</div>
 
 							<v-divider></v-divider>
@@ -71,9 +71,9 @@
 									</template>
 									<v-list-item-title class="raised-hand-history-card__name">{{
 										getRaisedHandDisplayName(item)
-										}}</v-list-item-title>
+									}}</v-list-item-title>
 									<v-list-item-subtitle>{{ formatRaisedHandTime(item.raisedAt)
-										}}</v-list-item-subtitle>
+									}}</v-list-item-subtitle>
 								</v-list-item>
 							</v-list>
 
@@ -153,7 +153,8 @@
 						:class="{ 'sidebar-container--overlay': isSidebarDrawerMode }">
 						<div class="sidebar">
 							<!-- 移动端底部抝抽指示条 -->
-							<div v-if="isSidebarDrawerMode" class="mobile-drawer-handle" @click="showSidebar = false"></div>
+							<div v-if="isSidebarDrawerMode" class="mobile-drawer-handle" @click="showSidebar = false">
+							</div>
 							<v-tabs v-model="sidebarTab" bg-color="surface" color="primary" density="compact"
 								class="sidebar-tabs">
 								<v-tab value="participants">
@@ -271,19 +272,19 @@
 																<v-icon v-else icon="mdi-account" size="16"></v-icon>
 															</v-avatar>
 															<span class="message-sender ml-2">{{ message.userName
-																}}</span>
+															}}</span>
 															<span class="message-time ml-2">{{
 																formatTime(message.timestamp)
-																}}</span>
+															}}</span>
 														</div>
 
 														<!-- 自己消息头部：右对齐-->
 														<div v-else class="d-flex align-center mb-2 justify-end">
 															<span class="message-time mr-2">{{
 																formatTime(message.timestamp)
-																}}</span>
+															}}</span>
 															<span class="message-sender mr-2">{{ message.userName
-																}}</span>
+															}}</span>
 															<v-avatar size="28" color="primary">
 																<v-img v-if="message.avatar" :src="message.avatar"
 																	:alt="message.userName">
@@ -439,8 +440,7 @@
 													<v-card v-ripple class="effect-card" :class="{
 														'effect-card--active': effectType === 'blur',
 														'effect-card--loading': effectLoading,
-													}" variant="outlined" :disabled="effectLoading || backgroundEffectDisabled"
-														@click="changeEffect('blur')">
+													}" variant="outlined" :disabled="effectLoading || backgroundEffectDisabled" @click="changeEffect('blur')">
 														<v-icon icon="mdi-blur" size="20" class="mb-1"></v-icon>
 														<span class="text-caption">背景虚化</span>
 													</v-card>
@@ -886,14 +886,14 @@
 														:icon="screenSharing ? 'mdi-monitor-off' : 'mdi-monitor-share'"
 														:color="screenSharing ? 'success' : undefined"></v-icon></template>
 												<v-list-item-title>{{ screenSharing ? '停止共享' : '共享屏幕'
-													}}</v-list-item-title>
+												}}</v-list-item-title>
 											</v-list-item>
 											<v-list-item v-if="isHost" @click="toggleRecording">
 												<template #prepend><v-icon
 														:icon="isRecording ? 'mdi-stop-circle' : 'mdi-record-circle-outline'"
 														:color="isRecording ? 'error' : undefined"></v-icon></template>
 												<v-list-item-title>{{ isRecording ? '停止录制' : '开始录制'
-													}}</v-list-item-title>
+												}}</v-list-item-title>
 											</v-list-item>
 											<v-list-item @click="toggleVideoLayout">
 												<template #prepend><v-icon icon="mdi-view-grid"></v-icon></template>
@@ -924,7 +924,7 @@
 												<template #prepend><v-icon
 														:icon="isFullscreen ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'"></v-icon></template>
 												<v-list-item-title>{{ isFullscreen ? '退出全屏' : '全屏'
-													}}</v-list-item-title>
+												}}</v-list-item-title>
 											</v-list-item>
 										</v-list>
 									</v-menu>
@@ -1135,7 +1135,7 @@ const userStore = useUserStore()
 const leaveTips = [
 	{ icon: 'mdi-chat-outline', color: 'primary', text: '会议记录和聊天内容将会保留' },
 	{ icon: 'mdi-account-multiple-outline', color: 'primary', text: '您的离开不会结束整个会议' },
-	{ icon: 'mdi-clock-outline', color: 'primary', text: '可随时使用会议号重新加入' },
+	{ icon: 'mdi-clock-outline', color: 'primary', text: '您的结束会使得所有人自动离开会议' },
 ]
 // ==================== 基础信息 ====================
 const meetingInfo = ref({

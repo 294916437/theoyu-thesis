@@ -165,8 +165,6 @@ const handleStartPrivateChat = async participant => {
 		} else {
 			window.open(chatCenterUrl, '_blank')
 		}
-
-		$notify.success(result.data.isNew ? '私聊会话已创建' : '已打开私聊会话')
 	} catch (error) {
 		chatWindow?.close()
 		console.error('Start private chat failed:', error)
@@ -476,7 +474,8 @@ const handleDisableAllVideo = async () => {
 						</template>
 
 						<v-list density="compact" class="menu-list">
-							<v-list-item v-if="isCurrentUser(participant)" @click="handleStartPrivateChat(participant)">
+							<v-list-item v-if="!isCurrentUser(participant)"
+								@click="handleStartPrivateChat(participant)">
 								<template #prepend>
 									<v-icon color="primary">mdi-message-text</v-icon>
 								</template>

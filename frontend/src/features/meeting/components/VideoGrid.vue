@@ -2,17 +2,16 @@
 	<div class="video-grid-container">
 		<div class="video-grid" :class="gridLayoutClass">
 			<!-- 本地视频 -->
-			<div
-				class="video-tile"
-				:class="{
-					'is-local': true,
-					'video-disabled': !localVideoEnabled,
-					...tileClass,
-				}"
-			>
+			<div class="video-tile" :class="{
+				'is-local': true,
+				'video-disabled': !localVideoEnabled,
+				...tileClass,
+			}">
 				<!-- 视频元素 -->
-				<div ref="localMediaWrapper" class="local-media-wrapper" :class="{ 'is-mirrored': localPreviewMirrored }">
-					<canvas v-show="!props.effectCanvas" ref="localCanvasElement" class="video-element video-canvas"></canvas>
+				<div ref="localMediaWrapper" class="local-media-wrapper"
+					:class="{ 'is-mirrored': localPreviewMirrored }">
+					<canvas v-show="!props.effectCanvas" ref="localCanvasElement"
+						class="video-element video-canvas"></canvas>
 					<!-- effectCanvas 由 useMedia 动态创建：原始预览 WebGL canvas 或背景特效输出 canvas -->
 				</div>
 
@@ -28,30 +27,28 @@
 					<div class="user-info">
 						<v-chip size="small" color="primary" variant="flat" class="user-name-chip">
 							<template #prepend>
-								<v-icon v-if="!localAudioEnabled" size="x-small" color="error"> mdi-microphone-off </v-icon>
+								<v-icon v-if="!localAudioEnabled" size="x-small" color="error"> mdi-microphone-off
+								</v-icon>
 							</template>
 							我 (本地)
 						</v-chip>
-						<RaisedHandStatus v-if="isLocalHandRaised" compact class="raised-hand-overlay">我 (本地)</RaisedHandStatus>
+						<RaisedHandStatus v-if="isLocalHandRaised" compact class="raised-hand-overlay">我 (本地)
+						</RaisedHandStatus>
 					</div>
 				</div>
 			</div>
 
 			<!-- 远程参与者视频 -->
-			<div
-				v-for="participant in visibleParticipants"
-				:key="participant.id"
-				class="video-tile"
-				:class="{
-					'is-speaking': participant.isSpeaking,
-					'video-disabled': !participant.videoEnabled,
-					'audio-only': !participant.videoEnabled && participant.audioEnabled,
-					'is-screen-sharing': participant.isScreenSharing,
-					...tileClass,
-				}"
-			>
+			<div v-for="participant in visibleParticipants" :key="participant.id" class="video-tile" :class="{
+				'is-speaking': participant.isSpeaking,
+				'video-disabled': !participant.videoEnabled,
+				'audio-only': !participant.videoEnabled && participant.audioEnabled,
+				'is-screen-sharing': participant.isScreenSharing,
+				...tileClass,
+			}">
 				<!-- 视频元素：当视频启用时显示 -->
-				<canvas v-show="participant.videoEnabled" :ref="el => setVideoRef(el, participant.peerId)" class="video-element video-canvas" />
+				<canvas v-show="participant.videoEnabled" :ref="el => setVideoRef(el, participant.peerId)"
+					class="video-element video-canvas" />
 				<!-- 占位符：当视频关闭但音频开启时显示 -->
 				<div v-if="!participant.videoEnabled" class="video-placeholder">
 					<v-avatar :size="avatarSize" color="secondary">
@@ -62,24 +59,13 @@
 				<!-- 用户信息覆盖层 -->
 				<div class="video-overlay">
 					<div class="user-info">
-						<v-chip
-							size="small"
-							:color="participant.isSpeaking ? 'success' : 'surface-variant'"
-							:variant="participant.isSpeaking ? 'flat' : 'tonal'"
-							class="user-name-chip"
-						>
-							<template #prepend>
-								<!-- 屏幕共享优先显示 -->
-								<v-icon v-if="participant.isScreenSharing" size="x-small"> mdi-monitor-share </v-icon>
-								<!-- 音频关闭图标 -->
-								<v-icon v-else-if="!participant.audioEnabled" size="x-small" color="error"> mdi-microphone-off </v-icon>
-								<!-- 视频关闭但音频开启时显示麦克风图标 -->
-								<v-icon v-else-if="!participant.videoEnabled && participant.audioEnabled" size="x-small" color="success"> mdi-microphone </v-icon>
-							</template>
+						<v-chip size="small" :color="participant.isSpeaking ? 'success' : 'surface-variant'"
+							:variant="participant.isSpeaking ? 'flat' : 'tonal'" class="user-name-chip">
 							{{ participant.name }}
 							<span v-if="participant.isScreenSharing" class="ml-1 text-caption"> - 屏幕共享 </span>
 						</v-chip>
-						<RaisedHandStatus v-if="isParticipantHandRaised(participant.peerId)" compact class="raised-hand-overlay">
+						<RaisedHandStatus v-if="isParticipantHandRaised(participant.peerId)" compact
+							class="raised-hand-overlay">
 							{{ participant.name }}
 						</RaisedHandStatus>
 					</div>
@@ -87,7 +73,8 @@
 
 				<!-- 操作按钮(悬停时显示) -->
 				<div class="tile-actions">
-					<v-btn v-if="isHost" icon size="x-small" variant="flat" color="warning" class="ml-1" @click="handleSetSpotlight(participant.peerId)">
+					<v-btn v-if="isHost" icon size="x-small" variant="flat" color="warning" class="ml-1"
+						@click="handleSetSpotlight(participant.peerId)">
 						<v-icon size="small">mdi-spotlight</v-icon>
 					</v-btn>
 				</div>
@@ -98,7 +85,8 @@
 				<v-avatar size="64" color="primary" variant="tonal">
 					<v-icon size="48">mdi-account-multiple</v-icon>
 				</v-avatar>
-				<div class="text-h6 mt-4" style="color: rgb(var(--v-theme-on-surface))">+{{ hiddenParticipantCount }} 更多</div>
+				<div class="text-h6 mt-4" style="color: rgb(var(--v-theme-on-surface))">+{{ hiddenParticipantCount }} 更多
+				</div>
 			</div>
 		</div>
 
@@ -106,15 +94,9 @@
 		<div v-if="spotlightParticipant" class="spotlight-overlay">
 			<!-- 主视频区 -->
 			<div class="spotlight-main">
-				<video
-					v-show="spotlightParticipant.videoEnabled"
-					ref="spotlightVideoRef"
-					autoplay
-					playsinline
-					:muted="spotlightParticipant.isLocal"
-					class="spotlight-main-video"
-					:class="{ 'is-mirrored': spotlightParticipant.isLocal && localPreviewMirrored }"
-				></video>
+				<video v-show="spotlightParticipant.videoEnabled" ref="spotlightVideoRef" autoplay playsinline
+					:muted="spotlightParticipant.isLocal" class="spotlight-main-video"
+					:class="{ 'is-mirrored': spotlightParticipant.isLocal && localPreviewMirrored }"></video>
 				<div v-if="!spotlightParticipant.videoEnabled" class="spotlight-main-placeholder">
 					<v-avatar :size="120" color="primary">
 						<span class="text-h3">{{ getInitials(spotlightParticipant.name) }}</span>
@@ -123,21 +105,18 @@
 
 				<!-- 顶部渐变：聚光灯标识 + 主持人关闭按钮 -->
 				<div class="spotlight-main-header">
-					<v-chip size="small" color="warning" variant="flat" prepend-icon="mdi-spotlight" class="spotlight-badge"> 聚光灯模式 </v-chip>
-					<v-btn
-						v-if="isHost && !screenShare?.active"
-						icon="mdi-close-circle"
-						size="small"
-						variant="text"
-						color="white"
-						class="ml-auto"
-						@click="emit('set-spotlight', { targetPeerId: null, active: false })"
-					></v-btn>
+					<v-chip size="small" color="warning" variant="flat" prepend-icon="mdi-spotlight"
+						class="spotlight-badge">
+						聚光灯模式 </v-chip>
+					<v-btn v-if="isHost && !screenShare?.active" icon="mdi-close-circle" size="small" variant="text"
+						color="white" class="ml-auto"
+						@click="emit('set-spotlight', { targetPeerId: null, active: false })"></v-btn>
 				</div>
 
 				<!-- 底部渐变：姓名 + 静音状态 -->
 				<div class="spotlight-main-footer">
-					<v-icon v-if="!spotlightParticipant.audioEnabled" icon="mdi-microphone-off" color="error" size="16" class="mr-1"></v-icon>
+					<v-icon v-if="!spotlightParticipant.audioEnabled" icon="mdi-microphone-off" color="error" size="16"
+						class="mr-1"></v-icon>
 					<span class="spotlight-main-name">{{ spotlightParticipant.name }}</span>
 				</div>
 			</div>
@@ -148,16 +127,11 @@
 					<v-icon icon="mdi-account-multiple" size="12" class="mr-1"></v-icon>
 					{{ otherParticipantsForSpotlight.length }}
 				</div>
-				<div v-for="p in otherParticipantsForSpotlight" :key="p.isLocal ? 'local' : p.peerId" class="filmstrip-tile">
-					<video
-						v-if="p.videoEnabled"
-						:ref="el => setSpotlightThumbRef(el, p.isLocal ? 'local' : p.peerId)"
-						autoplay
-						playsinline
-						:muted="p.isLocal"
-						class="filmstrip-video"
-						:class="{ 'is-mirrored': p.isLocal && localPreviewMirrored }"
-					></video>
+				<div v-for="p in otherParticipantsForSpotlight" :key="p.isLocal ? 'local' : p.peerId"
+					class="filmstrip-tile">
+					<video v-if="p.videoEnabled" :ref="el => setSpotlightThumbRef(el, p.isLocal ? 'local' : p.peerId)"
+						autoplay playsinline :muted="p.isLocal" class="filmstrip-video"
+						:class="{ 'is-mirrored': p.isLocal && localPreviewMirrored }"></video>
 					<div v-else class="filmstrip-placeholder">
 						<v-avatar size="36" color="primary">
 							<span class="text-caption font-weight-bold">{{ getInitials(p.name) }}</span>
@@ -726,16 +700,20 @@ onUnmounted(() => {
 	border-color: rgb(var(--v-theme-success));
 	box-shadow: 0 0 20px rgba(var(--v-theme-success), 0.3);
 }
+
 .video-tile.video-disabled {
 	background: rgba(var(--v-theme-surface-variant), 0.5);
 }
+
 .video-tile.is-screen-sharing {
 	border-color: rgb(var(--v-theme-success));
 	box-shadow: 0 0 20px rgba(var(--v-theme-success), 0.5);
 }
+
 .video-tile.audio-only {
 	background: linear-gradient(135deg, rgba(var(--v-theme-secondary), 0.1) 0%, rgba(var(--v-theme-primary), 0.1) 100%);
 }
+
 .video-tile.audio-only .video-placeholder {
 	background: linear-gradient(135deg, rgb(var(--v-theme-secondary)) 0%, rgb(var(--v-theme-primary)) 100%);
 }
@@ -788,11 +766,13 @@ onUnmounted(() => {
 	background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgb(var(--v-theme-secondary)) 100%);
 	animation: fadeIn 0.3s ease-in-out;
 }
+
 @keyframes fadeIn {
 	from {
 		opacity: 0;
 		transform: scale(0.95);
 	}
+
 	to {
 		opacity: 1;
 		transform: scale(1);

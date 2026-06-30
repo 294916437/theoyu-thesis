@@ -1082,6 +1082,7 @@ export function useMedia() {
 			} else {
 				// 仅收听模式：不获取摄像头/麦克风
 				console.log('[Media] Listen-only mode: skipping local media')
+				ensureLocalStream()
 				audioEnabled.value = false
 				videoEnabled.value = false
 			}
@@ -1091,28 +1092,19 @@ export function useMedia() {
 				const audioTrack = localStream.value.getAudioTracks()[0]
 				const videoTrack = localStream.value.getVideoTracks()[0]
 
-				const publishWithTimeout = async (track, kind, extraOptions = {}, timeout = 15000) => {
-					return Promise.race([
-						mediasoupClient.produce(track, { kind, ...extraOptions }),
-						new Promise((_, reject) => setTimeout(() => reject(new Error(`Publish ${kind} timeout`)), timeout)),
-					])
-				}
-
 				try {
 					if (audioTrack) {
-						const audioProducer = await publishWithTimeout(audioTrack, 'audio', {
+						await publishLocalTrack(audioTrack, 'audio', {
 							appData: {
 								noiseSuppression: audioNoiseSuppressionEnabled.value,
 							},
 						})
-						updateLocalProducer('audio', audioProducer)
 					}
 					if (videoTrack) {
-						const videoProducer = await publishWithTimeout(videoTrack, 'video', {
+						await publishLocalTrack(videoTrack, 'video', {
 							encodings: SIMULCAST_ENCODINGS,
 							codecOptions: { videoGoogleStartBitrate: 1000 },
 						})
-						updateLocalProducer('video', videoProducer)
 					}
 				} catch (error) {
 					console.error('Failed to publish media streams:', error)
@@ -1190,6 +1182,143 @@ export function useMedia() {
 			$notify.error('无法获取摄像头/麦克风权限')
 			throw error
 		}
+	}
+
+	function ensureLocalStream() {
+		if (!localStream.value) {
+			localStream.value = markRaw(new MediaStream())
+		}
+
+		syncLocalParticipantStream()
+		return localStream.value
+	}
+
+	function syncLocalParticipantStream() {
+		const localPeer = participants.value.find(p => p.peerId === peerId.value)
+		if (localPeer) {
+			localPeer.streams.local = localStream.value
+		}
+	}
+
+	function refreshLocalStreamRef() {
+		if (!localStream.value) return null
+
+		localStream.value = markRaw(new MediaStream(localStream.value.getTracks()))
+		syncLocalParticipantStream()
+		participants.value = [...participants.value]
+		return localStream.value
+	}
+
+	function removeTrackFromLocalStream(kind) {
+		if (!localStream.value) return
+
+		const tracks = kind === 'audio'
+			? localStream.value.getAudioTracks()
+			: localStream.value.getVideoTracks()
+
+		tracks.forEach(track => {
+			track.stop()
+			localStream.value.removeTrack(track)
+		})
+	}
+
+	async function publishLocalTrack(track, kind, extraOptions = {}, timeout = 15000) {
+		const producer = await Promise.race([
+			mediasoupClient.produce(track, { kind, ...extraOptions }),
+			new Promise((_, reject) => setTimeout(() => reject(new Error(`Publish ${kind} timeout`)), timeout)),
+		])
+
+		updateLocalProducer(kind, producer)
+		return producer
+	}
+
+	async function enableLocalAudioProducer() {
+		if (!mediasoupClient) {
+			throw new Error('Mediasoup client not initialized')
+		}
+
+		let audioTrack = localStream.value?.getAudioTracks().find(track => track.readyState === 'live')
+
+		if (!audioTrack) {
+			const stream = await navigator.mediaDevices.getUserMedia({
+				audio: createAudioConstraints(),
+			})
+			audioTrack = stream.getAudioTracks()[0]
+			audioTrack.enabled = true
+			detectNoiseSuppressionSupport(audioTrack)
+
+			removeTrackFromLocalStream('audio')
+			ensureLocalStream().addTrack(audioTrack)
+			refreshLocalStreamRef()
+		} else {
+			audioTrack.enabled = true
+		}
+
+		const producer = mediasoupClient.producers.get('audio')
+		if (producer) {
+			await socketClient.emit('toggleAudio', {
+				roomId: roomId.value,
+				enabled: true,
+			})
+			audioEnabled.value = true
+			return producer
+		}
+
+		const newProducer = await publishLocalTrack(audioTrack, 'audio', {
+			appData: {
+				noiseSuppression: audioNoiseSuppressionEnabled.value,
+			},
+		})
+
+		audioEnabled.value = true
+		return newProducer
+	}
+
+	async function enableLocalVideoProducer() {
+		if (!mediasoupClient) {
+			throw new Error('Mediasoup client not initialized')
+		}
+
+		let videoTrack = localStream.value?.getVideoTracks().find(track => track.readyState === 'live')
+
+		if (!videoTrack) {
+			const stream = await navigator.mediaDevices.getUserMedia({
+				video: {
+					width: { ideal: VIDEO_WIDTH, max: 1920 },
+					height: { ideal: VIDEO_HEIGHT, max: 1080 },
+					frameRate: { ideal: 30, max: 60 },
+				},
+			})
+			videoTrack = stream.getVideoTracks()[0]
+			videoTrack.enabled = true
+
+			removeTrackFromLocalStream('video')
+			ensureLocalStream().addTrack(videoTrack)
+			refreshLocalStreamRef()
+			ensureLocalPreviewRenderer(localStream.value)
+			prewarmBackgroundEffect()
+			ensureEffectWatcher()
+		} else {
+			videoTrack.enabled = true
+		}
+
+		const producer = mediasoupClient.producers.get('video')
+		if (producer) {
+			await socketClient.emit('toggleVideo', {
+				roomId: roomId.value,
+				enabled: true,
+			})
+			videoEnabled.value = true
+			return producer
+		}
+
+		const newProducer = await publishLocalTrack(videoTrack, 'video', {
+			encodings: SIMULCAST_ENCODINGS,
+			codecOptions: { videoGoogleStartBitrate: 1000 },
+		})
+
+		videoEnabled.value = true
+		return newProducer
 	}
 
 	/**
@@ -1623,8 +1752,15 @@ export function useMedia() {
 	 * 切换音频
 	 */
 	async function toggleAudio() {
+		const previousEnabled = audioEnabled.value
 		try {
 			const willEnable = !audioEnabled.value
+
+			if (willEnable && !mediasoupClient?.producers.get('audio')) {
+				await enableLocalAudioProducer()
+				console.log('Audio producer created and enabled')
+				return
+			}
 
 			// 1. 通知服务器（等待响应）
 			const response = await socketClient.emit('toggleAudio', {
@@ -1647,7 +1783,7 @@ export function useMedia() {
 		} catch (error) {
 			console.error('Failed to toggle audio', error)
 			// 失败时回滚状态
-			audioEnabled.value = !audioEnabled.value
+			audioEnabled.value = previousEnabled
 			$notify.error('切换音频失败')
 			throw error
 		}
@@ -1689,8 +1825,15 @@ export function useMedia() {
 	 * 切换视频
 	 */
 	async function toggleVideo() {
+		const previousEnabled = videoEnabled.value
 		try {
 			const willEnable = !videoEnabled.value
+
+			if (willEnable && !mediasoupClient?.producers.get('video')) {
+				await enableLocalVideoProducer()
+				console.log('Video producer created and enabled')
+				return
+			}
 
 			const response = await socketClient.emit('toggleVideo', {
 				roomId: roomId.value,
@@ -1708,7 +1851,7 @@ export function useMedia() {
 			}
 		} catch (error) {
 			console.error('Failed to toggle video', error)
-			videoEnabled.value = !videoEnabled.value
+			videoEnabled.value = previousEnabled
 			$notify.error('切换视频失败')
 			throw error
 		}

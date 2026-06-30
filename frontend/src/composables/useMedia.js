@@ -1530,7 +1530,7 @@ export function useMedia() {
 			if (!participant.producers) {
 				participant.producers = {}
 			}
-			participant.producers[producerId] = {
+			participant.producers[kind] = {
 				id: producerId,
 				kind: kind,
 				paused: data.paused || false,
@@ -1545,16 +1545,25 @@ export function useMedia() {
 			console.log('Producer closed', data)
 
 			const participant = participants.value.find(p => p.peerId === data.peerId)
-			if (participant && participant.consumers[data.producerId]) {
-				const consumer = participant.consumers[data.producerId]
-				const kind = consumer.track.kind
+			if (participant) {
+				const consumerEntry = Object.entries(participant.consumers || {}).find(([, consumer]) => consumer.producerId === data.producerId)
+				const consumerId = consumerEntry?.[0]
+				const consumer = consumerEntry?.[1]
+				const producerEntry = Object.entries(participant.producers || {}).find(([, producer]) => producer?.id === data.producerId)
+				const producerKind = producerEntry?.[0]
+
+				if (!consumer && !producerKind) return
+
+				const kind = consumer?.track?.kind || participant.producers?.[producerKind]?.kind || producerKind
 
 				// 关闭消费者
-				consumer.close()
-				delete participant.consumers[data.producerId]
+				if (consumer) {
+					consumer.close()
+					delete participant.consumers[consumerId]
+				}
 
 				// 从流中移除轨道
-				if (participant.streams[kind]) {
+				if (consumer && kind && participant.streams[kind]) {
 					const stream = participant.streams[kind]
 					stream.getTracks().forEach(track => {
 						if (track.id === consumer.track.id) {
@@ -1570,7 +1579,11 @@ export function useMedia() {
 				}
 
 				// 从生产者列表中移除
-				participant.producers = participant.producers.filter(p => p.id !== data.producerId)
+				if (producerKind) {
+					delete participant.producers[producerKind]
+				}
+
+				participants.value = [...participants.value]
 			}
 		})
 
@@ -1592,7 +1605,7 @@ export function useMedia() {
 			const { producerId, peerId: remotePeerId, kind, paused, reason } = data
 
 			// 1. 更新参与者的 producers 状态
-			updateProducerState(remotePeerId, producerId, paused, reason)
+			updateProducerState(remotePeerId, producerId, kind, paused, reason)
 
 			// 3. 强制触发响应式更新
 			participants.value = [...participants.value]
@@ -1644,7 +1657,7 @@ export function useMedia() {
 	/**
 	 * 更新生产者状态
 	 */
-	function updateProducerState(remotePeerId, producerId, paused, reason) {
+	function updateProducerState(remotePeerId, producerId, kind, paused, reason) {
 		const participant = participants.value.find(p => p.peerId === remotePeerId)
 
 		if (!participant) {
@@ -1653,25 +1666,33 @@ export function useMedia() {
 		}
 
 		const isLocalUser = participant.peerId === peerId.value
-		let targetKind = null
+		let targetKind = kind || null
 
 		// 1. 更新 producers 记录
 		if (participant.producers) {
-			for (const [kind, producer] of Object.entries(participant.producers)) {
+			if (targetKind && participant.producers[targetKind]) {
+				const producer = participant.producers[targetKind]
+				if (!producer.id || producer.id === producerId) {
+					participant.producers[targetKind] = {
+						...producer,
+						paused: paused,
+					}
+				}
+			}
+
+			for (const [producerKind, producer] of Object.entries(participant.producers)) {
 				if (producer && producer.id === producerId) {
-					targetKind = kind
-					if (isLocalUser) {
-						// 本地用户：创建一个包装对象，不直接修改 Producer 实例
-						participant.producers[kind] = {
-							...producer,
-							paused: paused,
-						}
-					} else {
-						// 远程用户：直接修改普通对象
-						producer.paused = paused
+					targetKind = kind || producer.kind || producerKind
+					participant.producers[targetKind] = {
+						...producer,
+						paused: paused,
 					}
 
-					console.log(`[Media] Updated ${kind} producer state to paused=${paused} (isLocal: ${isLocalUser})`)
+					if (producerKind === producerId) {
+						delete participant.producers[producerKind]
+					}
+
+					console.log(`[Media] Updated ${targetKind} producer state to paused=${paused} (isLocal: ${isLocalUser})`)
 					break
 				}
 			}

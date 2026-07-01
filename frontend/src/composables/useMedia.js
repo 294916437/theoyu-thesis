@@ -10,7 +10,7 @@ import wasmUrl from '@/libs/meet-effect/meet_background_effect_bg.wasm?url'
 import { $notify } from '@/plugins/notification'
 import router from '@/router'
 import { joinMeeting as allocateSfuAndJoin } from '@/api/room'
-import { createVideoCanvasRenderer,createHiddenVideo } from '@/utils/videoCanvasRenderer'
+import { createVideoCanvasRenderer, createHiddenVideo } from '@/utils/videoCanvasRenderer'
 
 const MASK_WIDTH = 256
 const MASK_HEIGHT = 144
@@ -20,6 +20,8 @@ const VIDEO_HEIGHT = 360
 // WASM 处理分辨率
 const PROC_W = 640
 const PROC_H = 360
+// 接近30fps的节奏执行
+const EFFECT_FRAME_INTERVAL_MS = 33
 
 export function useMedia() {
 	// 状态管理
@@ -99,6 +101,8 @@ export function useMedia() {
 	let cachedInputView = null // Uint8Array(PROC_W * PROC_H * 4) → WASM input_ptr
 	let cachedMaskView = null // Float32Array(MASK_WIDTH * MASK_HEIGHT) → WASM mask_ptr
 	let cachedOutputView = null // Uint8ClampedArray(PROC_W * PROC_H * 4) → WASM output_ptr
+	let cachedOutputImageData = null
+	let lastEffectRenderTime = 0
 	const float32Data = new Float32Array(MASK_WIDTH * MASK_HEIGHT * 3)
 
 	// Mediasoup 客户端实例
@@ -180,7 +184,11 @@ export function useMedia() {
 	const spotlightRequest = ref(null) // { requesterId, requesterUsername } | null，主持人收到申请时置位
 	const raisedHandQueue = ref([])
 	const raisedHandStates = ref({})
-	const raisedHandPeerIds = computed(() => Object.entries(raisedHandStates.value).filter(([, raised]) => raised).map(([raisedPeerId]) => raisedPeerId))
+	const raisedHandPeerIds = computed(() =>
+		Object.entries(raisedHandStates.value)
+			.filter(([, raised]) => raised)
+			.map(([raisedPeerId]) => raisedPeerId),
+	)
 	const handRaised = computed(() => Boolean(peerId.value && raisedHandPeerIds.value.includes(peerId.value)))
 
 	// ========== 延迟测试配置 ==========
@@ -271,6 +279,7 @@ export function useMedia() {
 				cachedInputView = new Uint8Array(wasmModule.memory.buffer, effectProcessor.input_ptr(), PROC_W * PROC_H * 4)
 				cachedMaskView = new Float32Array(wasmModule.memory.buffer, effectProcessor.mask_ptr(), MASK_WIDTH * MASK_HEIGHT)
 				cachedOutputView = new Uint8ClampedArray(wasmModule.memory.buffer, effectProcessor.output_ptr(), PROC_W * PROC_H * 4)
+				cachedOutputImageData = new ImageData(cachedOutputView, PROC_W, PROC_H)
 
 				console.log('[BackgroundEffect] Canvas initialized')
 				return true
@@ -426,7 +435,7 @@ export function useMedia() {
 	/**
 	 * 渲染循环 - 应用特效
 	 */
-	function renderLoop() {
+	function renderLoop(timestamp = 0) {
 		// 使用闭包引用 sourceVideoElement
 		const videoEl = sourceVideoElement
 		// 缓存 reactive ref 值
@@ -436,6 +445,12 @@ export function useMedia() {
 		if (!videoEl || type === 'none' || !effectProducerActive.value) {
 			return
 		}
+
+		if (timestamp && lastEffectRenderTime && timestamp - lastEffectRenderTime < EFFECT_FRAME_INTERVAL_MS) {
+			effectAnimationId = requestAnimationFrame(renderLoop)
+			return
+		}
+		lastEffectRenderTime = timestamp || performance.now()
 
 		try {
 			// 只有当视频准备好且有宽/高时才绘制
@@ -469,7 +484,7 @@ export function useMedia() {
 						}
 
 						// 7. 将 WASM 输出回写至处理 canvas
-						procCtx.putImageData(new ImageData(cachedOutputView, PROC_W, PROC_H), 0, 0)
+						procCtx.putImageData(cachedOutputImageData, 0, 0)
 
 						// 8. 等尺寸 blit
 						effectCtx.drawImage(procCanvas, 0, 0)
@@ -533,6 +548,7 @@ export function useMedia() {
 			// 5. 启动循环
 			drawInitialEffectFrame(sourceVideoElement)
 			effectProducerActive.value = true
+			lastEffectRenderTime = 0
 			localEffectCanvas.value = effectCanvas
 			inferenceLoop(sourceVideoElement)
 			renderLoop() // 不传参，使用闭包变量
@@ -604,6 +620,7 @@ export function useMedia() {
 		}
 
 		isInferring = false
+		lastEffectRenderTime = 0
 
 		const effectProducer = mediasoupClient.producers.get('video')
 
@@ -1212,9 +1229,7 @@ export function useMedia() {
 	function removeTrackFromLocalStream(kind) {
 		if (!localStream.value) return
 
-		const tracks = kind === 'audio'
-			? localStream.value.getAudioTracks()
-			: localStream.value.getVideoTracks()
+		const tracks = kind === 'audio' ? localStream.value.getAudioTracks() : localStream.value.getVideoTracks()
 
 		tracks.forEach(track => {
 			track.stop()
@@ -2367,6 +2382,10 @@ export function useMedia() {
 				effectProcessor.free()
 				effectProcessor = null
 			}
+			cachedInputView = null
+			cachedMaskView = null
+			cachedOutputView = null
+			cachedOutputImageData = null
 
 			// 8. 销毁 Canvas（确保循环已停止）
 			if (effectCanvas) {

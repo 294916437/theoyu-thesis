@@ -25,6 +25,13 @@ pub struct MeetProcessor {
     blur_buffer: Vec<u8>,
     blur_temp: Vec<u8>,
     blur_radius: usize,
+    blur_prefix_r: Vec<u32>,
+    blur_prefix_g: Vec<u32>,
+    blur_prefix_b: Vec<u32>,
+    blur_sum_r: Vec<u32>,
+    blur_sum_g: Vec<u32>,
+    blur_sum_b: Vec<u32>,
+    blur_count: Vec<u32>,
 }
 
 #[wasm_bindgen]
@@ -73,6 +80,13 @@ impl MeetProcessor {
             blur_buffer: vec![0u8; width * height * 4],
             blur_temp: vec![0u8; width * height * 4],
             blur_radius: 20,
+            blur_prefix_r: vec![0u32; width + 1],
+            blur_prefix_g: vec![0u32; width + 1],
+            blur_prefix_b: vec![0u32; width + 1],
+            blur_sum_r: vec![0u32; width],
+            blur_sum_g: vec![0u32; width],
+            blur_sum_b: vec![0u32; width],
+            blur_count: vec![0u32; width],
         }
     }
 
@@ -89,14 +103,21 @@ impl MeetProcessor {
         self.width = width;
         self.height = height;
         let len = width * height;
-        self.input_buffer      = vec![0u8;   len * 4];
-        self.output_buffer     = vec![0u8;   len * 4];
-        self.background_buffer = vec![0u8;   len * 4];
-        self.upsampled_mask    = vec![0.0f32; len];
-        self.gray_cache        = vec![0.0f32; len];
-        self.filtered_buffer   = vec![0.0f32; len];
-        self.blur_buffer       = vec![0u8;   len * 4];
-        self.blur_temp         = vec![0u8;   len * 4];
+        self.input_buffer = vec![0u8; len * 4];
+        self.output_buffer = vec![0u8; len * 4];
+        self.background_buffer = vec![0u8; len * 4];
+        self.upsampled_mask = vec![0.0f32; len];
+        self.gray_cache = vec![0.0f32; len];
+        self.filtered_buffer = vec![0.0f32; len];
+        self.blur_buffer = vec![0u8; len * 4];
+        self.blur_temp = vec![0u8; len * 4];
+        self.blur_prefix_r = vec![0u32; width + 1];
+        self.blur_prefix_g = vec![0u32; width + 1];
+        self.blur_prefix_b = vec![0u32; width + 1];
+        self.blur_sum_r = vec![0u32; width];
+        self.blur_sum_g = vec![0u32; width];
+        self.blur_sum_b = vec![0u32; width];
+        self.blur_count = vec![0u32; width];
         // prev_mask / mask_buffer 保持 mask_width×mask_height，无需重建
     }
 
@@ -119,7 +140,7 @@ impl MeetProcessor {
 
     // 阶段 1: 准备 Mask (计算密集型，每帧只调一次)
     pub fn prepare_mask(&mut self) {
-        self.temporal_smooth_low_res();   // 在 256×144 上做 EMA，再上采样
+        self.temporal_smooth_low_res(); // 在 256×144 上做 EMA，再上采样
         self.bilinear_upsample();
         self.compute_gray_cache();
         self.joint_bilateral_filter_opt();
@@ -139,13 +160,15 @@ impl MeetProcessor {
 
             for i in 0..len {
                 // Output = Input * Alpha + blur * (1 - Alpha)
-                let alpha = (*p_mask.add(i)).clamp(0.0, 1.0);
-                let inv_alpha = 1.0 - alpha;
+                let alpha = alpha_to_weight(*p_mask.add(i));
+                let inv_alpha = 256 - alpha;
                 let pi = i * 4;
 
-                *p_out.add(pi)     = (*p_in.add(pi)     as f32 * alpha + *p_blurred.add(pi)     as f32 * inv_alpha) as u8;
-                *p_out.add(pi + 1) = (*p_in.add(pi + 1) as f32 * alpha + *p_blurred.add(pi + 1) as f32 * inv_alpha) as u8;
-                *p_out.add(pi + 2) = (*p_in.add(pi + 2) as f32 * alpha + *p_blurred.add(pi + 2) as f32 * inv_alpha) as u8;
+                *p_out.add(pi) = blend_u8(*p_in.add(pi), *p_blurred.add(pi), alpha, inv_alpha);
+                *p_out.add(pi + 1) =
+                    blend_u8(*p_in.add(pi + 1), *p_blurred.add(pi + 1), alpha, inv_alpha);
+                *p_out.add(pi + 2) =
+                    blend_u8(*p_in.add(pi + 2), *p_blurred.add(pi + 2), alpha, inv_alpha);
                 *p_out.add(pi + 3) = 255;
             }
         }
@@ -162,9 +185,28 @@ impl MeetProcessor {
 
         for _ in 0..1 {
             // 水平方向模糊: blur_buffer -> blur_temp
-            box_blur_h_pass(&self.blur_buffer, &mut self.blur_temp, w, h, r);
+            box_blur_h_pass(
+                &self.blur_buffer,
+                &mut self.blur_temp,
+                w,
+                h,
+                r,
+                &mut self.blur_prefix_r,
+                &mut self.blur_prefix_g,
+                &mut self.blur_prefix_b,
+            );
             // 垂直方向模糊: blur_temp -> blur_buffer
-            box_blur_v_pass(&self.blur_temp, &mut self.blur_buffer, w, h, r);
+            box_blur_v_pass(
+                &self.blur_temp,
+                &mut self.blur_buffer,
+                w,
+                h,
+                r,
+                &mut self.blur_sum_r,
+                &mut self.blur_sum_g,
+                &mut self.blur_sum_b,
+                &mut self.blur_count,
+            );
         }
     }
 
@@ -179,17 +221,14 @@ impl MeetProcessor {
             let mut p_mask = self.upsampled_mask.as_ptr();
 
             for _ in 0..len {
-                let alpha = (*p_mask).clamp(0.0, 1.0);
-                let inv_alpha = 1.0 - alpha;
+                let alpha = alpha_to_weight(*p_mask);
+                let inv_alpha = 256 - alpha;
 
                 // Output = Input * Alpha + Background * (1 - Alpha)
 
-                *p_out.add(0) =
-                    (*p_in.add(0) as f32 * alpha + *p_bg.add(0) as f32 * inv_alpha) as u8;
-                *p_out.add(1) =
-                    (*p_in.add(1) as f32 * alpha + *p_bg.add(1) as f32 * inv_alpha) as u8;
-                *p_out.add(2) =
-                    (*p_in.add(2) as f32 * alpha + *p_bg.add(2) as f32 * inv_alpha) as u8;
+                *p_out.add(0) = blend_u8(*p_in.add(0), *p_bg.add(0), alpha, inv_alpha);
+                *p_out.add(1) = blend_u8(*p_in.add(1), *p_bg.add(1), alpha, inv_alpha);
+                *p_out.add(2) = blend_u8(*p_in.add(2), *p_bg.add(2), alpha, inv_alpha);
                 *p_out.add(3) = 255;
 
                 p_in = p_in.add(4);
@@ -352,12 +391,16 @@ impl MeetProcessor {
 }
 
 /// 水平方向盒型模糊（逐行前缀和法，O(n)，边界自动 clamp）
-fn box_blur_h_pass(src: &[u8], dst: &mut [u8], width: usize, height: usize, radius: usize) {
-    let w1 = width + 1;
-    let mut pr = vec![0u32; w1];
-    let mut pg = vec![0u32; w1];
-    let mut pb = vec![0u32; w1];
-
+fn box_blur_h_pass(
+    src: &[u8],
+    dst: &mut [u8],
+    width: usize,
+    height: usize,
+    radius: usize,
+    pr: &mut [u32],
+    pg: &mut [u32],
+    pb: &mut [u32],
+) {
     for y in 0..height {
         let row_base = y * width * 4;
 
@@ -378,7 +421,7 @@ fn box_blur_h_pass(src: &[u8], dst: &mut [u8], width: usize, height: usize, radi
             let x1 = (x + radius + 1).min(width);
             let inv = 1.0 / (x1 - x0) as f32;
             let o = row_base + x * 4;
-            dst[o]     = ((pr[x1] - pr[x0]) as f32 * inv) as u8;
+            dst[o] = ((pr[x1] - pr[x0]) as f32 * inv) as u8;
             dst[o + 1] = ((pg[x1] - pg[x0]) as f32 * inv) as u8;
             dst[o + 2] = ((pb[x1] - pb[x0]) as f32 * inv) as u8;
             dst[o + 3] = 255;
@@ -387,21 +430,30 @@ fn box_blur_h_pass(src: &[u8], dst: &mut [u8], width: usize, height: usize, radi
 }
 
 /// 垂直方向盒型模糊（滑动窗口法，行主序访问，O(n)，边界自动 clamp）
-fn box_blur_v_pass(src: &[u8], dst: &mut [u8], width: usize, height: usize, radius: usize) {
-    // 每列的当前垂直窗口累加和及有效像素计数
-    let mut sr = vec![0u32; width];
-    let mut sg = vec![0u32; width];
-    let mut sb = vec![0u32; width];
-    let mut cnt = vec![0u32; width];
+fn box_blur_v_pass(
+    src: &[u8],
+    dst: &mut [u8],
+    width: usize,
+    height: usize,
+    radius: usize,
+    sr: &mut [u32],
+    sg: &mut [u32],
+    sb: &mut [u32],
+    cnt: &mut [u32],
+) {
+    sr.fill(0);
+    sg.fill(0);
+    sb.fill(0);
+    cnt.fill(0);
 
     // 初始化：累加前 min(radius+1, height) 行
     let init_end = (radius + 1).min(height);
     for y in 0..init_end {
         let row = y * width * 4;
         for x in 0..width {
-            sr[x]  += src[row + x * 4] as u32;
-            sg[x]  += src[row + x * 4 + 1] as u32;
-            sb[x]  += src[row + x * 4 + 2] as u32;
+            sr[x] += src[row + x * 4] as u32;
+            sg[x] += src[row + x * 4 + 1] as u32;
+            sb[x] += src[row + x * 4 + 2] as u32;
             cnt[x] += 1;
         }
     }
@@ -411,7 +463,7 @@ fn box_blur_v_pass(src: &[u8], dst: &mut [u8], width: usize, height: usize, radi
         // 输出当前行
         for x in 0..width {
             let inv = 1.0 / cnt[x] as f32;
-            dst[out_row + x * 4]     = (sr[x] as f32 * inv) as u8;
+            dst[out_row + x * 4] = (sr[x] as f32 * inv) as u8;
             dst[out_row + x * 4 + 1] = (sg[x] as f32 * inv) as u8;
             dst[out_row + x * 4 + 2] = (sb[x] as f32 * inv) as u8;
             dst[out_row + x * 4 + 3] = 255;
@@ -420,9 +472,9 @@ fn box_blur_v_pass(src: &[u8], dst: &mut [u8], width: usize, height: usize, radi
         if y >= radius {
             let rem_row = (y - radius) * width * 4;
             for x in 0..width {
-                sr[x]  -= src[rem_row + x * 4] as u32;
-                sg[x]  -= src[rem_row + x * 4 + 1] as u32;
-                sb[x]  -= src[rem_row + x * 4 + 2] as u32;
+                sr[x] -= src[rem_row + x * 4] as u32;
+                sg[x] -= src[rem_row + x * 4 + 1] as u32;
+                sb[x] -= src[rem_row + x * 4 + 2] as u32;
                 cnt[x] -= 1;
             }
         }
@@ -431,13 +483,29 @@ fn box_blur_v_pass(src: &[u8], dst: &mut [u8], width: usize, height: usize, radi
         if add_y < height {
             let add_row = add_y * width * 4;
             for x in 0..width {
-                sr[x]  += src[add_row + x * 4] as u32;
-                sg[x]  += src[add_row + x * 4 + 1] as u32;
-                sb[x]  += src[add_row + x * 4 + 2] as u32;
+                sr[x] += src[add_row + x * 4] as u32;
+                sg[x] += src[add_row + x * 4 + 1] as u32;
+                sb[x] += src[add_row + x * 4 + 2] as u32;
                 cnt[x] += 1;
             }
         }
     }
+}
+
+#[inline(always)]
+fn alpha_to_weight(alpha: f32) -> u32 {
+    if alpha <= 0.0 {
+        0
+    } else if alpha >= 1.0 {
+        256
+    } else {
+        (alpha * 256.0) as u32
+    }
+}
+
+#[inline(always)]
+fn blend_u8(foreground: u8, background: u8, alpha: u32, inv_alpha: u32) -> u8 {
+    (((foreground as u32 * alpha) + (background as u32 * inv_alpha)) >> 8) as u8
 }
 
 #[inline(always)]

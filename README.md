@@ -15,6 +15,7 @@ This repository contains the complete engineering implementation for an undergra
 | Frontend | Vue 3 + Vuetify + Pinia + Vite | User interface |
 | Frontend communication | mediasoup-client + Socket.io-client + StompJS | WebRTC client and signaling |
 | Frontend rendering | Pixi.js | Welcome page animation |
+| Android client | Kotlin + Jetpack Compose + Material 3 | Native mobile meeting client, planned initialization |
 | Business backend | Spring Cloud Alibaba + MySQL + Redis | Microservice business logic |
 | Message queue | RocketMQ | Asynchronous message processing |
 | Service registry | Nacos | Service discovery and configuration center |
@@ -35,6 +36,7 @@ This repository contains the complete engineering implementation for an undergra
 - [x] Host permission controls, including mute, remove participant, mute all, and turn off all cameras
 - [x] Meeting participant list and real-time status
 - [x] Meeting statistics and monitoring
+- [ ] Native Android multi-party meeting client
 
 ## Preview
 
@@ -54,7 +56,7 @@ This repository contains the complete engineering implementation for an undergra
 
 ```text
 theoyu-thesis/
-├── frontend/                         # Vue 3 frontend
+├── web/                              # Vue 3 frontend
 │   └── src/
 │       ├── features/                 # Business modules: meeting, chat, user
 │       ├── components/               # Shared components
@@ -87,6 +89,10 @@ theoyu-thesis/
 │   └── src/
 │       ├── lib.rs                    # Background blur and background replacement implementation
 │
+├── android/                          # Native Android client, manually initialized with Android Studio
+│   ├── AGENTS.md                     # Android development rules
+│   └── README.md                     # Android initialization entry
+│
 ├── test/                             # Performance test suites
 │   ├── concurrent-stress/            # SFU concurrent stress tests
 │   ├── e2e-latency/                  # End-to-end latency tests
@@ -110,6 +116,7 @@ theoyu-thesis/
 - JDK >= 17
 - Rust + wasm-pack
 - Docker, used for middleware deployment
+- Android Studio + Android SDK for Android client development
 
 ### Backend Development
 
@@ -122,10 +129,14 @@ mvn spring-boot:run
 ### Frontend Development
 
 ```bash
-cd frontend
+cd web
 npm install
 npm run dev
 ```
+
+### Android Client
+
+Create the Android project manually with Android Studio under `android/`. See [Android initialization guide](docs/android-initialization.md) for package name, module structure, and WebRTC/Mediasoup integration boundaries.
 
 ### SFU Service
 
@@ -159,6 +170,7 @@ wasm-pack build --target web
 - [x] WebAssembly module development
 - [x] Performance testing and optimization
 - [x] Thesis writing
+- [ ] Native Android client initialization and core meeting pipeline integration
 
 ## License
 

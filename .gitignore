@@ -5,6 +5,18 @@
 *.swp
 *.swo
 *~
+
+# Android / Gradle
+*.apk
+*.aab
+*.ap_
+*.dex
+*.jks
+*.keystore
+.gradle/
+captures/
+local.properties
+
 # demo
 mediasoup-demo
 
@@ -19,7 +31,7 @@ yarn-debug.log*
 
 # codex
 outputs/
-AGENT.md
+AGENTS.md
 
 # Dependencies
 node_modules/
@@ -28,6 +40,7 @@ node_modules/
 dist/
 build/
 target/
+*/build/
 
 # Environment
 .env

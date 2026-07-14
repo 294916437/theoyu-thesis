@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"workspaces": [
-		"frontend",
+		"web",
 		"backend",
 		"sfu",
 		"wasm",
@@ -12,8 +12,10 @@
 		"script"
 	],
 	"scripts": {
-		"dev:frontend": "npm run dev --workspace=frontend",
-		"build:frontend": "npm run build --workspace=frontend",
+		"dev:web": "npm run dev --workspace=web",
+		"build:web": "npm run build --workspace=web",
+		"dev:frontend": "npm run dev --workspace=web",
+		"build:frontend": "npm run build --workspace=web",
 		"dev:sfu": "cd sfu && npm run dev",
 		"build:sfu": "cd sfu && npm run build",
 		"install:all": "npm install && cd backend && mvn install"

@@ -15,6 +15,7 @@
 | 前端 | Vue3 + Vuetify + Pinia + Vite | 用户交互界面 |
 | 前端通信 | mediasoup-client + Socket.io-client + StompJS | WebRTC 客户端、信令 |
 | 前端渲染 | Pixi.js | 欢迎页动画 |
+| Android 客户端 | Kotlin + Jetpack Compose + Material 3 | 原生移动端会议客户端（初始化规划中） |
 | 业务后端 | Spring Cloud Alibaba + MySQL + Redis | 微服务业务逻辑 |
 | 消息队列 | RocketMQ | 异步消息处理 |
 | 服务注册 | Nacos | 服务注册与配置中心 |
@@ -35,6 +36,7 @@
 - [x] 主持人权限控制（静音、移出、全体静音/关摄像头）
 - [x] 会议参与者列表与实时状态
 - [x] 会议数据统计与监控
+- [ ] Android 原生多人会议客户端
 
 ## 项目预览
 
@@ -54,7 +56,7 @@
 
 ```text
 theoyu-thesis/
-├── frontend/                         # Vue3 前端
+├── web/                              # Vue3 前端
 │   └── src/
 │       ├── features/                 # 业务模块（meeting / chat / user）
 │       ├── components/               # 公共组件
@@ -87,6 +89,10 @@ theoyu-thesis/
 │   └── src/
 │       ├── lib.rs                    # 背景模糊与背景替换实现
 │
+├── android/                          # Android 原生客户端（Android Studio 手动初始化）
+│   ├── AGENTS.md                     # Android 开发约束
+│   └── README.md                     # Android 初始化入口
+│
 ├── test/                             # 性能测试套件
 │   ├── concurrent-stress/            # SFU 并发压力测试
 │   ├── e2e-latency/                  # 端到端延迟测试
@@ -110,6 +116,7 @@ theoyu-thesis/
 - JDK >= 17
 - Rust + wasm-pack
 - Docker（用于中间件部署）
+- Android Studio + Android SDK（用于 Android 客户端开发）
 
 ### 后端开发
 
@@ -122,10 +129,14 @@ mvn spring-boot:run
 ### 前端开发
 
 ```bash
-cd frontend
+cd web
 npm install
 npm run dev
 ```
+
+### Android 客户端
+
+Android 工程由 Android Studio 在 `android/` 目录下手动创建。初始化要求、包名、模块结构和 WebRTC/Mediasoup 接入边界见 [Android 项目初始化指南](docs/android-initialization.md)。
 
 ### SFU 服务
 
@@ -159,6 +170,7 @@ wasm-pack build --target web
 - [x] WebAssembly 模块开发
 - [x] 性能测试与优化
 - [x] 论文撰写
+- [ ] Android 原生客户端初始化与核心会议链路接入
 
 ## 许可证
 

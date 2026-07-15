@@ -13,3 +13,30 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Build outputs
+*/build/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Signing and local secrets
+*.jks
+*.keystore
+keystore.properties
+secrets.properties
+
+# Android tooling
+lint-results*.html
+lint-results*.xml
+lint-results*.txt
+navigation.json
+captures/
+
+# Native build intermediates
+obj/
+
+# Test outputs
+coverage/
+test-results/

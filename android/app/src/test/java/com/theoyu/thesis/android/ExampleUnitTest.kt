@@ -1,4 +1,4 @@
-package com.theoyu.thesis.mobile
+package com.theoyu.thesis.android
 
 import org.junit.Test
 

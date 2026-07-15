@@ -30,7 +30,7 @@ Android 端不是复用 Web UI，而是复用已有后端能力：
 ```text
 android/
 ├── app/
-│   └── src/main/java/com/theoyu/thesis/mobile/
+│   └── src/main/java/com/theoyu/thesis/android/
 │       ├── core/                 # 网络、WebRTC、Socket、权限、日志等基础能力
 │       ├── data/                 # REST DTO、Repository、远端数据源
 │       ├── domain/               # 会议、用户、聊天等业务模型与用例

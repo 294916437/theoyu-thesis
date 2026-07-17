@@ -46,9 +46,12 @@ fun AuthScreen(
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+    val message = uiState.message
+        ?: uiState.messageResId?.let { stringResource(it) }
+    val phoneError = uiState.phoneErrorResId?.let { stringResource(it) }
+    val codeError = uiState.codeErrorResId?.let { stringResource(it) }
 
-    LaunchedEffect(uiState.message) {
-        val message = uiState.message
+    LaunchedEffect(message) {
         if (!message.isNullOrBlank()) {
             snackbarHostState.showSnackbar(message)
             onMessageShown()
@@ -105,8 +108,8 @@ fun AuthScreen(
                             onValueChange = onPhoneChanged,
                             label = { Text(stringResource(R.string.auth_phone_label)) },
                             placeholder = { Text(stringResource(R.string.auth_phone_placeholder)) },
-                            isError = uiState.phoneError != null,
-                            supportingText = uiState.phoneError?.let { { Text(it) } },
+                            isError = phoneError != null,
+                            supportingText = phoneError?.let { { Text(it) } },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         )
@@ -121,8 +124,8 @@ fun AuthScreen(
                                 onValueChange = onCodeChanged,
                                 label = { Text(stringResource(R.string.auth_code_label)) },
                                 placeholder = { Text(stringResource(R.string.auth_code_placeholder)) },
-                                isError = uiState.codeError != null,
-                                supportingText = uiState.codeError?.let { { Text(it) } },
+                                isError = codeError != null,
+                                supportingText = codeError?.let { { Text(it) } },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             )

@@ -8,8 +8,9 @@ data class AuthUiState(
     val loading: Boolean = false,
     val sendingCode: Boolean = false,
     val countdownSeconds: Int = 0,
-    val phoneError: String? = null,
-    val codeError: String? = null,
+    val phoneErrorResId: Int? = null,
+    val codeErrorResId: Int? = null,
+    val messageResId: Int? = null,
     val message: String? = null,
     val authenticated: Boolean = false,
 ) {

@@ -2,6 +2,7 @@ package com.theoyu.thesis.android.feature.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.theoyu.thesis.android.R
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.theoyu.thesis.android.core.network.ApiResult
@@ -26,15 +27,16 @@ class AuthViewModel(
     private var countdownJob: Job? = null
 
     fun selectMode(mode: AuthMode) {
-        _uiState.update { it.copy(mode = mode, message = null) }
+        _uiState.update { it.copy(mode = mode, message = null, messageResId = null) }
     }
 
     fun onPhoneChanged(phone: String) {
         _uiState.update {
             it.copy(
                 phone = phone.filter(Char::isDigit).take(PHONE_MAX_LENGTH),
-                phoneError = null,
+                phoneErrorResId = null,
                 message = null,
+                messageResId = null,
             )
         }
     }
@@ -43,39 +45,52 @@ class AuthViewModel(
         _uiState.update {
             it.copy(
                 code = code.filter(Char::isDigit).take(CODE_LENGTH),
-                codeError = null,
+                codeErrorResId = null,
                 message = null,
+                messageResId = null,
             )
         }
     }
 
     fun onAgreeTermsChanged(agreed: Boolean) {
-        _uiState.update { it.copy(agreeTerms = agreed, message = null) }
+        _uiState.update { it.copy(agreeTerms = agreed, message = null, messageResId = null) }
     }
 
     fun sendVerificationCode() {
         val state = _uiState.value
         if (!state.isPhoneValid) {
-            _uiState.update { it.copy(phoneError = "请输入正确的手机号", message = "请输入正确的手机号") }
+            _uiState.update {
+                it.copy(
+                    phoneErrorResId = R.string.auth_error_invalid_phone,
+                    messageResId = R.string.auth_error_invalid_phone,
+                )
+            }
             return
         }
 
         if (state.countdownSeconds > 0) {
-            _uiState.update { it.copy(message = "请稍后再试") }
+            _uiState.update { it.copy(messageResId = R.string.auth_error_retry_later) }
             return
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(sendingCode = true, message = null) }
+            _uiState.update { it.copy(sendingCode = true, message = null, messageResId = null) }
 
             when (val result = authRepository.getVerificationCode(state.phone)) {
                 is ApiResult.Success -> {
                     if (result.data.isSuccessfulResponse()) {
-                        _uiState.update { it.copy(message = "验证码已发送") }
+                        _uiState.update { it.copy(messageResId = R.string.auth_message_code_sent) }
                         startCountdown()
                     } else {
                         _uiState.update {
-                            it.copy(message = result.data.responseMessage() ?: "发送验证码失败")
+                            it.copy(
+                                message = result.data.responseMessage(),
+                                messageResId = if (result.data.responseMessage() == null) {
+                                    R.string.auth_error_send_code_failed
+                                } else {
+                                    null
+                                },
+                            )
                         }
                     }
                 }
@@ -98,7 +113,7 @@ class AuthViewModel(
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, message = null) }
+            _uiState.update { it.copy(loading = true, message = null, messageResId = null) }
 
             val loginRequest = mapOf(
                 "phone" to state.phone,
@@ -116,12 +131,17 @@ class AuthViewModel(
     }
 
     fun consumeMessage() {
-        _uiState.update { it.copy(message = null) }
+        _uiState.update { it.copy(message = null, messageResId = null) }
     }
 
     private suspend fun handleLoginResponse(response: JsonElement) {
         if (!response.isSuccessfulResponse()) {
-            _uiState.update { it.copy(codeError = "验证码错误", message = "验证码错误") }
+            _uiState.update {
+                it.copy(
+                    codeErrorResId = R.string.auth_error_wrong_code,
+                    messageResId = R.string.auth_error_wrong_code,
+                )
+            }
             return
         }
 
@@ -130,20 +150,26 @@ class AuthViewModel(
         val userId = data?.get("userId")?.asStringOrNull()
 
         if (token.isNullOrBlank() || userId.isNullOrBlank()) {
-            _uiState.update { it.copy(message = "登录响应缺少 token 或 userId") }
+            _uiState.update { it.copy(messageResId = R.string.auth_error_missing_login_payload) }
             return
         }
 
         sessionStore.saveSession(token, userId)
         userRepository.getUserProfile(userId)
-        _uiState.update { it.copy(authenticated = true, message = "登录成功") }
+        _uiState.update { it.copy(authenticated = true, messageResId = R.string.auth_message_login_success) }
     }
 
     private fun validateForSubmit(state: AuthUiState): ValidationError? =
         when {
-            !state.agreeTerms -> ValidationError(message = "请先同意用户协议和隐私政策")
-            !state.isPhoneValid -> ValidationError(phoneError = "请输入正确的手机号", message = "请输入正确的手机号")
-            state.code.length != CODE_LENGTH -> ValidationError(codeError = "请输入6位验证码", message = "请输入正确的验证码")
+            !state.agreeTerms -> ValidationError(messageResId = R.string.auth_error_agree_terms)
+            !state.isPhoneValid -> ValidationError(
+                phoneErrorResId = R.string.auth_error_invalid_phone,
+                messageResId = R.string.auth_error_invalid_phone,
+            )
+            state.code.length != CODE_LENGTH -> ValidationError(
+                codeErrorResId = R.string.auth_error_invalid_code_length,
+                messageResId = R.string.auth_error_invalid_code,
+            )
             else -> null
         }
 
@@ -176,15 +202,15 @@ class AuthViewModel(
         if (isJsonNull) null else runCatching { asBoolean }.getOrNull()
 
     private data class ValidationError(
-        val phoneError: String? = null,
-        val codeError: String? = null,
-        val message: String,
+        val phoneErrorResId: Int? = null,
+        val codeErrorResId: Int? = null,
+        val messageResId: Int,
     ) {
         fun applyTo(state: AuthUiState): AuthUiState =
             state.copy(
-                phoneError = phoneError,
-                codeError = codeError,
-                message = message,
+                phoneErrorResId = phoneErrorResId,
+                codeErrorResId = codeErrorResId,
+                messageResId = messageResId,
             )
     }
 

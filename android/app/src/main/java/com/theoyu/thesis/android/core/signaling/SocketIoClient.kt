@@ -3,6 +3,7 @@ package com.theoyu.thesis.android.core.signaling
 import io.socket.client.Ack
 import io.socket.client.IO
 import io.socket.client.Socket
+import io.socket.emitter.Emitter
 import io.socket.engineio.client.transports.Polling
 import io.socket.engineio.client.transports.WebSocket
 import java.net.URISyntaxException
@@ -16,7 +17,7 @@ import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 
 class SocketIoClient {
-    private val eventHandlers = ConcurrentHashMap<String, MutableSet<SocketEventHandler>>()
+    private val eventHandlers = ConcurrentHashMap<String, MutableMap<SocketEventHandler, Emitter.Listener>>()
     private var socket: Socket? = null
 
     private val _connectionState = MutableStateFlow(SocketConnectionState())
@@ -153,22 +154,25 @@ class SocketIoClient {
     }
 
     fun on(event: String, handler: SocketEventHandler): SocketSubscription {
-        eventHandlers.getOrPut(event) { mutableSetOf() }.add(handler)
-        socket?.on(event, handler::onEvent)
+        val listener = Emitter.Listener { args -> handler.onEvent(args) }
+        eventHandlers.getOrPut(event) { ConcurrentHashMap() }[handler] = listener
+        socket?.on(event, listener)
 
         return SocketSubscription { off(event, handler) }
     }
 
     fun off(event: String, handler: SocketEventHandler) {
-        eventHandlers[event]?.remove(handler)
+        val listener = eventHandlers[event]?.remove(handler)
         if (eventHandlers[event].isNullOrEmpty()) {
             eventHandlers.remove(event)
         }
-        socket?.off(event, handler::onEvent)
+        if (listener != null) {
+            socket?.off(event, listener)
+        }
     }
 
     fun once(event: String, handler: SocketEventHandler) {
-        socket?.once(event, handler::onEvent)
+        socket?.once(event) { args -> handler.onEvent(args) }
     }
 
     private fun extractError(response: Any?): String? =

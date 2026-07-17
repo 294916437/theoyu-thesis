@@ -17,4 +17,14 @@
     <string name="auth_new_user_hint">新用户可直接使用验证码注册登录</string>
     <string name="auth_main_title">Blue Sky</string>
     <string name="auth_main_placeholder">主框架占位</string>
+    <string name="auth_error_invalid_phone">请输入正确的手机号</string>
+    <string name="auth_error_retry_later">请稍后再试</string>
+    <string name="auth_error_send_code_failed">发送验证码失败</string>
+    <string name="auth_message_code_sent">验证码已发送</string>
+    <string name="auth_error_agree_terms">请先同意用户协议和隐私政策</string>
+    <string name="auth_error_invalid_code_length">请输入6位验证码</string>
+    <string name="auth_error_invalid_code">请输入正确的验证码</string>
+    <string name="auth_error_wrong_code">验证码错误</string>
+    <string name="auth_error_missing_login_payload">登录响应缺少 token 或 userId</string>
+    <string name="auth_message_login_success">登录成功</string>
 </resources>

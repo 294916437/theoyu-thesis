@@ -7,15 +7,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.theoyu.thesis.android.core.network.ApiClient
-import com.theoyu.thesis.android.core.network.ApiClientConfig
-import com.theoyu.thesis.android.core.network.ApiServiceFactory
-import com.theoyu.thesis.android.core.network.UnauthorizedHandler
 import com.theoyu.thesis.android.core.session.SessionStore
 import com.theoyu.thesis.android.feature.auth.AuthScreen
 import com.theoyu.thesis.android.feature.auth.AuthViewModel
@@ -23,32 +18,22 @@ import com.theoyu.thesis.android.feature.auth.AuthViewModelFactory
 import com.theoyu.thesis.android.feature.main.MainFrame
 import com.theoyu.thesis.android.feature.splash.SplashScreen
 import com.theoyu.thesis.android.ui.theme.BlueSkyTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
-    private val sessionStore: SessionStore by lazy {
-        SessionStore(applicationContext)
+    private val appContainer by lazy {
+        (application as BlueSkyApplication).appContainer
     }
 
-    private val apiServiceFactory: ApiServiceFactory by lazy {
-        ApiServiceFactory(
-            ApiClient.createRetrofit(
-                config = ApiClientConfig(
-                    baseUrl = getString(R.string.api_base_url),
-                    enableHttpLogging = false,
-                ),
-                tokenProvider = sessionStore,
-                unauthorizedHandler = UnauthorizedHandler {
-                    sessionStore.clearSession()
-                },
-            ),
-        )
+    private val sessionStore: SessionStore by lazy {
+        appContainer.sessionStore
     }
 
     private val authViewModel: AuthViewModel by viewModels {
         AuthViewModelFactory(
-            authRepository = apiServiceFactory.authRepository(),
-            userRepository = apiServiceFactory.userRepository(),
+            authRepository = appContainer.authRepository,
+            userRepository = appContainer.userRepository,
             sessionStore = sessionStore,
         )
     }
@@ -79,7 +64,7 @@ private fun BlueSkyApp(
     authViewModel: AuthViewModel,
 ) {
     var destination by remember { mutableStateOf(AppDestination.Splash) }
-    val authState by authViewModel.uiState.collectAsState()
+    val authState by authViewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         delay(SPLASH_DURATION_MILLIS)

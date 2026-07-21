@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
             roomRepository = appContainer.roomRepository,
             userRepository = appContainer.userRepository,
             authRepository = appContainer.authRepository,
+            socketIoClient = appContainer.socketIoClient,
             sessionStore = sessionStore,
         )
     }

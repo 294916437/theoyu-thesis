@@ -206,6 +206,12 @@ class MainViewModel(
             _uiState.update { it.copy(isSubmitting = true, message = null) }
             when (val result = userRepository.updateUserProfile(mapOf("userId" to userId, "nickname" to nickname))) {
                 is ApiResult.Success -> {
+                    sessionStore.saveUserProfile(
+                        userId = userId,
+                        nickname = nickname,
+                        phone = _uiState.value.userSummary.phone,
+                        avatar = _uiState.value.userSummary.avatar,
+                    )
                     _uiState.update {
                         it.copy(
                             userSummary = it.userSummary.copy(displayName = nickname),
@@ -376,6 +382,12 @@ class MainViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmitting = true, message = null) }
+            val session = sessionStore.currentSession()
+            val userId = session.userId.orEmpty()
+            if (userId.isBlank()) {
+                _uiState.update { it.copy(isSubmitting = false, message = "缺少用户信息，请重新登录") }
+                return@launch
+            }
             val request = mapOf(
                 "title" to title,
                 "type" to form.type.apiValue,
@@ -485,17 +497,36 @@ class MainViewModel(
             return
         }
 
+        _uiState.update {
+            it.copy(
+                userSummary = it.userSummary.copy(
+                    userId = userId,
+                    displayName = session.nickname?.takeIf(String::isNotBlank) ?: it.userSummary.displayName,
+                    phone = session.phone.orEmpty(),
+                    avatar = session.avatar.orEmpty(),
+                ),
+            )
+        }
+
         when (val result = userRepository.getUserProfile(userId)) {
             is ApiResult.Success -> {
                 val data = result.data.responseDataObject()
+                val nickname = data?.firstString("nickname", "username", "name", "displayName")
+                val phone = data?.firstString("phone", "mobile")
+                val avatar = data?.firstString("avatar")
+                sessionStore.saveUserProfile(
+                    userId = userId,
+                    nickname = nickname,
+                    phone = phone,
+                    avatar = avatar,
+                )
                 _uiState.update {
                     it.copy(
                         userSummary = it.userSummary.copy(
                             userId = userId,
-                            displayName = data?.firstString("nickname", "username", "name", "displayName")
-                                ?: "用户 $userId",
-                            phone = data?.firstString("phone", "mobile").orEmpty(),
-                            avatar = data?.firstString("avatar").orEmpty(),
+                            displayName = nickname ?: "用户 $userId",
+                            phone = phone.orEmpty(),
+                            avatar = avatar.orEmpty(),
                         ),
                     )
                 }

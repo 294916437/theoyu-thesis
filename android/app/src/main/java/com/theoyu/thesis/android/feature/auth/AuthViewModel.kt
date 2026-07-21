@@ -155,7 +155,19 @@ class AuthViewModel(
         }
 
         sessionStore.saveSession(token, userId)
-        userRepository.getUserProfile(userId)
+        when (val profileResult = userRepository.getUserProfile(userId)) {
+            is ApiResult.Success -> {
+                val profile = profileResult.data.responseDataObject()
+                sessionStore.saveUserProfile(
+                    userId = userId,
+                    nickname = profile?.firstString("nickname", "username", "name", "displayName"),
+                    phone = profile?.firstString("phone", "mobile"),
+                    avatar = profile?.firstString("avatar"),
+                )
+            }
+
+            is ApiResult.Failure -> Unit
+        }
         _uiState.update { it.copy(authenticated = true, messageResId = R.string.auth_message_login_success) }
     }
 
@@ -192,8 +204,17 @@ class AuthViewModel(
             ?: body.get("message")?.asStringOrNull()
     }
 
+    private fun JsonElement.responseDataObject(): JsonObject? =
+        asJsonObjectOrNull()?.getAsJsonObjectOrNull("data")
+
     private fun JsonElement.asJsonObjectOrNull(): JsonObject? =
         if (isJsonObject) asJsonObject else null
+
+    private fun JsonObject.getAsJsonObjectOrNull(memberName: String): JsonObject? =
+        get(memberName)?.asJsonObjectOrNull()
+
+    private fun JsonObject.firstString(vararg names: String): String? =
+        names.firstNotNullOfOrNull { name -> get(name)?.asStringOrNull()?.takeIf(String::isNotBlank) }
 
     private fun JsonElement.asStringOrNull(): String? =
         if (isJsonNull) null else runCatching { asString }.getOrNull()

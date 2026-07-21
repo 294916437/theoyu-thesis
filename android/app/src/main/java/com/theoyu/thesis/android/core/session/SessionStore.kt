@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.theoyu.thesis.android.core.network.AuthTokenProvider
@@ -43,6 +44,9 @@ class SessionStore(
             AuthSession(
                 token = preferences[KEY_TOKEN],
                 userId = preferences[KEY_USER_ID],
+                nickname = preferences[KEY_NICKNAME],
+                phone = preferences[KEY_PHONE],
+                avatar = preferences[KEY_AVATAR],
             )
         }
 
@@ -70,6 +74,20 @@ class SessionStore(
         cachedToken = token
     }
 
+    suspend fun saveUserProfile(
+        userId: String,
+        nickname: String?,
+        phone: String?,
+        avatar: String?,
+    ) {
+        appContext.sessionDataStore.edit { preferences ->
+            preferences[KEY_USER_ID] = userId
+            preferences.updateOptional(KEY_NICKNAME, nickname)
+            preferences.updateOptional(KEY_PHONE, phone)
+            preferences.updateOptional(KEY_AVATAR, avatar)
+        }
+    }
+
     fun clearSession() {
         cachedToken = null
         scope.launch {
@@ -82,10 +100,27 @@ class SessionStore(
     private companion object {
         val KEY_TOKEN = stringPreferencesKey("token")
         val KEY_USER_ID = stringPreferencesKey("user_id")
+        val KEY_NICKNAME = stringPreferencesKey("nickname")
+        val KEY_PHONE = stringPreferencesKey("phone")
+        val KEY_AVATAR = stringPreferencesKey("avatar")
     }
 }
 
 data class AuthSession(
     val token: String?,
     val userId: String?,
+    val nickname: String? = null,
+    val phone: String? = null,
+    val avatar: String? = null,
 )
+
+private fun MutablePreferences.updateOptional(
+    key: Preferences.Key<String>,
+    value: String?,
+) {
+    if (value.isNullOrBlank()) {
+        remove(key)
+    } else {
+        this[key] = value
+    }
+}

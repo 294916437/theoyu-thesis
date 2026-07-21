@@ -130,6 +130,10 @@ class AuthViewModel(
         _uiState.update { it.copy(message = null, messageResId = null) }
     }
 
+    fun resetAuthenticationState() {
+        _uiState.update { it.copy(authenticated = false, message = null, messageResId = null) }
+    }
+
     private suspend fun handleLoginResponse(response: JsonElement) {
         if (!response.isSuccessfulResponse()) {
             _uiState.update {

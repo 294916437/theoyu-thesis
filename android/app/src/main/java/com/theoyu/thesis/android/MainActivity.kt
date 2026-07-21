@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
         MainViewModelFactory(
             roomRepository = appContainer.roomRepository,
             userRepository = appContainer.userRepository,
+            authRepository = appContainer.authRepository,
             sessionStore = sessionStore,
         )
     }
@@ -77,6 +78,7 @@ private fun BlueSkyApp(
 ) {
     var destination by remember { mutableStateOf(AppDestination.Splash) }
     val authState by authViewModel.uiState.collectAsStateWithLifecycle()
+    val mainState by mainViewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         delay(SPLASH_DURATION_MILLIS)
@@ -90,6 +92,13 @@ private fun BlueSkyApp(
     LaunchedEffect(authState.authenticated) {
         if (authState.authenticated) {
             destination = AppDestination.Main
+        }
+    }
+
+    LaunchedEffect(mainState.loggedOut) {
+        if (mainState.loggedOut) {
+            authViewModel.resetAuthenticationState()
+            destination = AppDestination.Auth
         }
     }
 

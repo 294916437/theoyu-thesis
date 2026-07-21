@@ -85,7 +85,6 @@ private fun BlueSkyApp(
         AppDestination.Splash -> SplashScreen()
         AppDestination.Auth -> AuthScreen(
             uiState = authState,
-            onModeSelected = authViewModel::selectMode,
             onPhoneChanged = authViewModel::onPhoneChanged,
             onCodeChanged = authViewModel::onCodeChanged,
             onAgreeTermsChanged = authViewModel::onAgreeTermsChanged,

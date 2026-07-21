@@ -1,7 +1,6 @@
 package com.theoyu.thesis.android.feature.auth
 
 data class AuthUiState(
-    val mode: AuthMode = AuthMode.Login,
     val phone: String = "",
     val code: String = "",
     val agreeTerms: Boolean = false,
@@ -23,9 +22,4 @@ data class AuthUiState(
         private val PHONE_REGEX = Regex("^1[3-9]\\d{9}$")
         private const val VERIFICATION_CODE_LENGTH = 6
     }
-}
-
-enum class AuthMode {
-    Login,
-    Register,
 }

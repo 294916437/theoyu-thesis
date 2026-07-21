@@ -26,10 +26,6 @@ class AuthViewModel(
 
     private var countdownJob: Job? = null
 
-    fun selectMode(mode: AuthMode) {
-        _uiState.update { it.copy(mode = mode, message = null, messageResId = null) }
-    }
-
     fun onPhoneChanged(phone: String) {
         _uiState.update {
             it.copy(

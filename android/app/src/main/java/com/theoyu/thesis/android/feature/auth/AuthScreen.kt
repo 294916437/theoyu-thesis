@@ -17,8 +17,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,7 +34,6 @@ import com.theoyu.thesis.android.ui.theme.BlueSkyTheme
 @Composable
 fun AuthScreen(
     uiState: AuthUiState,
-    onModeSelected: (AuthMode) -> Unit,
     onPhoneChanged: (String) -> Unit,
     onCodeChanged: (String) -> Unit,
     onAgreeTermsChanged: (Boolean) -> Unit,
@@ -75,13 +72,7 @@ fun AuthScreen(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    text = stringResource(
-                        if (uiState.mode == AuthMode.Login) {
-                            R.string.auth_title_login
-                        } else {
-                            R.string.auth_title_register
-                        },
-                    ),
+                    text = stringResource(R.string.auth_title),
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -97,11 +88,6 @@ fun AuthScreen(
                         modifier = Modifier.padding(20.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        AuthModeTabs(
-                            selectedMode = uiState.mode,
-                            onModeSelected = onModeSelected,
-                        )
-
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
                             value = uiState.phone,
@@ -163,13 +149,7 @@ fun AuthScreen(
                             onClick = onSubmit,
                         ) {
                             Text(
-                                text = stringResource(
-                                    if (uiState.mode == AuthMode.Login) {
-                                        R.string.auth_login
-                                    } else {
-                                        R.string.auth_register
-                                    },
-                                ),
+                                text = stringResource(R.string.auth_login),
                             )
                         }
 
@@ -191,32 +171,12 @@ fun AuthScreen(
     }
 }
 
-@Composable
-private fun AuthModeTabs(
-    selectedMode: AuthMode,
-    onModeSelected: (AuthMode) -> Unit,
-) {
-    TabRow(selectedTabIndex = selectedMode.ordinal) {
-        Tab(
-            selected = selectedMode == AuthMode.Login,
-            onClick = { onModeSelected(AuthMode.Login) },
-            text = { Text(stringResource(R.string.auth_login)) },
-        )
-        Tab(
-            selected = selectedMode == AuthMode.Register,
-            onClick = { onModeSelected(AuthMode.Register) },
-            text = { Text(stringResource(R.string.auth_register)) },
-        )
-    }
-}
-
 @Preview(showBackground = true)
 @Composable
 private fun AuthScreenPreview() {
     BlueSkyTheme {
         AuthScreen(
             uiState = AuthUiState(),
-            onModeSelected = {},
             onPhoneChanged = {},
             onCodeChanged = {},
             onAgreeTermsChanged = {},

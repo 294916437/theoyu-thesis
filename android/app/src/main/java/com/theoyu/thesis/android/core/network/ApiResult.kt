@@ -29,7 +29,7 @@ suspend fun <T> safeApiCall(block: suspend () -> T): ApiResult<T> =
     } catch (error: IOException) {
         ApiResult.Failure(
             NetworkError(
-                message = "Network request failed",
+                message = "Network request failed,${error}",
                 cause = error,
             ),
         )

@@ -1,5 +1,18 @@
 package com.theoyu.thesis.android.feature.main
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Build
+import android.view.ViewGroup
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview as CameraPreviewUseCase
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -54,8 +67,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.Preview as ComposePreview
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.theoyu.thesis.android.ui.theme.BlueSkyTheme
 import java.time.Instant
@@ -100,6 +116,17 @@ fun MainFrame(
         onCreateAudioChanged = viewModel::updateCreateAudio,
         onCreateVideoChanged = viewModel::updateCreateVideo,
         onCreateSubmit = viewModel::createMeeting,
+        onPreJoinAudioChanged = viewModel::updatePreJoinAudio,
+        onPreJoinVideoChanged = viewModel::updatePreJoinVideo,
+        onPermissionsChanged = viewModel::updatePermissions,
+        onAudioRoutesChanged = viewModel::updateAudioRoutes,
+        onAudioRouteSelected = viewModel::selectAudioRoute,
+        onOpenProfileEditor = viewModel::openProfileEditor,
+        onDismissProfileEditor = viewModel::dismissProfileEditor,
+        onProfileNicknameChanged = viewModel::updateProfileNickname,
+        onSaveProfile = viewModel::saveProfile,
+        onLogout = viewModel::logout,
+        onEnterMeeting = viewModel::enterMeetingFromPreview,
         modifier = modifier,
     )
 }
@@ -125,6 +152,17 @@ private fun MainFrameContent(
     onCreateAudioChanged: (Boolean) -> Unit,
     onCreateVideoChanged: (Boolean) -> Unit,
     onCreateSubmit: () -> Unit,
+    onPreJoinAudioChanged: (Boolean) -> Unit,
+    onPreJoinVideoChanged: (Boolean) -> Unit,
+    onPermissionsChanged: (Boolean, Boolean) -> Unit,
+    onAudioRoutesChanged: (List<AudioRoute>) -> Unit,
+    onAudioRouteSelected: (AudioRoute) -> Unit,
+    onOpenProfileEditor: () -> Unit,
+    onDismissProfileEditor: () -> Unit,
+    onProfileNicknameChanged: (String) -> Unit,
+    onSaveProfile: () -> Unit,
+    onLogout: () -> Unit,
+    onEnterMeeting: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val title = when (uiState.route) {
@@ -177,7 +215,14 @@ private fun MainFrameContent(
                         recentMeetings = uiState.recentMeetings,
                     )
 
-                    MainTab.Profile -> ProfileScreen(userSummary = uiState.userSummary)
+                    MainTab.Profile -> ProfileScreen(
+                        uiState = uiState,
+                        onEditProfile = onOpenProfileEditor,
+                        onDismissEditor = onDismissProfileEditor,
+                        onNicknameChanged = onProfileNicknameChanged,
+                        onSaveProfile = onSaveProfile,
+                        onLogout = onLogout,
+                    )
                 }
 
                 MainRoute.CreateMeeting -> CreateMeetingScreen(
@@ -203,7 +248,15 @@ private fun MainFrameContent(
                     onJoin = onJoinValidatedMeeting,
                 )
 
-                MainRoute.PreJoin -> PreJoinScreen(meeting = uiState.preJoinMeeting)
+                MainRoute.PreJoin -> PreJoinScreen(
+                    uiState = uiState,
+                    onAudioChanged = onPreJoinAudioChanged,
+                    onVideoChanged = onPreJoinVideoChanged,
+                    onPermissionsChanged = onPermissionsChanged,
+                    onAudioRoutesChanged = onAudioRoutesChanged,
+                    onAudioRouteSelected = onAudioRouteSelected,
+                    onEnterMeeting = onEnterMeeting,
+                )
             }
 
             if (uiState.isLoading) {
@@ -382,25 +435,146 @@ private fun MeetingsScreen(
 }
 
 @Composable
-private fun ProfileScreen(userSummary: UserSummary) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item { UserSummaryCard(userSummary) }
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text("账号信息", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    InfoRow("用户 ID", userSummary.userId.ifBlank { "-" })
-                    InfoRow("手机号", userSummary.phone.ifBlank { "-" })
-                    InfoRow("登录状态", "已登录")
+private fun ProfileScreen(
+    uiState: MainUiState,
+    onEditProfile: () -> Unit,
+    onDismissEditor: () -> Unit,
+    onNicknameChanged: (String) -> Unit,
+    onSaveProfile: () -> Unit,
+    onLogout: () -> Unit,
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 104.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            item {
+                ProfileHeader(userSummary = uiState.userSummary)
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                        SettingsRow("编辑资料", "修改昵称和头像信息", onEditProfile)
+                        HorizontalDivider()
+                        SettingsRow("在线状态", if (uiState.userSummary.online) "在线" else "离线", null)
+                        HorizontalDivider()
+                        SettingsRow("手机号", uiState.userSummary.phone.ifBlank { "-" }, null)
+                    }
                 }
             }
+        }
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .navigationBarsPadding(),
+            tonalElevation = 3.dp,
+        ) {
+            OutlinedButton(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                enabled = !uiState.isLoggingOut,
+                onClick = onLogout,
+            ) {
+                Text(if (uiState.isLoggingOut) "退出中..." else "退出登录")
+            }
+        }
+    }
+
+    if (uiState.profileEditOpen) {
+        AlertDialog(
+            onDismissRequest = onDismissEditor,
+            title = { Text("编辑资料") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = uiState.profileEditForm.nickname,
+                        onValueChange = onNicknameChanged,
+                        label = { Text("昵称") },
+                        singleLine = true,
+                    )
+                    Text(
+                        "手机号由登录账号绑定，当前仅支持修改昵称。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !uiState.isSubmitting,
+                    onClick = onSaveProfile,
+                ) {
+                    Text("保存")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissEditor) { Text("取消") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ProfileHeader(userSummary: UserSummary) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(82.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = userSummary.displayName.firstOrNull()?.toString() ?: "我",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(userSummary.displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = userSummary.phone.ifBlank { "用户 ID ${userSummary.userId.ifBlank { "-" }}" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = if (userSummary.online) "在线" else "离线",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (userSummary.online) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsRow(
+    title: String,
+    subtitle: String,
+    onClick: (() -> Unit)?,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (onClick != null) {
+            Text("进入", color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -637,32 +811,211 @@ private fun JoinMeetingScreen(
 }
 
 @Composable
-private fun PreJoinScreen(meeting: MeetingSummary?) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text("会前预览", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "摄像头、麦克风和背景效果预览区域占位。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    HorizontalDivider()
-                    InfoRow("会议", meeting?.title ?: "-")
-                    InfoRow("会议号", meeting?.roomNo?.ifBlank { "-" } ?: "-")
-                    InfoRow("开始时间", meeting?.startTime?.ifBlank { "-" } ?: "-")
+private fun PreJoinScreen(
+    uiState: MainUiState,
+    onAudioChanged: (Boolean) -> Unit,
+    onVideoChanged: (Boolean) -> Unit,
+    onPermissionsChanged: (Boolean, Boolean) -> Unit,
+    onAudioRoutesChanged: (List<AudioRoute>) -> Unit,
+    onAudioRouteSelected: (AudioRoute) -> Unit,
+    onEnterMeeting: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val permissions = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        onPermissionsChanged(
+            result[Manifest.permission.CAMERA] == true,
+            result[Manifest.permission.RECORD_AUDIO] == true,
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        val cameraGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        val audioGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        onPermissionsChanged(cameraGranted, audioGranted)
+        if (!cameraGranted || !audioGranted) {
+            permissionLauncher.launch(permissions)
+        }
+        onAudioRoutesChanged(context.availableCommunicationRoutes())
+    }
+
+    LaunchedEffect(uiState.audioRoute) {
+        context.selectCommunicationRoute(uiState.audioRoute)
+    }
+
+    val canJoin = uiState.cameraPermissionGranted &&
+        uiState.audioPermissionGranted &&
+        (uiState.createForm.audioEnabled || uiState.createForm.videoEnabled)
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 112.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            item {
+                PreJoinVideoPreview(
+                    enabled = uiState.createForm.videoEnabled,
+                    cameraPermissionGranted = uiState.cameraPermissionGranted,
+                    lifecycleOwner = lifecycleOwner,
+                )
+            }
+            uiState.permissionHint?.let { hint ->
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            modifier = Modifier.padding(16.dp),
+                            text = hint,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text("入会身份", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(uiState.userSummary.displayName.firstOrNull()?.toString() ?: "我")
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(uiState.userSummary.displayName, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    uiState.userSummary.phone.ifBlank { "用户 ID ${uiState.userSummary.userId.ifBlank { "-" }}" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        HorizontalDivider()
+                        InfoRow("会议", uiState.preJoinMeeting?.title ?: "-")
+                        InfoRow("会议号", uiState.preJoinMeeting?.roomNo?.ifBlank { "-" } ?: "-")
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text("设备检查", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        SwitchRow("麦克风", uiState.createForm.audioEnabled, onAudioChanged)
+                        SwitchRow("摄像头", uiState.createForm.videoEnabled, onVideoChanged)
+                        Text("音频输出", style = MaterialTheme.typography.titleSmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            uiState.availableAudioRoutes.forEach { route ->
+                                FilterChip(
+                                    selected = uiState.audioRoute == route,
+                                    onClick = { onAudioRouteSelected(route) },
+                                    label = { Text(route.label) },
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .navigationBarsPadding(),
+            tonalElevation = 3.dp,
+        ) {
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                enabled = canJoin,
+                onClick = onEnterMeeting,
+            ) {
+                Text(
+                    when {
+                        uiState.permissionHint != null -> "完成设备权限检查"
+                        !uiState.createForm.audioEnabled && !uiState.createForm.videoEnabled -> "至少开启一个设备"
+                        else -> "加入会议"
+                    },
+                )
+            }
+        }
     }
+}
+
+@Composable
+private fun PreJoinVideoPreview(
+    enabled: Boolean,
+    cameraPermissionGranted: Boolean,
+    lifecycleOwner: LifecycleOwner,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(320.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (enabled && cameraPermissionGranted) {
+                CameraPreview(lifecycleOwner = lifecycleOwner)
+            } else {
+                Text(
+                    text = if (!cameraPermissionGranted) "等待相机权限" else "摄像头已关闭",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CameraPreview(lifecycleOwner: LifecycleOwner) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { viewContext ->
+            PreviewView(viewContext).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+                scaleType = PreviewView.ScaleType.FILL_CENTER
+            }
+        },
+        update = { previewView ->
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+            cameraProviderFuture.addListener(
+                {
+                    val cameraProvider = cameraProviderFuture.get()
+                    val preview = CameraPreviewUseCase.Builder().build().also {
+                        it.setSurfaceProvider(previewView.surfaceProvider)
+                    }
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        CameraSelector.DEFAULT_FRONT_CAMERA,
+                        preview,
+                    )
+                },
+                ContextCompat.getMainExecutor(context),
+            )
+        },
+    )
 }
 
 @Composable
@@ -744,10 +1097,48 @@ private fun InfoRow(
     }
 }
 
+private fun Context.availableCommunicationRoutes(): List<AudioRoute> {
+    val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    val routes = mutableListOf(AudioRoute.Speaker)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val hasEarpiece = audioManager.availableCommunicationDevices.any {
+            it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+        }
+        if (hasEarpiece) {
+            routes += AudioRoute.Earpiece
+        }
+    } else {
+        @Suppress("DEPRECATION")
+        if (!audioManager.isSpeakerphoneOn) {
+            routes += AudioRoute.Earpiece
+        } else {
+            routes += AudioRoute.Earpiece
+        }
+    }
+    return routes.distinct()
+}
+
+private fun Context.selectCommunicationRoute(route: AudioRoute) {
+    val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val type = when (route) {
+            AudioRoute.Speaker -> AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+            AudioRoute.Earpiece -> AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+        }
+        audioManager.availableCommunicationDevices
+            .firstOrNull { it.type == type }
+            ?.let(audioManager::setCommunicationDevice)
+    } else {
+        @Suppress("DEPRECATION")
+        audioManager.isSpeakerphoneOn = route == AudioRoute.Speaker
+    }
+}
+
 private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
-@Preview(showBackground = true)
+@ComposePreview(showBackground = true)
 @Composable
 private fun MainFramePreview() {
     BlueSkyTheme {
@@ -778,6 +1169,17 @@ private fun MainFramePreview() {
             onCreateAudioChanged = {},
             onCreateVideoChanged = {},
             onCreateSubmit = {},
+            onPreJoinAudioChanged = {},
+            onPreJoinVideoChanged = {},
+            onPermissionsChanged = { _, _ -> },
+            onAudioRoutesChanged = {},
+            onAudioRouteSelected = {},
+            onOpenProfileEditor = {},
+            onDismissProfileEditor = {},
+            onProfileNicknameChanged = {},
+            onSaveProfile = {},
+            onLogout = {},
+            onEnterMeeting = {},
         )
     }
 }

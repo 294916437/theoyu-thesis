@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 private val Context.sessionDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "blue_sky_session",
@@ -58,7 +59,12 @@ class SessionStore(
         }
     }
 
-    override fun currentToken(): String? = cachedToken
+    override fun currentToken(): String? =
+        cachedToken ?: runCatching {
+            runBlocking(Dispatchers.IO) {
+                currentSession().token
+            }
+        }.getOrNull()
 
     suspend fun currentSession(): AuthSession =
         sessionFlow.first().also { cachedToken = it.token }

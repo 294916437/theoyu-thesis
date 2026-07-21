@@ -92,6 +92,7 @@ private fun BlueSkyApp(
 
     LaunchedEffect(authState.authenticated) {
         if (authState.authenticated) {
+            mainViewModel.refresh()
             destination = AppDestination.Main
         }
     }

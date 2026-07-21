@@ -16,6 +16,8 @@ import com.theoyu.thesis.android.feature.auth.AuthScreen
 import com.theoyu.thesis.android.feature.auth.AuthViewModel
 import com.theoyu.thesis.android.feature.auth.AuthViewModelFactory
 import com.theoyu.thesis.android.feature.main.MainFrame
+import com.theoyu.thesis.android.feature.main.MainViewModel
+import com.theoyu.thesis.android.feature.main.MainViewModelFactory
 import com.theoyu.thesis.android.feature.splash.SplashScreen
 import com.theoyu.thesis.android.ui.theme.BlueSkyTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,6 +40,14 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private val mainViewModel: MainViewModel by viewModels {
+        MainViewModelFactory(
+            roomRepository = appContainer.roomRepository,
+            userRepository = appContainer.userRepository,
+            sessionStore = sessionStore,
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -46,6 +56,7 @@ class MainActivity : ComponentActivity() {
                 BlueSkyApp(
                     sessionStore = sessionStore,
                     authViewModel = authViewModel,
+                    mainViewModel = mainViewModel,
                 )
             }
         }
@@ -62,6 +73,7 @@ private enum class AppDestination {
 private fun BlueSkyApp(
     sessionStore: SessionStore,
     authViewModel: AuthViewModel,
+    mainViewModel: MainViewModel,
 ) {
     var destination by remember { mutableStateOf(AppDestination.Splash) }
     val authState by authViewModel.uiState.collectAsStateWithLifecycle()
@@ -93,7 +105,7 @@ private fun BlueSkyApp(
             onMessageShown = authViewModel::consumeMessage,
         )
 
-        AppDestination.Main -> MainFrame()
+        AppDestination.Main -> MainFrame(viewModel = mainViewModel)
     }
 }
 

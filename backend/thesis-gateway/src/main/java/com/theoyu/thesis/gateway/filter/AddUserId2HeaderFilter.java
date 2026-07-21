@@ -39,7 +39,7 @@ public class AddUserId2HeaderFilter implements GlobalFilter {
         ServerWebExchange newExchange = exchange.mutate()
                 .request(builder -> builder.header(GlobalConstants.USER_ID, String.valueOf(finalUserId))) // 将用户 ID 设置到请求头中
                 .build();
-        return chain.filter(exchange);
+        return chain.filter(newExchange);
     }
 
 }

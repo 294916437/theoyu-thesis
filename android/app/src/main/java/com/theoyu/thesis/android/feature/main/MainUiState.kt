@@ -89,6 +89,64 @@ data class RoomUiState(
     val handRaised: Boolean = false,
     val screenSharing: Boolean = false,
     val captionsEnabled: Boolean = false,
+    val mediaState: RoomMediaState = RoomMediaState(),
+)
+
+data class RoomMediaState(
+    val phase: SfuMediaPhase = SfuMediaPhase.Idle,
+    val routerRtpCapabilitiesJson: String = "",
+    val sendTransport: SfuTransportState? = null,
+    val recvTransport: SfuTransportState? = null,
+    val localProducers: List<SfuProducerState> = emptyList(),
+    val remoteProducers: List<SfuProducerState> = emptyList(),
+    val consumers: List<SfuConsumerState> = emptyList(),
+    val error: String? = null,
+    val mediaEngineReady: Boolean = false,
+)
+
+enum class SfuMediaPhase(
+    val label: String,
+) {
+    Idle("未开始"),
+    Joining("加入房间"),
+    RouterReady("路由能力已获取"),
+    TransportsReady("传输已创建"),
+    Consuming("订阅远端流"),
+    AwaitingMediaEngine("等待本地媒体引擎"),
+    Connected("媒体信令已连接"),
+    Failed("媒体信令失败"),
+}
+
+data class SfuTransportState(
+    val id: String,
+    val direction: SfuTransportDirection,
+    val connected: Boolean = false,
+)
+
+enum class SfuTransportDirection(
+    val label: String,
+) {
+    Send("发送"),
+    Recv("接收"),
+}
+
+data class SfuProducerState(
+    val id: String,
+    val peerId: String,
+    val userId: String = "",
+    val username: String = "",
+    val kind: String,
+    val paused: Boolean = false,
+    val local: Boolean = false,
+)
+
+data class SfuConsumerState(
+    val id: String,
+    val producerId: String,
+    val kind: String,
+    val peerId: String = "",
+    val resumed: Boolean = false,
+    val producerPaused: Boolean = false,
 )
 
 data class RoomParticipant(

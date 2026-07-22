@@ -266,8 +266,8 @@ class MainViewModel(
                     .put("username", _uiState.value.userSummary.displayName)
                     .put("token", session.token.orEmpty())
                     .put("withMedia", true)
-                socketIoClient.emit("joinRoom", joinPayload)
-                val localPeerId = socketIoClient.connectionState.value.socketId ?: "local"
+                val joinResponse = socketIoClient.emit("joinRoom", joinPayload)
+                val localPeerId = session.userId.orEmpty().ifBlank { socketIoClient.connectionState.value.socketId ?: "local" }
                 val localParticipant = RoomParticipant(
                     peerId = localPeerId,
                     userId = session.userId.orEmpty(),
@@ -288,10 +288,21 @@ class MainViewModel(
                             audioEnabled = it.createForm.audioEnabled,
                             videoEnabled = it.createForm.videoEnabled,
                             networkQuality = NetworkQuality.Excellent,
+                            mediaState = RoomMediaState(
+                                phase = SfuMediaPhase.Joining,
+                                remoteProducers = parseJoinRoomProducers(joinResponse),
+                                localProducers = buildLocalProducerPlaceholders(
+                                    peerId = session.userId.orEmpty(),
+                                    username = _uiState.value.userSummary.displayName,
+                                    audioEnabled = it.createForm.audioEnabled,
+                                    videoEnabled = it.createForm.videoEnabled,
+                                ),
+                            ),
                         ),
                     )
                 }
                 refreshRoomParticipants()
+                startSfuSignalingSession()
             }.onFailure { error ->
                 _uiState.update { it.copy(message = error.message ?: "进入会议失败") }
             }
@@ -498,6 +509,151 @@ class MainViewModel(
                 }
             }
             _uiState.update { it.copy(isSubmitting = false) }
+        }
+    }
+
+    private suspend fun startSfuSignalingSession() {
+        val roomId = _uiState.value.activeRoom.meeting?.roomId.orEmpty()
+        if (roomId.isBlank() || !socketIoClient.isConnected) return
+
+        runCatching {
+            val routerResponse = socketIoClient.emit(
+                "getRouterRtpCapabilities",
+                JSONObject().put("roomId", roomId),
+            ).asJsonObject()
+            val routerCapabilities = routerResponse?.optJSONObject("rtpCapabilities") ?: JSONObject()
+            _uiState.update {
+                it.copy(
+                    activeRoom = it.activeRoom.copy(
+                        mediaState = it.activeRoom.mediaState.copy(
+                            phase = SfuMediaPhase.RouterReady,
+                            routerRtpCapabilitiesJson = routerCapabilities.toString(),
+                            error = null,
+                        ),
+                    ),
+                )
+            }
+
+            val sendTransport = createSfuTransport(roomId = roomId, producing = true, consuming = false)
+            val recvTransport = createSfuTransport(roomId = roomId, producing = false, consuming = true)
+            _uiState.update {
+                it.copy(
+                    activeRoom = it.activeRoom.copy(
+                        mediaState = it.activeRoom.mediaState.copy(
+                            phase = SfuMediaPhase.TransportsReady,
+                            sendTransport = sendTransport,
+                            recvTransport = recvTransport,
+                            mediaEngineReady = false,
+                        ),
+                    ),
+                )
+            }
+
+            _uiState.value.activeRoom.mediaState.remoteProducers.forEach { producer ->
+                consumeRemoteProducer(producer)
+            }
+
+            _uiState.update {
+                it.copy(
+                    activeRoom = it.activeRoom.copy(
+                        mediaState = it.activeRoom.mediaState.copy(
+                            phase = SfuMediaPhase.AwaitingMediaEngine,
+                        ),
+                    ),
+                    message = "SFU 信令已就绪，等待 Android 媒体引擎连接传输并生产本地轨道",
+                )
+            }
+        }.onFailure { error ->
+            _uiState.update {
+                it.copy(
+                    activeRoom = it.activeRoom.copy(
+                        mediaState = it.activeRoom.mediaState.copy(
+                            phase = SfuMediaPhase.Failed,
+                            error = error.message,
+                        ),
+                    ),
+                    message = error.message ?: "SFU 媒体信令初始化失败",
+                )
+            }
+        }
+    }
+
+    private suspend fun createSfuTransport(
+        roomId: String,
+        producing: Boolean,
+        consuming: Boolean,
+    ): SfuTransportState {
+        val response = socketIoClient.emit(
+            "createWebRtcTransport",
+            JSONObject()
+                .put("roomId", roomId)
+                .put("producing", producing)
+                .put("consuming", consuming),
+        ).asJsonObject()
+        val id = response?.optString("id").orEmpty()
+        return SfuTransportState(
+            id = id,
+            direction = if (producing) SfuTransportDirection.Send else SfuTransportDirection.Recv,
+            connected = false,
+        )
+    }
+
+    private fun consumeRemoteProducer(producer: SfuProducerState) {
+        val roomId = _uiState.value.activeRoom.meeting?.roomId.orEmpty()
+        val rtpCapabilities = _uiState.value.activeRoom.mediaState.routerRtpCapabilitiesJson
+        val alreadyConsumed = _uiState.value.activeRoom.mediaState.consumers.any { it.producerId == producer.id }
+        if (roomId.isBlank() || producer.id.isBlank() || rtpCapabilities.isBlank() || alreadyConsumed) return
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(activeRoom = it.activeRoom.copy(mediaState = it.activeRoom.mediaState.copy(phase = SfuMediaPhase.Consuming)))
+            }
+            runCatching {
+                val consumeResponse = socketIoClient.emit(
+                    "consume",
+                    JSONObject()
+                        .put("roomId", roomId)
+                        .put("producerId", producer.id)
+                        .put("rtpCapabilities", JSONObject(rtpCapabilities)),
+                ).asJsonObject()
+                val consumer = SfuConsumerState(
+                    id = consumeResponse?.optString("id").orEmpty(),
+                    producerId = consumeResponse?.optString("producerId").orEmpty().ifBlank { producer.id },
+                    kind = consumeResponse?.optString("kind").orEmpty().ifBlank { producer.kind },
+                    peerId = producer.peerId,
+                    producerPaused = consumeResponse?.optBoolean("producerPaused", producer.paused) ?: producer.paused,
+                )
+                if (consumer.id.isNotBlank()) {
+                    socketIoClient.emit(
+                        "resumeConsumer",
+                        JSONObject()
+                            .put("roomId", roomId)
+                            .put("consumerId", consumer.id),
+                    )
+                    _uiState.update {
+                        it.copy(
+                            activeRoom = it.activeRoom.copy(
+                                mediaState = it.activeRoom.mediaState.copy(
+                                    consumers = it.activeRoom.mediaState.consumers.upsertConsumer(consumer.copy(resumed = true)),
+                                    phase = SfuMediaPhase.AwaitingMediaEngine,
+                                    error = null,
+                                ),
+                            ),
+                        )
+                    }
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        activeRoom = it.activeRoom.copy(
+                            mediaState = it.activeRoom.mediaState.copy(
+                                phase = SfuMediaPhase.AwaitingMediaEngine,
+                                error = error.message,
+                            ),
+                        ),
+                    )
+                }
+            }
         }
     }
 
@@ -778,6 +934,7 @@ class MainViewModel(
             val peerId = body.optString("peerId")
             val kind = body.optString("kind")
             val enabled = !body.optBoolean("paused", false)
+            val producerId = body.optString("producerId")
             _uiState.update {
                 it.copy(
                     activeRoom = it.activeRoom.copy(
@@ -791,6 +948,13 @@ class MainViewModel(
                             }
                         },
                         activeSpeakerPeerId = if (kind == "audio" && enabled) peerId else it.activeRoom.activeSpeakerPeerId,
+                        mediaState = updateProducerPauseState(
+                            mediaState = it.activeRoom.mediaState,
+                            producerId = producerId,
+                            peerId = peerId,
+                            kind = kind,
+                            paused = !enabled,
+                        ),
                     ),
                 )
             }
@@ -818,7 +982,28 @@ class MainViewModel(
                 videoEnabled = body.optString("kind") != "audio",
             )
             _uiState.update {
-                it.copy(activeRoom = it.activeRoom.copy(participants = it.activeRoom.participants.upsert(participant)))
+                it.copy(
+                    activeRoom = it.activeRoom.copy(
+                        participants = it.activeRoom.participants.upsert(participant),
+                        mediaState = it.activeRoom.mediaState.copy(
+                            remoteProducers = it.activeRoom.mediaState.remoteProducers.upsertProducer(body.toProducerState()),
+                        ),
+                    ),
+                )
+            }
+            consumeRemoteProducer(body.toProducerState())
+        }
+        roomSocketSubscriptions += socketIoClient.on("consumerClosed") { args ->
+            val body = args.firstJsonObject() ?: return@on
+            val consumerId = body.optString("consumerId")
+            _uiState.update {
+                it.copy(
+                    activeRoom = it.activeRoom.copy(
+                        mediaState = it.activeRoom.mediaState.copy(
+                            consumers = it.activeRoom.mediaState.consumers.filterNot { consumer -> consumer.id == consumerId },
+                        ),
+                    ),
+                )
             }
         }
         roomSocketSubscriptions += socketIoClient.on("roomClosed") {
@@ -1014,6 +1199,63 @@ class MainViewModel(
             )
         }
 
+    private fun parseJoinRoomProducers(response: Any?): List<SfuProducerState> {
+        val body = response.asJsonObject() ?: return emptyList()
+        val peers = body.optJSONArray("peers") ?: return emptyList()
+        return buildList {
+            for (peerIndex in 0 until peers.length()) {
+                val peer = peers.optJSONObject(peerIndex) ?: continue
+                val producers = peer.optJSONArray("producers") ?: continue
+                for (producerIndex in 0 until producers.length()) {
+                    val producer = producers.optJSONObject(producerIndex) ?: continue
+                    add(
+                        SfuProducerState(
+                            id = producer.optString("id"),
+                            peerId = peer.optString("peerId"),
+                            userId = peer.optString("userId"),
+                            username = peer.optString("username"),
+                            kind = producer.optString("kind"),
+                            paused = producer.optBoolean("paused", false),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun buildLocalProducerPlaceholders(
+        peerId: String,
+        username: String,
+        audioEnabled: Boolean,
+        videoEnabled: Boolean,
+    ): List<SfuProducerState> =
+        buildList {
+            if (audioEnabled) {
+                add(
+                    SfuProducerState(
+                        id = "",
+                        peerId = peerId,
+                        userId = peerId,
+                        username = username,
+                        kind = "audio",
+                        local = true,
+                    ),
+                )
+            }
+            if (videoEnabled) {
+                add(
+                    SfuProducerState(
+                        id = "",
+                        peerId = peerId,
+                        userId = peerId,
+                        username = username,
+                        kind = "video",
+                        local = true,
+                    ),
+                )
+            }
+        }
+
     private fun participantFromJson(body: JSONObject): RoomParticipant =
         RoomParticipant(
             peerId = body.optString("peerId", body.optString("socketId", "${System.currentTimeMillis()}")),
@@ -1022,6 +1264,16 @@ class MainViewModel(
             audioEnabled = !body.optBoolean("audioPaused", false),
             videoEnabled = !body.optBoolean("videoPaused", false),
             speaking = body.optBoolean("speaking", false),
+        )
+
+    private fun JSONObject.toProducerState(): SfuProducerState =
+        SfuProducerState(
+            id = optString("producerId", optString("id")),
+            peerId = optString("peerId"),
+            userId = optString("userId"),
+            username = optString("username"),
+            kind = optString("kind"),
+            paused = optBoolean("paused", false),
         )
 
     private fun mergeParticipants(
@@ -1073,6 +1325,53 @@ class MainViewModel(
                 .thenBy { it.username },
         )
 
+    private fun List<SfuProducerState>.upsertProducer(producer: SfuProducerState): List<SfuProducerState> =
+        if (producer.id.isBlank()) {
+            this
+        } else if (any { it.id == producer.id }) {
+            map { current -> if (current.id == producer.id) producer else current }
+        } else {
+            this + producer
+        }
+
+    private fun List<SfuConsumerState>.upsertConsumer(consumer: SfuConsumerState): List<SfuConsumerState> =
+        if (consumer.id.isBlank()) {
+            this
+        } else if (any { it.id == consumer.id }) {
+            map { current -> if (current.id == consumer.id) consumer else current }
+        } else {
+            this + consumer
+        }
+
+    private fun updateProducerPauseState(
+        mediaState: RoomMediaState,
+        producerId: String,
+        peerId: String,
+        kind: String,
+        paused: Boolean,
+    ): RoomMediaState =
+        mediaState.copy(
+            localProducers = mediaState.localProducers.mapProducerPause(producerId, peerId, kind, paused),
+            remoteProducers = mediaState.remoteProducers.mapProducerPause(producerId, peerId, kind, paused),
+            consumers = mediaState.consumers.map { consumer ->
+                if (consumer.producerId == producerId) consumer.copy(producerPaused = paused) else consumer
+            },
+        )
+
+    private fun List<SfuProducerState>.mapProducerPause(
+        producerId: String,
+        peerId: String,
+        kind: String,
+        paused: Boolean,
+    ): List<SfuProducerState> =
+        map { producer ->
+            if (producer.id == producerId || (producer.peerId == peerId && producer.kind == kind)) {
+                producer.copy(paused = paused)
+            } else {
+                producer
+            }
+        }
+
     private fun Array<Any>.firstJsonObject(): JSONObject? =
         firstOrNull()?.let { value ->
             when (value) {
@@ -1080,6 +1379,14 @@ class MainViewModel(
                 is Map<*, *> -> JSONObject(value)
                 else -> runCatching { JSONObject(value.toString()) }.getOrNull()
             }
+        }
+
+    private fun Any?.asJsonObject(): JSONObject? =
+        when (this) {
+            is JSONObject -> this
+            is Map<*, *> -> JSONObject(this)
+            null -> null
+            else -> runCatching { JSONObject(toString()) }.getOrNull()
         }
 
     private fun mapJoinFailure(statusCode: Int?, message: String): JoinMeetingError =

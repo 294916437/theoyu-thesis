@@ -333,9 +333,11 @@ private fun RoomTopOverlay(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "当前发言人：${activeSpeaker.username}",
+                    text = "当前发言人：${activeSpeaker.username} · ${roomState.mediaState.phase.label}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }

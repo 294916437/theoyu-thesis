@@ -1,4 +1,4 @@
-package com.theoyu.thesis.android.feature.main
+package com.theoyu.thesis.android.feature.meeting.create
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +37,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.theoyu.thesis.android.feature.main.CreateMeetingForm
+import com.theoyu.thesis.android.feature.main.MeetingCreateType
+import com.theoyu.thesis.android.feature.main.component.SwitchRow
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -45,7 +48,7 @@ import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CreateMeetingScreen(
+fun CreateMeetingScreen(
     form: CreateMeetingForm,
     isSubmitting: Boolean,
     onTitleChanged: (String) -> Unit,

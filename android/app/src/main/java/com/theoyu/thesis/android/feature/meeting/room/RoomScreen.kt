@@ -1,4 +1,4 @@
-package com.theoyu.thesis.android.feature.main
+package com.theoyu.thesis.android.feature.meeting.room
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -36,10 +36,15 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.theoyu.thesis.android.feature.main.RoomParticipant
+import com.theoyu.thesis.android.feature.main.RoomSheet
+import com.theoyu.thesis.android.feature.main.RoomUiState
+import com.theoyu.thesis.android.feature.main.component.EmptyState
+import com.theoyu.thesis.android.feature.main.component.InfoRow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun RoomScreen(
+fun RoomScreen(
     roomState: RoomUiState,
     onToggleAudio: () -> Unit,
     onToggleVideo: () -> Unit,

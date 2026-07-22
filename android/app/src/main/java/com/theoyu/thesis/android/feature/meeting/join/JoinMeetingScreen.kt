@@ -1,4 +1,4 @@
-package com.theoyu.thesis.android.feature.main
+package com.theoyu.thesis.android.feature.meeting.join
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,9 +13,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.theoyu.thesis.android.feature.main.JoinMeetingError
+import com.theoyu.thesis.android.feature.main.MeetingSummary
+import com.theoyu.thesis.android.feature.main.component.MeetingSummaryCard
 
 @Composable
-internal fun JoinMeetingScreen(
+fun JoinMeetingScreen(
     meetingNo: String,
     error: JoinMeetingError?,
     validatedMeeting: MeetingSummary?,

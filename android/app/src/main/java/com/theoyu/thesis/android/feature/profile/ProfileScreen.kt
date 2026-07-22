@@ -1,4 +1,4 @@
-package com.theoyu.thesis.android.feature.main
+package com.theoyu.thesis.android.feature.profile
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,9 +28,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.theoyu.thesis.android.feature.main.MainUiState
+import com.theoyu.thesis.android.feature.main.UserSummary
 
 @Composable
-internal fun ProfileScreen(
+fun ProfileScreen(
     uiState: MainUiState,
     onEditProfile: () -> Unit,
     onDismissEditor: () -> Unit,

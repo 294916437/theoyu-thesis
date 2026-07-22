@@ -1,4 +1,4 @@
-package com.theoyu.thesis.android.feature.main
+package com.theoyu.thesis.android.feature.meeting.home
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,9 +22,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.theoyu.thesis.android.feature.main.MainUiState
+import com.theoyu.thesis.android.feature.main.component.EmptyState
+import com.theoyu.thesis.android.feature.main.component.MeetingSummaryCard
+import com.theoyu.thesis.android.feature.main.component.UserSummaryCard
 
 @Composable
-internal fun HomeScreen(
+fun HomeScreen(
     uiState: MainUiState,
     onMeetingNoChanged: (String) -> Unit,
     onJoinClick: () -> Unit,

@@ -1,4 +1,4 @@
-package com.theoyu.thesis.android.feature.main
+package com.theoyu.thesis.android.feature.main.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -20,9 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.theoyu.thesis.android.feature.main.MeetingSummary
+import com.theoyu.thesis.android.feature.main.UserSummary
 
 @Composable
-internal fun UserSummaryCard(userSummary: UserSummary) {
+fun UserSummaryCard(userSummary: UserSummary) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -54,7 +56,7 @@ internal fun UserSummaryCard(userSummary: UserSummary) {
 }
 
 @Composable
-internal fun MeetingSummaryCard(meeting: MeetingSummary) {
+fun MeetingSummaryCard(meeting: MeetingSummary) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -88,7 +90,7 @@ internal fun MeetingSummaryCard(meeting: MeetingSummary) {
 }
 
 @Composable
-internal fun SwitchRow(
+fun SwitchRow(
     label: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
@@ -103,12 +105,12 @@ internal fun SwitchRow(
 }
 
 @Composable
-internal fun SectionTitle(text: String) {
+fun SectionTitle(text: String) {
     Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
 }
 
 @Composable
-internal fun EmptyState(text: String) {
+fun EmptyState(text: String) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
@@ -122,7 +124,7 @@ internal fun EmptyState(text: String) {
 }
 
 @Composable
-internal fun InfoRow(
+fun InfoRow(
     label: String,
     value: String,
 ) {

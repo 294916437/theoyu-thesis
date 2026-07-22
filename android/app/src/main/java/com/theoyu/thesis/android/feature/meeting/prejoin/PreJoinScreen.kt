@@ -1,4 +1,4 @@
-package com.theoyu.thesis.android.feature.main
+package com.theoyu.thesis.android.feature.meeting.prejoin
 
 import android.Manifest
 import android.content.Context
@@ -47,9 +47,13 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.theoyu.thesis.android.feature.main.AudioRoute
+import com.theoyu.thesis.android.feature.main.MainUiState
+import com.theoyu.thesis.android.feature.main.component.InfoRow
+import com.theoyu.thesis.android.feature.main.component.SwitchRow
 
 @Composable
-internal fun PreJoinScreen(
+fun PreJoinScreen(
     uiState: MainUiState,
     onAudioChanged: (Boolean) -> Unit,
     onVideoChanged: (Boolean) -> Unit,

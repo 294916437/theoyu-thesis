@@ -22,6 +22,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.theoyu.thesis.android.feature.meeting.create.CreateMeetingScreen
+import com.theoyu.thesis.android.feature.meeting.home.HomeScreen
+import com.theoyu.thesis.android.feature.meeting.join.JoinMeetingScreen
+import com.theoyu.thesis.android.feature.meeting.list.MeetingsScreen
+import com.theoyu.thesis.android.feature.meeting.prejoin.PreJoinScreen
+import com.theoyu.thesis.android.feature.meeting.room.RoomScreen
+import com.theoyu.thesis.android.feature.profile.ProfileScreen
 import com.theoyu.thesis.android.ui.theme.BlueSkyTheme
 
 @OptIn(ExperimentalMaterial3Api::class)

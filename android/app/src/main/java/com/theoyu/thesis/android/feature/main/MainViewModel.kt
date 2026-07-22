@@ -272,6 +272,7 @@ class MainViewModel(
                     peerId = localPeerId,
                     userId = session.userId.orEmpty(),
                     username = _uiState.value.userSummary.displayName,
+                    role = if (meeting.hostId == session.userId.orEmpty()) ParticipantRole.Host else ParticipantRole.Member,
                     isLocal = true,
                     audioEnabled = _uiState.value.createForm.audioEnabled,
                     videoEnabled = _uiState.value.createForm.videoEnabled,
@@ -290,6 +291,7 @@ class MainViewModel(
                         ),
                     )
                 }
+                refreshRoomParticipants()
             }.onFailure { error ->
                 _uiState.update { it.copy(message = error.message ?: "进入会议失败") }
             }
@@ -336,10 +338,167 @@ class MainViewModel(
 
     fun openRoomSheet(sheet: RoomSheet) {
         _uiState.update { it.copy(activeRoom = it.activeRoom.copy(selectedSheet = sheet)) }
+        if (sheet == RoomSheet.Members) {
+            refreshRoomParticipants()
+        }
     }
 
     fun closeRoomSheet() {
         _uiState.update { it.copy(activeRoom = it.activeRoom.copy(selectedSheet = null)) }
+    }
+
+    fun refreshRoomParticipants() {
+        val roomId = _uiState.value.activeRoom.meeting?.roomId.orEmpty()
+        if (roomId.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(activeRoom = it.activeRoom.copy(participantsLoading = true)) }
+            when (val result = roomRepository.fetchParticipantsList(roomId = roomId, status = "1", page = 1, size = 100)) {
+                is ApiResult.Success -> {
+                    val participants = parseParticipantList(result.data)
+                    val total = result.data.asJsonObjectOrNull()?.get("totalCount")?.asIntOrNull() ?: participants.size
+                    _uiState.update {
+                        val merged = mergeParticipants(it.activeRoom.participants, participants)
+                        it.copy(
+                            activeRoom = it.activeRoom.copy(
+                                participants = merged.sortedForRoom(),
+                                participantsTotal = total,
+                                participantsLoading = false,
+                            ),
+                        )
+                    }
+                }
+
+                is ApiResult.Failure -> _uiState.update {
+                    it.copy(
+                        activeRoom = it.activeRoom.copy(participantsLoading = false),
+                        message = result.error.message,
+                    )
+                }
+            }
+        }
+    }
+
+    fun hostToggleParticipantAudio(participant: RoomParticipant) {
+        hostControlParticipant(
+            participant = participant,
+            event = "hostToggleAudio",
+            enabled = !participant.audioEnabled,
+            successMessage = if (participant.audioEnabled) "已静音 ${participant.username}" else "已允许 ${participant.username} 开麦",
+        )
+    }
+
+    fun hostToggleParticipantVideo(participant: RoomParticipant) {
+        hostControlParticipant(
+            participant = participant,
+            event = "hostToggleVideo",
+            enabled = !participant.videoEnabled,
+            successMessage = if (participant.videoEnabled) "已关闭 ${participant.username} 摄像头" else "已允许 ${participant.username} 开启摄像头",
+        )
+    }
+
+    fun removeParticipant(participant: RoomParticipant) {
+        val targetPeerId = participant.peerId.ifBlank { participant.userId }
+        if (targetPeerId.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                socketIoClient.emit(
+                    "removeParticipant",
+                    JSONObject().put("targetPeerId", targetPeerId),
+                )
+            }.onSuccess {
+                _uiState.update {
+                    it.copy(
+                        activeRoom = it.activeRoom.copy(
+                            participants = it.activeRoom.participants.filterNot { current ->
+                                current.peerId == participant.peerId || current.userId == participant.userId
+                            },
+                        ),
+                        message = "已移出 ${participant.username}",
+                    )
+                }
+                refreshRoomParticipants()
+            }.onFailure { error ->
+                _uiState.update { it.copy(message = error.message ?: "移出成员失败") }
+            }
+        }
+    }
+
+    fun toggleScreenShare() {
+        _uiState.update {
+            val next = !it.activeRoom.screenSharing
+            it.copy(
+                activeRoom = it.activeRoom.copy(screenSharing = next),
+                message = if (next) "屏幕共享已开启" else "屏幕共享已停止",
+            )
+        }
+    }
+
+    fun toggleHandRaised() {
+        val next = !_uiState.value.activeRoom.handRaised
+        viewModelScope.launch {
+            runCatching {
+                socketIoClient.emit("setHandRaised", JSONObject().put("raised", next))
+            }.onSuccess {
+                _uiState.update {
+                    it.copy(
+                        activeRoom = updateHandRaised(it.activeRoom, it.userSummary.userId, next).copy(handRaised = next),
+                        message = if (next) "已举手" else "已取消举手",
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update { it.copy(message = error.message ?: "举手状态更新失败") }
+            }
+        }
+    }
+
+    fun switchCamera() {
+        _uiState.update { it.copy(message = "已切换摄像头") }
+    }
+
+    fun toggleCaptions() {
+        _uiState.update {
+            val next = !it.activeRoom.captionsEnabled
+            it.copy(
+                activeRoom = it.activeRoom.copy(captionsEnabled = next),
+                message = if (next) "字幕已开启" else "字幕已关闭",
+            )
+        }
+    }
+
+    fun openMeetingSettings() {
+        _uiState.update { it.copy(message = "会议设置将在后续版本提供更多控制项") }
+    }
+
+    fun closeMeeting() {
+        val roomId = _uiState.value.activeRoom.meeting?.roomId.orEmpty()
+        if (roomId.isBlank()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSubmitting = true, message = null) }
+            val httpResult = roomRepository.closeMeeting(roomId)
+            val socketResult = runCatching {
+                if (socketIoClient.isConnected) {
+                    socketIoClient.emit("closeRoom", JSONObject().put("roomId", roomId).put("reason", "host_closed"))
+                }
+            }
+            when {
+                httpResult is ApiResult.Failure -> _uiState.update { it.copy(message = httpResult.error.message) }
+                socketResult.isFailure -> _uiState.update { it.copy(message = socketResult.exceptionOrNull()?.message ?: "关闭会议失败") }
+                else -> {
+                    clearRoomSocketListeners()
+                    socketIoClient.disconnect()
+                    _uiState.update {
+                        it.copy(
+                            route = MainRoute.Tabs,
+                            selectedTab = MainTab.Meetings,
+                            activeRoom = RoomUiState(),
+                            message = "会议已关闭",
+                        )
+                    }
+                    loadMeetingLists()
+                }
+            }
+            _uiState.update { it.copy(isSubmitting = false) }
+        }
     }
 
     fun sendRoomMessage(content: String) {
@@ -636,6 +795,22 @@ class MainViewModel(
                 )
             }
         }
+        roomSocketSubscriptions += socketIoClient.on("handRaiseChanged") { args ->
+            val body = args.firstJsonObject() ?: return@on
+            val userId = body.optString("userId")
+            val peerId = body.optString("peerId", userId)
+            val raised = body.optBoolean("raised", false)
+            _uiState.update {
+                val isLocal = userId == it.userSummary.userId || peerId == it.activeRoom.participants.firstOrNull(RoomParticipant::isLocal)?.peerId
+                it.copy(
+                    activeRoom = updateHandRaised(
+                        roomState = it.activeRoom.copy(handRaised = if (isLocal) raised else it.activeRoom.handRaised),
+                        userId = userId.ifBlank { peerId },
+                        raised = raised,
+                    ),
+                )
+            }
+        }
         roomSocketSubscriptions += socketIoClient.on("newProducer") { args ->
             val body = args.firstJsonObject() ?: return@on
             val participant = participantFromJson(body).copy(
@@ -673,6 +848,50 @@ class MainViewModel(
         }
     }
 
+    private fun hostControlParticipant(
+        participant: RoomParticipant,
+        event: String,
+        enabled: Boolean,
+        successMessage: String,
+    ) {
+        val roomId = _uiState.value.activeRoom.meeting?.roomId.orEmpty()
+        val targetPeerId = participant.peerId.ifBlank { participant.userId }
+        if (roomId.isBlank() || targetPeerId.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                socketIoClient.emit(
+                    event,
+                    JSONObject()
+                        .put("roomId", roomId)
+                        .put("targetPeerId", targetPeerId)
+                        .put("enabled", enabled),
+                )
+            }.onSuccess {
+                _uiState.update { state ->
+                    state.copy(
+                        activeRoom = state.activeRoom.copy(
+                            participants = state.activeRoom.participants.map { current ->
+                                if (current.peerId == participant.peerId || current.userId == participant.userId) {
+                                    when (event) {
+                                        "hostToggleAudio" -> current.copy(audioEnabled = enabled)
+                                        "hostToggleVideo" -> current.copy(videoEnabled = enabled)
+                                        else -> current
+                                    }
+                                } else {
+                                    current
+                                }
+                            },
+                        ),
+                        message = successMessage,
+                    )
+                }
+                refreshRoomParticipants()
+            }.onFailure { error ->
+                _uiState.update { it.copy(message = error.message ?: "成员状态控制失败") }
+            }
+        }
+    }
+
     private fun updateRoomLocalMedia(audioEnabled: Boolean, videoEnabled: Boolean) {
         _uiState.update {
             val localPeerId = it.activeRoom.participants.firstOrNull(RoomParticipant::isLocal)?.peerId
@@ -691,6 +910,21 @@ class MainViewModel(
             )
         }
     }
+
+    private fun updateHandRaised(
+        roomState: RoomUiState,
+        userId: String,
+        raised: Boolean,
+    ): RoomUiState =
+        roomState.copy(
+            participants = roomState.participants.map { participant ->
+                if (participant.userId == userId || participant.peerId == userId) {
+                    participant.copy(handRaised = raised)
+                } else {
+                    participant
+                }
+            },
+        )
 
     private fun cleanMeetingNo(value: String): String =
         value.filter(Char::isDigit).take(MEETING_NO_MAX_LENGTH)
@@ -735,6 +969,7 @@ class MainViewModel(
                 roomId = roomId,
                 roomNo = roomNo,
                 title = title,
+                hostId = body.firstString("hostId") ?: host?.firstString("id", "userId").orEmpty(),
                 hostName = body.firstString("hostName") ?: host?.firstString("nickname", "username", "name").orEmpty(),
                 startTime = body.firstString("startTime", "createdTime").orEmpty(),
                 endTime = body.firstString("endTime").orEmpty(),
@@ -743,6 +978,39 @@ class MainViewModel(
                 participantCount = body.get("participantCount")?.asIntOrNull(),
                 description = body.firstString("description", "settings").orEmpty(),
                 sfuServerUrl = body.firstString("sfuServerUrl", "socketUrl", "url").orEmpty(),
+            )
+        }
+
+    private fun parseParticipantList(element: JsonElement): List<RoomParticipant> {
+        val body = element.asJsonObjectOrNull()
+        val array = body?.get("data")?.asJsonArrayOrNull()
+            ?: body?.getAsJsonObjectOrNull("data")?.let { data ->
+                listOfNotNull(data.get("list"), data.get("records"), data.get("items"))
+                    .firstNotNullOfOrNull { it.asJsonArrayOrNull() }
+            }
+            ?: element.asJsonArrayOrNull()
+            ?: JsonArray()
+        return array.mapNotNull(::parseParticipantFromObject)
+    }
+
+    private fun parseParticipantFromObject(element: JsonElement): RoomParticipant? =
+        element.asJsonObjectOrNull()?.let { body ->
+            val userId = body.firstString("userId", "id").orEmpty()
+            val roleCode = body.get("role")?.asIntOrNull() ?: PARTICIPANT_ROLE_MEMBER
+            val statusCode = body.get("status")?.asIntOrNull() ?: PARTICIPANT_STATUS_ONLINE
+            val localUserId = _uiState.value.userSummary.userId
+            RoomParticipant(
+                peerId = body.firstString("peerId", "socketId").orEmpty().ifBlank { userId },
+                userId = userId,
+                username = body.firstString("userName", "username", "name", "nickname") ?: "参会者",
+                avatar = body.firstString("avatar").orEmpty(),
+                role = if (roleCode == PARTICIPANT_ROLE_HOST) ParticipantRole.Host else ParticipantRole.Member,
+                status = if (statusCode == PARTICIPANT_STATUS_ONLINE) ParticipantStatus.Online else ParticipantStatus.Offline,
+                isLocal = userId.isNotBlank() && userId == localUserId,
+                audioEnabled = body.get("audioMuted")?.asBooleanOrNull() != true,
+                videoEnabled = body.get("videoMuted")?.asBooleanOrNull() != true,
+                joinedAt = body.firstString("joinedAt").orEmpty(),
+                leftAt = body.firstString("leftAt").orEmpty(),
             )
         }
 
@@ -755,6 +1023,28 @@ class MainViewModel(
             videoEnabled = !body.optBoolean("videoPaused", false),
             speaking = body.optBoolean("speaking", false),
         )
+
+    private fun mergeParticipants(
+        current: List<RoomParticipant>,
+        fetched: List<RoomParticipant>,
+    ): List<RoomParticipant> {
+        val fetchedByUserId = fetched.associateBy { it.userId }
+        val mergedCurrent = current.map { participant ->
+            val fetchedParticipant = fetchedByUserId[participant.userId]
+            if (fetchedParticipant == null) {
+                participant
+            } else {
+                fetchedParticipant.copy(
+                    peerId = participant.peerId.ifBlank { fetchedParticipant.peerId },
+                    isLocal = participant.isLocal || fetchedParticipant.isLocal,
+                    speaking = participant.speaking,
+                    handRaised = participant.handRaised,
+                )
+            }
+        }
+        val currentUserIds = mergedCurrent.mapNotNull { it.userId.takeIf(String::isNotBlank) }.toSet()
+        return mergedCurrent + fetched.filterNot { it.userId in currentUserIds }
+    }
 
     private fun List<RoomParticipant>.upsert(participant: RoomParticipant): List<RoomParticipant> =
         if (any { it.peerId == participant.peerId }) {
@@ -774,6 +1064,14 @@ class MainViewModel(
         } else {
             this + participant
         }
+
+    private fun List<RoomParticipant>.sortedForRoom(): List<RoomParticipant> =
+        sortedWith(
+            compareByDescending<RoomParticipant> { it.role == ParticipantRole.Host }
+                .thenByDescending { it.status == ParticipantStatus.Online }
+                .thenByDescending { it.isLocal }
+                .thenBy { it.username },
+        )
 
     private fun Array<Any>.firstJsonObject(): JSONObject? =
         firstOrNull()?.let { value ->
@@ -830,6 +1128,9 @@ class MainViewModel(
         const val MEETING_NO_MIN_LENGTH = 4
         const val TITLE_MAX_LENGTH = 50
         const val DEFAULT_SFU_SOCKET_URL = "http://10.0.2.2:3000"
+        const val PARTICIPANT_ROLE_MEMBER = 1
+        const val PARTICIPANT_ROLE_HOST = 2
+        const val PARTICIPANT_STATUS_ONLINE = 1
         val API_DATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
         val DISPLAY_DATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
     }

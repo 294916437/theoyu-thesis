@@ -60,6 +60,7 @@ data class MeetingSummary(
     val roomId: String,
     val roomNo: String,
     val title: String,
+    val hostId: String = "",
     val hostName: String = "",
     val startTime: String = "",
     val endTime: String = "",
@@ -83,18 +84,44 @@ data class RoomUiState(
     val videoEnabled: Boolean = true,
     val selectedSheet: RoomSheet? = null,
     val roomNotice: String? = null,
+    val participantsLoading: Boolean = false,
+    val participantsTotal: Int = 0,
+    val handRaised: Boolean = false,
+    val screenSharing: Boolean = false,
+    val captionsEnabled: Boolean = false,
 )
 
 data class RoomParticipant(
     val peerId: String,
     val userId: String = "",
     val username: String = "参会者",
+    val avatar: String = "",
+    val role: ParticipantRole = ParticipantRole.Member,
+    val status: ParticipantStatus = ParticipantStatus.Online,
     val isLocal: Boolean = false,
     val audioEnabled: Boolean = true,
     val videoEnabled: Boolean = true,
     val handRaised: Boolean = false,
     val speaking: Boolean = false,
+    val joinedAt: String = "",
+    val leftAt: String = "",
 )
+
+enum class ParticipantRole(
+    val code: Int,
+    val label: String,
+) {
+    Member(1, "成员"),
+    Host(2, "主持人"),
+}
+
+enum class ParticipantStatus(
+    val code: Int,
+    val label: String,
+) {
+    Online(1, "在线"),
+    Offline(2, "离线"),
+}
 
 data class RoomChatMessage(
     val id: String,

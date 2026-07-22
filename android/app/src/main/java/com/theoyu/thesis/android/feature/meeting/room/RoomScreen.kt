@@ -54,6 +54,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,9 +64,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
+import com.theoyu.thesis.android.core.sfu.WebRtcEnvironment
 import com.theoyu.thesis.android.feature.main.AudioRoute
 import com.theoyu.thesis.android.feature.main.ParticipantRole
 import com.theoyu.thesis.android.feature.main.ParticipantStatus
@@ -74,6 +78,8 @@ import com.theoyu.thesis.android.feature.main.RoomSheet
 import com.theoyu.thesis.android.feature.main.RoomUiState
 import com.theoyu.thesis.android.feature.main.component.EmptyState
 import com.theoyu.thesis.android.feature.main.component.InfoRow
+import org.webrtc.SurfaceViewRenderer
+import org.webrtc.VideoTrack
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,6 +125,8 @@ fun RoomScreen(
                     .fillMaxSize()
                     .padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 88.dp),
                 participants = participants,
+                localVideoTrack = roomState.mediaState.localVideoTrack,
+                remoteVideoTracks = roomState.mediaState.remoteVideoTracks,
             )
         } else {
             PortraitVideoLayout(
@@ -127,6 +135,8 @@ fun RoomScreen(
                     .padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 104.dp),
                 activeSpeaker = activeSpeaker,
                 participants = participants,
+                localVideoTrack = roomState.mediaState.localVideoTrack,
+                remoteVideoTracks = roomState.mediaState.remoteVideoTracks,
             )
         }
 
@@ -192,6 +202,8 @@ private fun PortraitVideoLayout(
     modifier: Modifier,
     activeSpeaker: RoomParticipant,
     participants: List<RoomParticipant>,
+    localVideoTrack: VideoTrack?,
+    remoteVideoTracks: Map<String, VideoTrack?>,
 ) {
     Column(
         modifier = modifier,
@@ -202,6 +214,7 @@ private fun PortraitVideoLayout(
                 .fillMaxWidth()
                 .weight(1f),
             participant = activeSpeaker,
+            videoTrack = activeSpeaker.resolveVideoTrack(localVideoTrack, remoteVideoTracks),
             prominent = true,
         )
         LazyVerticalGrid(
@@ -216,6 +229,7 @@ private fun PortraitVideoLayout(
                 VideoTile(
                     modifier = Modifier.height(120.dp),
                     participant = participant,
+                    videoTrack = participant.resolveVideoTrack(localVideoTrack, remoteVideoTracks),
                     prominent = false,
                 )
             }
@@ -227,6 +241,8 @@ private fun PortraitVideoLayout(
 private fun CompactVideoGrid(
     modifier: Modifier,
     participants: List<RoomParticipant>,
+    localVideoTrack: VideoTrack?,
+    remoteVideoTracks: Map<String, VideoTrack?>,
 ) {
     LazyVerticalGrid(
         modifier = modifier,
@@ -238,6 +254,7 @@ private fun CompactVideoGrid(
             VideoTile(
                 modifier = Modifier.height(150.dp),
                 participant = participant,
+                videoTrack = participant.resolveVideoTrack(localVideoTrack, remoteVideoTracks),
                 prominent = false,
             )
         }
@@ -248,6 +265,7 @@ private fun CompactVideoGrid(
 private fun VideoTile(
     modifier: Modifier,
     participant: RoomParticipant,
+    videoTrack: VideoTrack?,
     prominent: Boolean,
 ) {
     Card(modifier = modifier) {
@@ -256,13 +274,8 @@ private fun VideoTile(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            if (participant.isLocal && participant.videoEnabled) {
-                Text(
-                    modifier = Modifier.align(Alignment.Center),
-                    text = "本地视频",
-                    style = if (prominent) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (participant.videoEnabled && videoTrack != null) {
+                VideoTrackRenderer(track = videoTrack)
             } else {
                 Column(
                     modifier = Modifier.align(Alignment.Center),
@@ -312,6 +325,42 @@ private fun VideoTile(
         }
     }
 }
+
+@Composable
+private fun VideoTrackRenderer(track: VideoTrack) {
+    val context = LocalContext.current
+    val renderer = remember {
+        SurfaceViewRenderer(context).apply {
+            init(WebRtcEnvironment.eglBase.eglBaseContext, null)
+            setEnableHardwareScaler(true)
+        }
+    }
+    DisposableEffect(track, renderer) {
+        track.addSink(renderer)
+        onDispose {
+            track.removeSink(renderer)
+        }
+    }
+    DisposableEffect(renderer) {
+        onDispose {
+            renderer.release()
+        }
+    }
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { renderer },
+    )
+}
+
+private fun RoomParticipant.resolveVideoTrack(
+    localVideoTrack: VideoTrack?,
+    remoteVideoTracks: Map<String, VideoTrack?>,
+): VideoTrack? =
+    if (isLocal) {
+        localVideoTrack
+    } else {
+        remoteVideoTracks[peerId] ?: remoteVideoTracks[userId]
+    }
 
 @Composable
 private fun RoomTopOverlay(

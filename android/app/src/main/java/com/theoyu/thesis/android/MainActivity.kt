@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
 
     private val mainViewModel: MainViewModel by viewModels {
         MainViewModelFactory(
+            appContext = applicationContext,
             roomRepository = appContainer.roomRepository,
             userRepository = appContainer.userRepository,
             authRepository = appContainer.authRepository,

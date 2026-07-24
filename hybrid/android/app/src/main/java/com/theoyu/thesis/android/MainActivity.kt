@@ -32,6 +32,8 @@ class MainActivity : ComponentActivity() {
         appContainer.sessionStore
     }
 
+    override fun getMainComponentName(): String = "HelloWorld"
+
     private val authViewModel: AuthViewModel by viewModels {
         AuthViewModelFactory(
             authRepository = appContainer.authRepository,

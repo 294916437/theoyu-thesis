@@ -1,0 +1,42 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Build outputs
+*/build/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Signing and local secrets
+*.jks
+*.keystore
+keystore.properties
+secrets.properties
+
+# Android tooling
+lint-results*.html
+lint-results*.xml
+lint-results*.txt
+navigation.json
+captures/
+
+# Native build intermediates
+obj/
+
+# Test outputs
+coverage/
+test-results/

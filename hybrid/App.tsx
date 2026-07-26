@@ -1,66 +1,38 @@
-import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
-  View,
-} from "react-native";
-
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  ReloadInstructions,
-} from "react-native/Libraries/NewAppScreen";
+import React from "react";
+import {SafeAreaView, StatusBar, StyleSheet, Text, View} from "react-native";
 
 function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === "dark";
-
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
-  };
-
   return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? "light-content" : "dark-content"}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}
-      >
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-            padding: 24,
-          }}
-        >
-          <Text style={styles.title}>Step One</Text>
-          <Text>
-            Edit <Text style={styles.bold}>App.tsx</Text> to change this screen
-            and see your edits.
-          </Text>
-          <Text style={styles.title}>See your changes</Text>
-          <ReloadInstructions />
-          <Text style={styles.title}>Debug</Text>
-          <DebugInstructions />
-        </View>
-      </ScrollView>
+    <SafeAreaView style={styles.root}>
+      <StatusBar barStyle="light-content" backgroundColor="#111827" />
+      <View style={styles.content}>
+        <Text style={styles.title}>BlueSky Hybrid</Text>
+        <Text style={styles.subtitle}>React Native runtime is ready.</Text>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  title: {
-    fontSize: 24,
-    fontWeight: "600",
+  root: {
+    flex: 1,
+    backgroundColor: "#111827",
   },
-  bold: {
-    fontWeight: "700",
+  content: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  title: {
+    color: "white",
+    fontSize: 24,
+    fontWeight: "800",
+  },
+  subtitle: {
+    color: "#d1d5db",
+    marginTop: 8,
+    fontSize: 14,
   },
 });
 

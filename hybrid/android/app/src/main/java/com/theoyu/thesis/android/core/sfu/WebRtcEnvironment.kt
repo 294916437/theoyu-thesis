@@ -1,12 +1,8 @@
 package com.theoyu.thesis.android.core.sfu
 
 import android.content.Context
-import org.mediasoup.droid.MediasoupClient
-import org.webrtc.EglBase
 
 object WebRtcEnvironment {
-    val eglBase: EglBase by lazy { EglBase.create() }
-
     @Volatile
     private var initialized = false
 
@@ -14,7 +10,7 @@ object WebRtcEnvironment {
         if (initialized) return
         synchronized(this) {
             if (initialized) return
-            MediasoupClient.initialize(appContext.applicationContext)
+            appContext.applicationContext
             initialized = true
         }
     }

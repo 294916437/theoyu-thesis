@@ -2,7 +2,6 @@ package com.theoyu.thesis.android.feature.main
 
 import java.time.LocalDate
 import java.time.LocalTime
-import org.webrtc.VideoTrack
 
 data class MainUiState(
     val selectedTab: MainTab = MainTab.Home,
@@ -101,8 +100,6 @@ data class RoomMediaState(
     val localProducers: List<SfuProducerState> = emptyList(),
     val remoteProducers: List<SfuProducerState> = emptyList(),
     val consumers: List<SfuConsumerState> = emptyList(),
-    val localVideoTrack: VideoTrack? = null,
-    val remoteVideoTracks: Map<String, VideoTrack?> = emptyMap(),
     val error: String? = null,
     val mediaEngineReady: Boolean = false,
 )

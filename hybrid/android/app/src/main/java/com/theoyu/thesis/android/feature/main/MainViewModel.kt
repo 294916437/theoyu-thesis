@@ -46,20 +46,8 @@ class MainViewModel(
         onMessageChanged = { message ->
             _uiState.update { state -> state.copy(message = message) }
         },
-        onLocalPreviewChanged = { track ->
-            _uiState.update { state -> state.copy(activeRoom = state.activeRoom.copy(mediaState = state.activeRoom.mediaState.copy(localVideoTrack = track))) }
-        },
-        onRemoteVideoTrackChanged = { peerId, track ->
-            _uiState.update { state ->
-                state.copy(
-                    activeRoom = state.activeRoom.copy(
-                        mediaState = state.activeRoom.mediaState.copy(
-                            remoteVideoTracks = state.activeRoom.mediaState.remoteVideoTracks + (peerId to track),
-                        ),
-                    ),
-                )
-            }
-        },
+        onLocalPreviewChanged = {},
+        onRemoteVideoTrackChanged = { _, _ -> },
     )
 
     init {
@@ -292,7 +280,7 @@ class MainViewModel(
                     .put("userId", session.userId.orEmpty())
                     .put("username", _uiState.value.userSummary.displayName)
                     .put("token", session.token.orEmpty())
-                    .put("withMedia", true)
+                    .put("withMedia", false)
                 val joinResponse = socketIoClient.emit("joinRoom", joinPayload)
                 val localPeerId = session.userId.orEmpty().ifBlank { socketIoClient.connectionState.value.socketId ?: "local" }
                 val localParticipant = RoomParticipant(
@@ -328,20 +316,6 @@ class MainViewModel(
                         ),
                     )
                 }
-                roomMediaEngine.setSessionContext(
-                    roomId = roomId,
-                    userId = session.userId.orEmpty(),
-                    displayName = _uiState.value.userSummary.displayName,
-                )
-                val routerResponse = socketIoClient.emit(
-                    "getRouterRtpCapabilities",
-                    JSONObject().put("roomId", roomId),
-                )
-                val routerCapabilitiesJson = routerResponse.asJsonObject()?.optJSONObject("rtpCapabilities")?.toString().orEmpty()
-                val sendTransport = createSfuTransport(roomId = roomId, producing = true, consuming = false)
-                val recvTransport = createSfuTransport(roomId = roomId, producing = false, consuming = true)
-                roomMediaEngine.loadRouterCapabilities(routerCapabilitiesJson)
-                roomMediaEngine.attachTransports(sendTransport, recvTransport)
                 val remoteProducers = parseJoinRoomProducers(joinResponse)
                 remoteProducers.forEach(roomMediaEngine::registerRemoteProducer)
                 roomMediaEngine.consumeExistingRemoteProducers(remoteProducers)

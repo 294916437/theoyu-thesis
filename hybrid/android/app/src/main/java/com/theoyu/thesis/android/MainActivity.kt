@@ -1,7 +1,10 @@
 package com.theoyu.thesis.android
 
+import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -32,8 +35,6 @@ class MainActivity : ComponentActivity() {
         appContainer.sessionStore
     }
 
-    override fun getMainComponentName(): String = "HelloWorld"
-
     private val authViewModel: AuthViewModel by viewModels {
         AuthViewModelFactory(
             authRepository = appContainer.authRepository,
@@ -56,6 +57,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    val handledByReact = (application as BlueSkyApplication).reactHost.onBackPressed()
+                    if (!handledByReact) {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                        isEnabled = true
+                    }
+                }
+            },
+        )
         setContent {
             BlueSkyTheme {
                 BlueSkyApp(
@@ -65,6 +79,42 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        (application as BlueSkyApplication).reactHost.onHostResume(this)
+    }
+
+    override fun onPause() {
+        (application as BlueSkyApplication).reactHost.onHostPause(this)
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        (application as BlueSkyApplication).reactHost.onHostDestroy(this)
+        super.onDestroy()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        (application as BlueSkyApplication).reactHost.onActivityResult(this, requestCode, resultCode, data)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        (application as BlueSkyApplication).reactHost.onNewIntent(intent)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        (application as BlueSkyApplication).reactHost.onWindowFocusChange(hasFocus)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        (application as BlueSkyApplication).reactHost.onConfigurationChanged(this)
     }
 }
 

@@ -21,19 +21,20 @@ class MeetingRoomBridgeModule(
 
     @ReactMethod
     fun setKeepScreenOn(enabled: Boolean) {
-        currentActivity?.runOnUiThread {
+        val activity = reactApplicationContext.currentActivity ?: return
+        activity.runOnUiThread {
             val flag = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             if (enabled) {
-                currentActivity?.window?.addFlags(flag)
+                activity.window?.addFlags(flag)
             } else {
-                currentActivity?.window?.clearFlags(flag)
+                activity.window?.clearFlags(flag)
             }
         }
     }
 
     @ReactMethod
     fun enterPictureInPicture() {
-        val activity = currentActivity ?: return
+        val activity = reactApplicationContext.currentActivity ?: return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         activity.runOnUiThread {
             val params = PictureInPictureParams.Builder()

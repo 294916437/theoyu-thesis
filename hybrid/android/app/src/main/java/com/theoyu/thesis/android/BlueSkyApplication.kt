@@ -30,6 +30,8 @@ class BlueSkyApplication : Application(), ReactApplication {
 
     override val reactNativeHost: ReactNativeHost =
         object : DefaultReactNativeHost(this) {
+            override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
+
             override fun getPackages(): List<ReactPackage> =
                 reactPackages
 

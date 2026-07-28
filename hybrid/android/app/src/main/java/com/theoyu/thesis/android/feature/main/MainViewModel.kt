@@ -10,7 +10,6 @@ import com.theoyu.thesis.android.core.network.ApiResult
 import com.theoyu.thesis.android.core.sfu.RoomMediaEngine
 import com.theoyu.thesis.android.core.session.SessionStore
 import com.theoyu.thesis.android.core.signaling.SocketIoClient
-import com.theoyu.thesis.android.core.signaling.SocketIoConfig
 import com.theoyu.thesis.android.core.signaling.SocketSubscription
 import com.theoyu.thesis.android.data.auth.AuthRepository
 import com.theoyu.thesis.android.data.meeting.RoomRepository
@@ -268,20 +267,6 @@ class MainViewModel(
             runCatching {
                 val session = sessionStore.currentSession()
                 val roomId = meeting.roomId.ifBlank { meeting.roomNo }
-                if (!socketIoClient.isConnected) {
-                    socketIoClient.connect(
-                        url = meeting.sfuServerUrl.ifBlank { DEFAULT_SFU_SOCKET_URL },
-                        config = SocketIoConfig(authToken = session.token),
-                    )
-                }
-                setupRoomSocketListeners()
-                val joinPayload = JSONObject()
-                    .put("roomId", roomId)
-                    .put("userId", session.userId.orEmpty())
-                    .put("username", _uiState.value.userSummary.displayName)
-                    .put("token", session.token.orEmpty())
-                    .put("withMedia", false)
-                val joinResponse = socketIoClient.emit("joinRoom", joinPayload)
                 val localPeerId = session.userId.orEmpty().ifBlank { socketIoClient.connectionState.value.socketId ?: "local" }
                 val localParticipant = RoomParticipant(
                     peerId = localPeerId,
@@ -305,7 +290,6 @@ class MainViewModel(
                             networkQuality = NetworkQuality.Excellent,
                             mediaState = RoomMediaState(
                                 phase = SfuMediaPhase.Joining,
-                                remoteProducers = parseJoinRoomProducers(joinResponse),
                                 localProducers = buildLocalProducerPlaceholders(
                                     peerId = session.userId.orEmpty(),
                                     username = _uiState.value.userSummary.displayName,
@@ -316,14 +300,6 @@ class MainViewModel(
                         ),
                     )
                 }
-                val remoteProducers = parseJoinRoomProducers(joinResponse)
-                remoteProducers.forEach(roomMediaEngine::registerRemoteProducer)
-                roomMediaEngine.consumeExistingRemoteProducers(remoteProducers)
-                roomMediaEngine.startLocalPublish(
-                    audioEnabled = _uiState.value.createForm.audioEnabled,
-                    videoEnabled = _uiState.value.createForm.videoEnabled,
-                )
-                refreshRoomParticipants()
             }.onFailure { error ->
                 _uiState.update { it.copy(message = error.message ?: "进入会议失败") }
             }
@@ -624,10 +600,18 @@ class MainViewModel(
             when (val result = roomRepository.createMeeting(request)) {
                 is ApiResult.Success -> {
                     val meeting = parseMeeting(result.data)
+                    val preJoinMeeting = if (form.type == MeetingCreateType.Instant && meeting != null) {
+                        joinRoomForPreJoin(meeting) ?: run {
+                            _uiState.update { it.copy(isSubmitting = false) }
+                            return@launch
+                        }
+                    } else {
+                        meeting
+                    }
                     _uiState.update {
                         it.copy(
                             route = MainRoute.PreJoin,
-                            preJoinMeeting = meeting ?: MeetingSummary(
+                            preJoinMeeting = preJoinMeeting ?: MeetingSummary(
                                 roomId = "",
                                 roomNo = "",
                                 title = title,
@@ -644,6 +628,31 @@ class MainViewModel(
                 is ApiResult.Failure -> _uiState.update { it.copy(message = result.error.message) }
             }
             _uiState.update { it.copy(isSubmitting = false) }
+        }
+    }
+
+    private suspend fun joinRoomForPreJoin(meeting: MeetingSummary): MeetingSummary? {
+        val roomId = meeting.roomId.ifBlank { meeting.roomNo }
+        if (roomId.isBlank()) return meeting
+        return when (val result = roomRepository.joinMeeting(mapOf("roomId" to roomId))) {
+            is ApiResult.Success -> {
+                val data = result.data.responseDataObject() ?: result.data.asJsonObjectOrNull()
+                val allowed = data?.get("allowed")?.asBooleanOrNull() ?: true
+                if (!allowed) {
+                    _uiState.update { it.copy(message = data?.firstString("message") ?: "无法加入会议") }
+                    null
+                } else {
+                    meeting.copy(
+                        roomId = data?.firstString("roomId") ?: meeting.roomId,
+                        sfuServerUrl = data?.firstString("sfuServerUrl", "socketUrl", "url") ?: meeting.sfuServerUrl,
+                    )
+                }
+            }
+
+            is ApiResult.Failure -> {
+                _uiState.update { it.copy(message = result.error.message) }
+                null
+            }
         }
     }
 
@@ -689,16 +698,23 @@ class MainViewModel(
             _uiState.update { it.copy(isSubmitting = true, message = null) }
             when (val result = roomRepository.joinMeeting(mapOf("roomId" to roomId))) {
                 is ApiResult.Success -> {
-                    val joinedMeeting = parseMeeting(result.data) ?: meeting
-                    _uiState.update {
-                        it.copy(
-                            route = MainRoute.PreJoin,
-                            preJoinMeeting = joinedMeeting.copy(
-                                title = joinedMeeting.title.ifBlank { meeting.title },
-                                roomNo = joinedMeeting.roomNo.ifBlank { meeting.roomNo },
-                            ),
-                            message = null,
-                        )
+                    val data = result.data.responseDataObject() ?: result.data.asJsonObjectOrNull()
+                    val allowed = data?.get("allowed")?.asBooleanOrNull() ?: true
+                    if (!allowed) {
+                        _uiState.update {
+                            it.copy(joinError = mapJoinFailure(null, data?.firstString("message") ?: "无法加入会议"))
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                route = MainRoute.PreJoin,
+                                preJoinMeeting = meeting.copy(
+                                    roomId = data?.firstString("roomId") ?: meeting.roomId,
+                                    sfuServerUrl = data?.firstString("sfuServerUrl", "socketUrl", "url") ?: meeting.sfuServerUrl,
+                                ),
+                                message = null,
+                            )
+                        }
                     }
                 }
 

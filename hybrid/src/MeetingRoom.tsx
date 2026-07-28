@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import InCallManager from "react-native-incall-manager";
 import {MeetingRoomClient, RTCView, MeetingRoomClientState} from "./mediasoup/MeetingRoomClient";
-import type {RoomParticipant, RoomState} from "./types";
+import type {RoomChatMessage, RoomParticipant, RoomState} from "./types";
 
 type Props = {
   roomStateJson?: string;
@@ -57,6 +57,8 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
   const [clientState, setClientState] = useState<MeetingRoomClientState>({
     phase: "idle",
     remoteStreams: {},
+    remoteParticipants: [],
+    chatMessages: [],
   });
   const [messageDraft, setMessageDraft] = useState("");
   const [spotlightPeerId, setSpotlightPeerId] = useState<string>();
@@ -104,10 +106,8 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
   }, [client, roomState]);
 
   const participants = useMemo<RoomParticipant[]>(
-    () =>
-      roomState.participants.length > 0
-        ? roomState.participants
-        : [{
+    () => {
+      const localFallback: RoomParticipant = {
             peerId: "local",
             userId: "",
             username: "我",
@@ -120,8 +120,20 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
             videoEnabled: roomState.videoEnabled,
             handRaised: false,
             speaking: false,
-          }],
-    [roomState],
+          };
+      const base = roomState.participants.length > 0 ? roomState.participants : [localFallback];
+      const byPeerId = new Map(base.map(participant => [participant.peerId, participant]));
+      clientState.remoteParticipants.forEach(participant => {
+        const existing = byPeerId.get(participant.peerId);
+        byPeerId.set(participant.peerId, existing ? {...existing, ...participant} : participant);
+      });
+      return Array.from(byPeerId.values());
+    },
+    [roomState, clientState.remoteParticipants],
+  );
+  const chatMessages = useMemo(
+    () => [...roomState.chatMessages, ...clientState.chatMessages],
+    [roomState.chatMessages, clientState.chatMessages],
   );
   const activeSpeaker =
     participants.find(item => item.peerId === spotlightPeerId) ??
@@ -203,7 +215,7 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
           {roomState.selectedSheet === "Members" && <Members participants={participants} />}
           {roomState.selectedSheet === "Chat" && (
             <Chat
-              roomState={roomState}
+              messages={chatMessages}
               draft={messageDraft}
               onDraftChanged={setMessageDraft}
               onSend={() => {
@@ -293,16 +305,16 @@ function Members({participants}: {participants: RoomParticipant[]}) {
   );
 }
 
-function Chat({roomState, draft, onDraftChanged, onSend}: {roomState: RoomState; draft: string; onDraftChanged: (value: string) => void; onSend: () => void}) {
+function Chat({messages, draft, onDraftChanged, onSend}: {messages: RoomChatMessage[]; draft: string; onDraftChanged: (value: string) => void; onSend: () => void}) {
   return (
     <View>
       <Text style={styles.sheetTitle}>聊天</Text>
       <View style={styles.rowActions}>
-        <Control compact label="保存记录" onPress={() => Alert.alert("聊天记录", `当前可保存 ${roomState.chatMessages.length} 条消息`)} />
+        <Control compact label="保存记录" onPress={() => Alert.alert("聊天记录", `当前可保存 ${messages.length} 条消息`)} />
         <Control compact label="清空本地" onPress={() => Alert.alert("清空聊天", "移动端仅清空当前本地展示，服务端记录不受影响。")} />
       </View>
       <ScrollView style={styles.chatList}>
-        {roomState.chatMessages.slice(-40).map(message => (
+        {messages.slice(-40).map(message => (
           <Text key={message.id} style={styles.chatLine}>{message.senderName}: {message.content}</Text>
         ))}
       </ScrollView>
@@ -357,7 +369,7 @@ function More({
           <Control label="切换摄像头" onPress={() => perform("switchCamera")} />
           <Control label={roomState.captionsEnabled ? "关闭字幕" : "字幕"} onPress={() => perform("toggleCaptions")} />
           <Control label="设置" onPress={() => perform("openMeetingSettings")} />
-          <Control danger label="关闭会议" onPress={() => perform("closeMeeting")} />
+          <Control danger label="关闭会议" onPress={() => client.closeRoom().finally(() => perform("closeMeeting"))} />
         </View>
       )}
       {tab === "background" && (

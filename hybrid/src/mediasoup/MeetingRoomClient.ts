@@ -6,13 +6,15 @@ import {
   RTCView,
 } from "react-native-webrtc";
 import {io, Socket} from "socket.io-client";
-import type {RoomState, SfuProducerState, SfuTransportState} from "../types";
+import type {RoomChatMessage, RoomParticipant, RoomState, SfuProducerState, SfuTransportState} from "../types";
 
 export type MeetingRoomClientState = {
   phase: "idle" | "connecting" | "ready" | "failed";
   message?: string;
   localStream?: MediaStream;
   remoteStreams: Record<string, MediaStream>;
+  remoteParticipants: RoomParticipant[];
+  chatMessages: RoomChatMessage[];
 };
 
 type Listener = (state: MeetingRoomClientState) => void;
@@ -25,10 +27,13 @@ export class MeetingRoomClient {
   private sendTransport?: mediasoupTypes.Transport;
   private recvTransport?: mediasoupTypes.Transport;
   private roomId = "";
+  private currentUserId = "";
+  private currentUsername = "";
   private producers: mediasoupTypes.Producer[] = [];
   private consumers: mediasoupTypes.Consumer[] = [];
   private consumedProducerIds = new Set<string>();
-  private state: MeetingRoomClientState = {phase: "idle", remoteStreams: {}};
+  private remoteProducers = new Map<string, SfuProducerState>();
+  private state: MeetingRoomClientState = {phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: []};
   private listener?: Listener;
 
   subscribe(listener: Listener) {
@@ -40,11 +45,17 @@ export class MeetingRoomClient {
     if (!roomState.meeting || this.state.phase === "connecting") {
       return;
     }
+    const nextRoomId = roomState.meeting.roomId || roomState.meeting.roomNo;
+    if (this.device && this.roomId === nextRoomId && this.state.phase === "ready") {
+      return;
+    }
 
     this.setState({phase: "connecting", message: "正在初始化媒体引擎"});
 
     try {
-      this.roomId = roomState.meeting.roomId || roomState.meeting.roomNo;
+      this.roomId = nextRoomId;
+      this.currentUserId = roomState.currentUserId || "";
+      this.currentUsername = roomState.currentUsername || "我";
       this.socket = io(roomState.meeting.sfuServerUrl || DEFAULT_SFU_SOCKET_URL, {
         transports: ["websocket"],
         auth: {token: roomState.authToken},
@@ -52,11 +63,12 @@ export class MeetingRoomClient {
       await this.waitForSocket();
       const joinResponse = await this.emitAck("joinRoom", {
         roomId: this.roomId,
-        userId: roomState.currentUserId,
-        username: roomState.currentUsername,
+        userId: this.currentUserId,
+        username: this.currentUsername,
         token: roomState.authToken,
         withMedia: true,
       });
+      this.setState({remoteParticipants: parseJoinRoomParticipants(joinResponse)});
 
       this.device = new Device({handlerName: "ReactNative106"});
       const routerResponse = await this.emitAck("getRouterRtpCapabilities", {
@@ -89,7 +101,7 @@ export class MeetingRoomClient {
   }
 
   async update(roomState: RoomState) {
-    if (!this.device && roomState.mediaState.routerRtpCapabilitiesJson) {
+    if (!this.device && roomState.meeting && roomState.authToken) {
       await this.connect(roomState);
       return;
     }
@@ -106,14 +118,22 @@ export class MeetingRoomClient {
   }
 
   close() {
+    this.socket?.emit("leaveRoom", {roomId: this.roomId});
+    this.state.localStream?.getTracks().forEach(track => track.stop());
+    Object.values(this.state.remoteStreams).forEach(stream => {
+      stream.getTracks().forEach(track => track.stop());
+    });
     this.consumers.forEach(consumer => consumer.close());
     this.producers.forEach(producer => producer.close());
     this.sendTransport?.close();
     this.recvTransport?.close();
     this.socket?.disconnect();
     this.consumedProducerIds.clear();
+    this.remoteProducers.clear();
     this.roomId = "";
-    this.setState({phase: "idle", remoteStreams: {}});
+    this.currentUserId = "";
+    this.currentUsername = "";
+    this.setState({phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: [], localStream: undefined, message: undefined});
   }
 
   private async createTransports() {
@@ -177,9 +197,25 @@ export class MeetingRoomClient {
   }
 
   private bindRoomEvents() {
+    this.socket?.off("newPeer");
+    this.socket?.on("newPeer", peer => {
+      this.upsertRemoteParticipant(toParticipant(peer));
+    });
+
+    this.socket?.off("peerLeft");
+    this.socket?.on("peerLeft", ({peerId, userId}: {peerId?: string; userId?: string}) => {
+      this.setState({
+        remoteParticipants: this.state.remoteParticipants.filter(
+          participant => participant.peerId !== peerId && participant.userId !== userId,
+        ),
+      });
+    });
+
     this.socket?.off("newProducer");
     this.socket?.on("newProducer", producer => {
-      this.consumeRemoteProducers([normalizeProducer(producer)]).catch(error => {
+      const normalized = normalizeProducer(producer);
+      this.upsertRemoteParticipant(toParticipant(producer, normalized.kind));
+      this.consumeRemoteProducers([normalized]).catch(error => {
         this.setState({
           phase: "failed",
           message: error instanceof Error ? error.message : "订阅远端流失败",
@@ -189,6 +225,30 @@ export class MeetingRoomClient {
     this.socket?.off("consumerClosed");
     this.socket?.on("consumerClosed", ({consumerId}: {consumerId?: string}) => {
       this.consumers = this.consumers.filter(consumer => consumer.id !== consumerId);
+    });
+
+    this.socket?.off("producerStateChanged");
+    this.socket?.on("producerStateChanged", event => {
+      this.applyProducerState(event?.peerId, event?.kind, !event?.paused);
+    });
+
+    this.socket?.off("producerPaused");
+    this.socket?.on("producerPaused", event => {
+      const producer = this.remoteProducers.get(event?.producerId);
+      this.applyProducerState(event?.peerId, event?.kind ?? producer?.kind, false);
+    });
+
+    this.socket?.off("producerResumed");
+    this.socket?.on("producerResumed", event => {
+      const producer = this.remoteProducers.get(event?.producerId);
+      this.applyProducerState(event?.peerId, event?.kind ?? producer?.kind, true);
+    });
+  }
+
+  async closeRoom() {
+    await this.emitAck("closeRoom", {
+      roomId: this.roomId,
+      reason: "host_closed",
     });
   }
 
@@ -210,10 +270,53 @@ export class MeetingRoomClient {
     }
   }
 
+  private applyProducerState(peerId: string | undefined, kind: string | undefined, enabled: boolean) {
+    if (!peerId || !kind) return;
+    this.setState({
+      remoteParticipants: this.state.remoteParticipants.map(participant => {
+        if (participant.peerId !== peerId && participant.userId !== peerId) {
+          return participant;
+        }
+        if (kind === "audio") {
+          return {...participant, audioEnabled: enabled, speaking: enabled};
+        }
+        if (kind === "video") {
+          return {...participant, videoEnabled: enabled};
+        }
+        return participant;
+      }),
+    });
+  }
+
+  private upsertRemoteParticipant(participant: RoomParticipant) {
+    if (!participant.peerId || participant.userId === this.currentUserId || participant.peerId === this.currentUserId) {
+      return;
+    }
+    const existing = this.state.remoteParticipants.find(item => item.peerId === participant.peerId || item.userId === participant.userId);
+    this.setState({
+      remoteParticipants: existing
+        ? this.state.remoteParticipants.map(item =>
+            item.peerId === existing.peerId || item.userId === existing.userId
+              ? {
+                  ...item,
+                  ...participant,
+                  audioEnabled: item.audioEnabled || participant.audioEnabled,
+                  videoEnabled: item.videoEnabled || participant.videoEnabled,
+                }
+              : item,
+          )
+        : [...this.state.remoteParticipants, participant],
+    });
+  }
+
   private async consumeRemoteProducers(remoteProducers: SfuProducerState[]) {
     if (!this.recvTransport || !this.device || !this.socket) return;
     for (const producer of remoteProducers) {
-      if (!producer.id || this.consumedProducerIds.has(producer.id)) {
+      if (!producer.id) {
+        continue;
+      }
+      this.remoteProducers.set(producer.id, producer);
+      if (this.consumedProducerIds.has(producer.id)) {
         continue;
       }
 
@@ -332,6 +435,11 @@ function parseJoinRoomProducers(response: any): SfuProducerState[] {
   });
 }
 
+function parseJoinRoomParticipants(response: any): RoomParticipant[] {
+  const peers = Array.isArray(response?.peers) ? response.peers : [];
+  return peers.map((peer: any) => toParticipant(peer));
+}
+
 function normalizeProducer(producer: any): SfuProducerState {
   return {
     id: producer?.id ?? producer?.producerId ?? "",
@@ -341,5 +449,22 @@ function normalizeProducer(producer: any): SfuProducerState {
     kind: producer?.kind ?? "",
     paused: !!producer?.paused,
     local: false,
+  };
+}
+
+function toParticipant(peer: any, producerKind?: string): RoomParticipant {
+  return {
+    peerId: peer?.peerId ?? peer?.id ?? peer?.userId ?? "",
+    userId: peer?.userId ?? "",
+    username: peer?.username ?? peer?.name ?? "参会者",
+    role: "Member",
+    roleLabel: "成员",
+    status: "Online",
+    statusLabel: "在线",
+    isLocal: false,
+    audioEnabled: producerKind ? producerKind === "audio" : true,
+    videoEnabled: producerKind ? producerKind === "video" : true,
+    handRaised: false,
+    speaking: producerKind === "audio",
   };
 }

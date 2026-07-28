@@ -271,7 +271,7 @@ class MainViewModel(
                 if (!socketIoClient.isConnected) {
                     socketIoClient.connect(
                         url = meeting.sfuServerUrl.ifBlank { DEFAULT_SFU_SOCKET_URL },
-                        config = SocketIoConfig(),
+                        config = SocketIoConfig(authToken = session.token),
                     )
                 }
                 setupRoomSocketListeners()

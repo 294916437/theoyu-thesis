@@ -45,6 +45,7 @@ class SocketIoClient {
             path = config.path
             forceNew = true
             config.query?.let { query = it }
+            config.authToken?.let { auth = mapOf("token" to it) }
         }
 
         val newSocket = IO.socket(url, options)
@@ -190,6 +191,7 @@ class SocketIoClient {
 data class SocketIoConfig(
     val path: String = "/socket.io",
     val query: String? = null,
+    val authToken: String? = null,
     val connectionTimeoutMillis: Long = 10_000L,
     val reconnectionDelayMillis: Long = 1_000L,
     val reconnectionDelayMaxMillis: Long = 5_000L,

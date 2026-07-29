@@ -1,6 +1,7 @@
 package com.theoyu.thesis.android.feature.main
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonArray
@@ -23,6 +24,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 class MainViewModel(
@@ -186,27 +190,80 @@ class MainViewModel(
     }
 
     fun openProfileEditor() {
-        _uiState.update {
-            it.copy(
-                profileEditOpen = true,
-                profileEditForm = ProfileEditForm(nickname = it.userSummary.displayName),
-                message = null,
-            )
+        val userId = _uiState.value.userSummary.userId
+        if (userId.isBlank()) {
+            _uiState.update { it.copy(message = "未登录，请先登录") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, message = null) }
+            when (val result = userRepository.getUserProfile(userId)) {
+                is ApiResult.Success -> {
+                    val data = result.data.takeIf { it.isJsonObject }?.asJsonObject
+                    val profile = UserProfile(
+                        userId = userId,
+                        avatar = data?.firstString("avatar").orEmpty(),
+                        nickname = data?.firstString("nickname").orEmpty(),
+                        userAppId = data?.firstString("userAppId").orEmpty(),
+                        sex = data?.firstString("sex")?.toIntOrNull() ?: 0,
+                        phone = data?.firstString("phone").orEmpty(),
+                        age = data?.firstString("age")?.toIntOrNull() ?: 0,
+                        birthday = data?.firstString("birthday"),
+                        backgroundImg = data?.firstString("backgroundImg").orEmpty(),
+                        introduction = data?.firstString("introduction").orEmpty(),
+                    )
+                    _uiState.update {
+                        it.copy(
+                            userProfile = profile,
+                            profileEditForm = ProfileEditForm(
+                                nickname = profile.nickname,
+                                avatarUri = null,
+                                sex = profile.sex,
+                                birthday = profile.birthday,
+                                introduction = profile.introduction,
+                            ),
+                            route = MainRoute.EditProfile,
+                        )
+                    }
+                }
+                is ApiResult.Failure -> {
+                    _uiState.update { it.copy(message = result.error.message ?: "获取资料失败") }
+                }
+            }
+            _uiState.update { it.copy(isLoading = false) }
         }
     }
 
     fun dismissProfileEditor() {
-        _uiState.update { it.copy(profileEditOpen = false, message = null) }
+        _uiState.update { it.copy(route = MainRoute.Tabs, message = null) }
+    }
+
+    fun updateProfileAvatar(uri: String?) {
+        _uiState.update { it.copy(profileEditForm = it.profileEditForm.copy(avatarUri = uri)) }
     }
 
     fun updateProfileNickname(value: String) {
         _uiState.update { it.copy(profileEditForm = it.profileEditForm.copy(nickname = value.take(TITLE_MAX_LENGTH))) }
     }
+    
+    fun updateProfileSex(sex: Int) {
+        _uiState.update { it.copy(profileEditForm = it.profileEditForm.copy(sex = sex)) }
+    }
+    
+    fun updateProfileBirthday(birthday: String?) {
+        _uiState.update { it.copy(profileEditForm = it.profileEditForm.copy(birthday = birthday)) }
+    }
+    
+    fun updateProfileIntroduction(intro: String) {
+        _uiState.update { it.copy(profileEditForm = it.profileEditForm.copy(introduction = intro.take(100))) }
+    }
 
     fun saveProfile() {
         val state = _uiState.value
         val userId = state.userSummary.userId
-        val nickname = state.profileEditForm.nickname.trim()
+        val form = state.profileEditForm
+        val nickname = form.nickname.trim()
+        
         if (userId.isBlank()) {
             _uiState.update { it.copy(message = "缺少用户信息，请重新登录") }
             return
@@ -218,25 +275,52 @@ class MainViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmitting = true, message = null) }
-            when (val result = userRepository.updateUserProfile(mapOf("userId" to userId, "nickname" to nickname))) {
+            
+            val formMap = mutableMapOf(
+                "userId" to userId,
+                "nickname" to nickname,
+                "sex" to form.sex.toString(),
+                "introduction" to form.introduction.trim()
+            )
+            form.birthday?.let { formMap["birthday"] = it }
+            
+            val files = mutableListOf<MultipartBody.Part>()
+            if (!form.avatarUri.isNullOrEmpty()) {
+                try {
+                    val uri = Uri.parse(form.avatarUri)
+                    val bytes = appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    if (bytes != null) {
+                        val requestBody = bytes.toRequestBody("image/*".toMediaTypeOrNull(), 0, bytes.size)
+                        files.add(MultipartBody.Part.createFormData("avatar", "avatar.jpg", requestBody))
+                    }
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(message = "读取图片失败: ${e.message}") }
+                    _uiState.update { it.copy(isSubmitting = false) }
+                    return@launch
+                }
+            }
+
+            when (val result = userRepository.updateUserProfile(formMap, files)) {
                 is ApiResult.Success -> {
+                    val data = result.data.takeIf { it.isJsonObject }?.asJsonObject
+                    val newAvatar = data?.firstString("avatar") ?: _uiState.value.userSummary.avatar
+                    
                     sessionStore.saveUserProfile(
                         userId = userId,
                         nickname = nickname,
                         phone = _uiState.value.userSummary.phone,
-                        avatar = _uiState.value.userSummary.avatar,
+                        avatar = newAvatar,
                     )
                     _uiState.update {
                         it.copy(
-                            userSummary = it.userSummary.copy(displayName = nickname),
-                            profileEditOpen = false,
+                            userSummary = it.userSummary.copy(displayName = nickname, avatar = newAvatar),
+                            route = MainRoute.Tabs,
                             message = "资料已更新",
                         )
                     }
                     loadUserSummary()
                 }
-
-                is ApiResult.Failure -> _uiState.update { it.copy(message = result.error.message) }
+                is ApiResult.Failure -> _uiState.update { it.copy(message = result.error.message ?: "保存失败") }
             }
             _uiState.update { it.copy(isSubmitting = false) }
         }

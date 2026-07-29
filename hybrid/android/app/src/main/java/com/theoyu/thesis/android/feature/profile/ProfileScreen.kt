@@ -81,39 +81,6 @@ fun ProfileScreen(
         }
     }
 
-    if (uiState.profileEditOpen) {
-        AlertDialog(
-            onDismissRequest = onDismissEditor,
-            title = { Text("编辑资料") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        modifier = Modifier.fillMaxWidth(),
-                        value = uiState.profileEditForm.nickname,
-                        onValueChange = onNicknameChanged,
-                        label = { Text("昵称") },
-                        singleLine = true,
-                    )
-                    Text(
-                        "手机号由登录账号绑定，当前仅支持修改昵称。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = !uiState.isSubmitting,
-                    onClick = onSaveProfile,
-                ) {
-                    Text("保存")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismissEditor) { Text("取消") }
-            },
-        )
-    }
 }
 
 @Composable

@@ -28,6 +28,7 @@ import com.theoyu.thesis.android.feature.meeting.join.JoinMeetingScreen
 import com.theoyu.thesis.android.feature.meeting.list.MeetingsScreen
 import com.theoyu.thesis.android.feature.meeting.prejoin.PreJoinScreen
 import com.theoyu.thesis.android.feature.meeting.room.RoomScreen
+import com.theoyu.thesis.android.feature.profile.ProfileEditScreen
 import com.theoyu.thesis.android.feature.profile.ProfileScreen
 import com.theoyu.thesis.android.ui.theme.BlueSkyTheme
 
@@ -75,7 +76,11 @@ fun MainFrame(
         onAudioRouteSelected = viewModel::selectAudioRoute,
         onOpenProfileEditor = viewModel::openProfileEditor,
         onDismissProfileEditor = viewModel::dismissProfileEditor,
+        onProfileAvatarChanged = viewModel::updateProfileAvatar,
         onProfileNicknameChanged = viewModel::updateProfileNickname,
+        onProfileSexChanged = viewModel::updateProfileSex,
+        onProfileBirthdayChanged = viewModel::updateProfileBirthday,
+        onProfileIntroductionChanged = viewModel::updateProfileIntroduction,
         onSaveProfile = viewModel::saveProfile,
         onLogout = viewModel::logout,
         onEnterMeeting = viewModel::enterMeetingFromPreview,
@@ -128,7 +133,11 @@ private fun MainFrameContent(
     onAudioRouteSelected: (AudioRoute) -> Unit,
     onOpenProfileEditor: () -> Unit,
     onDismissProfileEditor: () -> Unit,
+    onProfileAvatarChanged: (String?) -> Unit,
     onProfileNicknameChanged: (String) -> Unit,
+    onProfileSexChanged: (Int) -> Unit,
+    onProfileBirthdayChanged: (String?) -> Unit,
+    onProfileIntroductionChanged: (String) -> Unit,
     onSaveProfile: () -> Unit,
     onLogout: () -> Unit,
     onEnterMeeting: () -> Unit,
@@ -155,6 +164,7 @@ private fun MainFrameContent(
         MainRoute.CreateMeeting -> "创建会议"
         MainRoute.JoinMeeting -> "加入会议"
         MainRoute.PreJoin -> "会前预览"
+        MainRoute.EditProfile -> "编辑资料"
         MainRoute.Room -> uiState.activeRoom.meeting?.title ?: "会议房间"
     }
 
@@ -245,6 +255,16 @@ private fun MainFrameContent(
                     onAudioRoutesChanged = onAudioRoutesChanged,
                     onAudioRouteSelected = onAudioRouteSelected,
                     onEnterMeeting = onEnterMeeting,
+                )
+                
+                MainRoute.EditProfile -> ProfileEditScreen(
+                    uiState = uiState,
+                    onAvatarUriChanged = onProfileAvatarChanged,
+                    onNicknameChanged = onProfileNicknameChanged,
+                    onSexChanged = onProfileSexChanged,
+                    onBirthdayChanged = onProfileBirthdayChanged,
+                    onIntroductionChanged = onProfileIntroductionChanged,
+                    onSave = onSaveProfile,
                 )
 
                 MainRoute.Room -> RoomScreen(

@@ -8,6 +8,7 @@ data class MainUiState(
     val route: MainRoute = MainRoute.Tabs,
     val previousRoute: MainRoute = MainRoute.Tabs,
     val userSummary: UserSummary = UserSummary(),
+    val userProfile: UserProfile? = null,
     val upcomingMeetings: List<MeetingSummary> = emptyList(),
     val recentMeetings: List<MeetingSummary> = emptyList(),
     val homeMeetingNo: String = "",
@@ -46,6 +47,7 @@ sealed interface MainRoute {
     data object JoinMeeting : MainRoute
     data object PreJoin : MainRoute
     data object Room : MainRoute
+    data object EditProfile : MainRoute
 }
 
 data class UserSummary(
@@ -54,6 +56,19 @@ data class UserSummary(
     val phone: String = "",
     val avatar: String = "",
     val online: Boolean = false,
+)
+
+data class UserProfile(
+    val userId: String = "",
+    val avatar: String = "",
+    val nickname: String = "",
+    val userAppId: String = "",
+    val sex: Int = 0,
+    val phone: String = "",
+    val age: Int = 0,
+    val birthday: String? = null,
+    val backgroundImg: String = "",
+    val introduction: String = "",
 )
 
 data class MeetingSummary(
@@ -223,6 +238,10 @@ data class CreateMeetingForm(
 
 data class ProfileEditForm(
     val nickname: String = "",
+    val avatarUri: String? = null,
+    val sex: Int = 0,
+    val birthday: String? = null,
+    val introduction: String = "",
 )
 
 enum class MeetingCreateType(

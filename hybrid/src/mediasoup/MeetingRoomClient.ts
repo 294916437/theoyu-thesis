@@ -475,11 +475,17 @@ export class MeetingRoomClient {
         roomId: this.roomId,
         consumerId: consumer.id,
       }).catch(() => undefined);
-      const stream = new MediaStream([consumer.track as any]);
+      const peerId = producer.peerId || producer.userId || producer.id;
+      let stream = this.state.remoteStreams[peerId];
+      if (stream) {
+        stream.addTrack(consumer.track as any);
+      } else {
+        stream = new MediaStream([consumer.track as any]);
+      }
       this.setState({
         remoteStreams: {
           ...this.state.remoteStreams,
-          [producer.peerId || producer.userId || producer.id]: stream,
+          [peerId]: stream,
         },
       });
     }

@@ -172,6 +172,9 @@ export class MeetingRoomClient {
   }
 
   private async createLocalStream(roomState: RoomState) {
+    if (!roomState.audioEnabled && !roomState.videoEnabled) {
+      return new MediaStream();
+    }
     return mediaDevices.getUserMedia({
       audio: roomState.audioEnabled,
       video: roomState.videoEnabled
@@ -253,8 +256,33 @@ export class MeetingRoomClient {
   }
 
   async toggleAudio(enabled?: boolean) {
-    const producer = this.producers.find(item => item.kind === "audio");
-    const nextEnabled = enabled ?? !(producer as any)?.paused;
+    let producer = this.producers.find(item => item.kind === "audio");
+    const nextEnabled = enabled ?? (producer ? !(producer as any).paused : true);
+    
+    if (nextEnabled && !producer) {
+      try {
+        const stream = await mediaDevices.getUserMedia({ audio: true }) as MediaStream;
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack) {
+          if (!this.state.localStream) {
+            this.setState({ localStream: stream });
+          } else {
+            this.state.localStream.addTrack(audioTrack);
+            this.setState({ localStream: this.state.localStream });
+          }
+          if (this.sendTransport) {
+            producer = await this.sendTransport.produce({
+              track: audioTrack as any,
+              appData: { source: "react-native" },
+            });
+            this.producers.push(producer);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to create audio track:", err);
+      }
+    }
+
     this.updateLocalTrackEnabled("audio", nextEnabled);
     if (producer) {
       this.setProducerEnabled(producer, nextEnabled);
@@ -262,8 +290,40 @@ export class MeetingRoomClient {
   }
 
   async toggleVideo(enabled?: boolean) {
-    const producer = this.producers.find(item => item.kind === "video");
-    const nextEnabled = enabled ?? !(producer as any)?.paused;
+    let producer = this.producers.find(item => item.kind === "video");
+    const nextEnabled = enabled ?? (producer ? !(producer as any).paused : true);
+    
+    if (nextEnabled && !producer) {
+      try {
+        const stream = await mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user",
+            width: 640,
+            height: 480,
+            frameRate: 30,
+          },
+        }) as MediaStream;
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          if (!this.state.localStream) {
+            this.setState({ localStream: stream });
+          } else {
+            this.state.localStream.addTrack(videoTrack);
+            this.setState({ localStream: this.state.localStream });
+          }
+          if (this.sendTransport) {
+            producer = await this.sendTransport.produce({
+              track: videoTrack as any,
+              appData: { source: "react-native" },
+            });
+            this.producers.push(producer);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to create video track:", err);
+      }
+    }
+
     this.updateLocalTrackEnabled("video", nextEnabled);
     if (producer) {
       this.setProducerEnabled(producer, nextEnabled);

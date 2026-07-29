@@ -103,6 +103,10 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
   }, [keepScreenAwake]);
 
   useEffect(() => {
+    perform("setVideoEffect", {type: effectType, background: virtualBackground});
+  }, [effectType, virtualBackground]);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       setElapsedSeconds(Math.floor((Date.now() - meetingStartedAt) / 1000));
     }, 1000);

@@ -67,6 +67,14 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
   const [keepScreenAwake, setKeepScreenAwake] = useState(true);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [moreTab, setMoreTab] = useState<"actions" | "background" | "audio" | "android">("actions");
+  const [roomControls, setRoomControls] = useState({
+    audioEnabled: roomState.audioEnabled,
+    videoEnabled: roomState.videoEnabled,
+    handRaised: roomState.handRaised,
+    screenSharing: roomState.screenSharing,
+    captionsEnabled: roomState.captionsEnabled,
+    selectedSheet: roomState.selectedSheet,
+  });
   const {width} = useWindowDimensions();
   const client = useRef(new MeetingRoomClient()).current;
   const meetingStartedAt = useRef(Date.now()).current;
@@ -102,34 +110,63 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
   }, [meetingStartedAt]);
 
   useEffect(() => {
-    client.update(roomState);
-  }, [client, roomState]);
+    client.update({
+      ...roomState,
+      audioEnabled: roomControls.audioEnabled,
+      videoEnabled: roomControls.videoEnabled,
+      handRaised: roomControls.handRaised,
+      screenSharing: roomControls.screenSharing,
+      captionsEnabled: roomControls.captionsEnabled,
+      selectedSheet: roomControls.selectedSheet,
+    });
+  }, [client, roomState, roomControls]);
 
+  const uiRoomState = useMemo(
+    () => ({
+      ...roomState,
+      audioEnabled: roomControls.audioEnabled,
+      videoEnabled: roomControls.videoEnabled,
+      handRaised: roomControls.handRaised,
+      screenSharing: roomControls.screenSharing,
+      captionsEnabled: roomControls.captionsEnabled,
+      selectedSheet: roomControls.selectedSheet,
+    }),
+    [roomState, roomControls],
+  );
   const participants = useMemo<RoomParticipant[]>(
     () => {
       const localFallback: RoomParticipant = {
-            peerId: "local",
-            userId: "",
-            username: "我",
-            role: "Member",
-            roleLabel: "成员",
-            status: "Online",
-            statusLabel: "在线",
-            isLocal: true,
-            audioEnabled: roomState.audioEnabled,
-            videoEnabled: roomState.videoEnabled,
-            handRaised: false,
-            speaking: false,
-          };
+        peerId: "local",
+        userId: "",
+        username: "我",
+        role: "Member",
+        roleLabel: "成员",
+        status: "Online",
+        statusLabel: "在线",
+        isLocal: true,
+        audioEnabled: uiRoomState.audioEnabled,
+        videoEnabled: uiRoomState.videoEnabled,
+        handRaised: uiRoomState.handRaised,
+        speaking: false,
+      };
       const base = roomState.participants.length > 0 ? roomState.participants : [localFallback];
       const byPeerId = new Map(base.map(participant => [participant.peerId, participant]));
       clientState.remoteParticipants.forEach(participant => {
         const existing = byPeerId.get(participant.peerId);
         byPeerId.set(participant.peerId, existing ? {...existing, ...participant} : participant);
       });
-      return Array.from(byPeerId.values());
+      return Array.from(byPeerId.values()).map(participant =>
+        participant.isLocal
+          ? {
+              ...participant,
+              audioEnabled: uiRoomState.audioEnabled,
+              videoEnabled: uiRoomState.videoEnabled,
+              handRaised: uiRoomState.handRaised,
+            }
+          : participant,
+      );
     },
-    [roomState, clientState.remoteParticipants],
+    [roomState.participants, clientState.remoteParticipants, uiRoomState],
   );
   const chatMessages = useMemo(
     () => [...roomState.chatMessages, ...clientState.chatMessages],
@@ -137,17 +174,79 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
   );
   const activeSpeaker =
     participants.find(item => item.peerId === spotlightPeerId) ??
-    participants.find(item => item.peerId === roomState.activeSpeakerPeerId) ??
+    participants.find(item => item.peerId === uiRoomState.activeSpeakerPeerId) ??
     participants[0];
   const raisedHands = participants.filter(item => item.handRaised);
   const isCompact = width < 600;
-  const act = (action: string, payload?: Record<string, unknown>) => {
+  const act = async (action: string, payload?: Record<string, unknown>) => {
     Vibration.vibrate(8);
     if (action === "leaveRoom") {
       Alert.alert("离开会议", "确定要离开当前会议吗？", [
         {text: "取消", style: "cancel"},
-        {text: "离开", style: "destructive", onPress: () => perform("leaveRoom")},
+        {
+          text: "离开",
+          style: "destructive",
+          onPress: async () => {
+            await client.close();
+            perform("leaveRoom");
+          },
+        },
       ]);
+      return;
+    }
+    if (action === "closeMeeting") {
+      await client.closeRoom().catch(() => undefined);
+      client.close();
+      perform("closeMeeting");
+      return;
+    }
+    if (action === "toggleAudio") {
+      const next = !uiRoomState.audioEnabled;
+      setRoomControls(prev => ({...prev, audioEnabled: next}));
+      await client.toggleAudio(next);
+      return;
+    }
+    if (action === "toggleVideo") {
+      const next = !uiRoomState.videoEnabled;
+      setRoomControls(prev => ({...prev, videoEnabled: next}));
+      await client.toggleVideo(next);
+      return;
+    }
+    if (action === "toggleHandRaised") {
+      const next = !uiRoomState.handRaised;
+      setRoomControls(prev => ({...prev, handRaised: next}));
+      await client.toggleHandRaised(next);
+      return;
+    }
+    if (action === "switchCamera") {
+      await client.switchCamera();
+      return;
+    }
+    if (action === "sendMessage") {
+      const content = String(payload?.content || "").trim();
+      if (content) {
+        await client.sendMessage(content);
+      }
+      return;
+    }
+    if (action === "hostToggleParticipantAudio" || action === "hostToggleParticipantVideo" || action === "removeParticipant") {
+      const participant = findParticipant(payload, participants);
+      if (!participant) return;
+      if (action === "hostToggleParticipantAudio") {
+        await client.hostToggleParticipantAudio(participant);
+      } else if (action === "hostToggleParticipantVideo") {
+        await client.hostToggleParticipantVideo(participant);
+      } else {
+        await client.removeParticipant(participant);
+      }
+      return;
+    }
+    if (action === "openSheet") {
+      setRoomControls(prev => ({...prev, selectedSheet: (payload?.sheet as RoomState["selectedSheet"]) || undefined}));
+      return;
+    }
+    if (action === "closeSheet") {
+      setRoomControls(prev => ({...prev, selectedSheet: undefined}));
       return;
     }
     perform(action, payload);
@@ -180,10 +279,10 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
       <View style={styles.topBar}>
         <View style={styles.titleBlock}>
           <Text style={styles.title} numberOfLines={1}>
-            {roomState.meeting?.title || "会议房间"}
+            {uiRoomState.meeting?.title || "会议房间"}
           </Text>
           <Text style={styles.caption} numberOfLines={1}>
-            {formatDuration(elapsedSeconds)} · {roomState.mediaState.phaseLabel} · {clientState.phase === "failed" ? clientState.message : roomState.networkQualityLabel}
+            {formatDuration(elapsedSeconds)} · {uiRoomState.mediaState.phaseLabel} · {clientState.phase === "failed" ? clientState.message : uiRoomState.networkQualityLabel}
           </Text>
         </View>
         <View style={styles.badge}>
@@ -200,20 +299,27 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
       )}
 
       <View style={styles.controls}>
-        <Control label={roomState.audioEnabled ? "静音" : "开麦"} onPress={() => act("toggleAudio")} />
-        <Control label={roomState.videoEnabled ? "关视频" : "开视频"} onPress={() => act("toggleVideo")} />
+        <Control label={uiRoomState.audioEnabled ? "静音" : "开麦"} onPress={() => act("toggleAudio")} />
+        <Control label={uiRoomState.videoEnabled ? "关视频" : "开视频"} onPress={() => act("toggleVideo")} />
         <Control label="挂断" danger onPress={() => act("leaveRoom")} />
         <Control label="成员" onPress={() => act("openSheet", {sheet: "Members"})} />
         <Control label="聊天" onPress={() => act("openSheet", {sheet: "Chat"})} />
         <Control label="更多" onPress={() => act("openSheet", {sheet: "More"})} />
       </View>
 
-      <Modal visible={!!roomState.selectedSheet} animationType="slide" transparent onRequestClose={() => act("closeSheet")}>
+      <Modal visible={!!uiRoomState.selectedSheet} animationType="slide" transparent onRequestClose={() => act("closeSheet")}>
         <Pressable style={styles.scrim} onPress={() => act("closeSheet")} />
         <View style={styles.sheet}>
-          <SheetTabs selected={roomState.selectedSheet} onSelect={sheet => act("openSheet", {sheet})} />
-          {roomState.selectedSheet === "Members" && <Members participants={participants} />}
-          {roomState.selectedSheet === "Chat" && (
+          <SheetTabs selected={uiRoomState.selectedSheet} onSelect={sheet => act("openSheet", {sheet})} />
+          {uiRoomState.selectedSheet === "Members" && (
+            <Members
+              participants={participants}
+              onHostToggleParticipantAudio={participant => act("hostToggleParticipantAudio", participant)}
+              onHostToggleParticipantVideo={participant => act("hostToggleParticipantVideo", participant)}
+              onRemoveParticipant={participant => act("removeParticipant", participant)}
+            />
+          )}
+          {uiRoomState.selectedSheet === "Chat" && (
             <Chat
               messages={chatMessages}
               draft={messageDraft}
@@ -226,9 +332,9 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
               }}
             />
           )}
-          {roomState.selectedSheet === "More" && (
+          {uiRoomState.selectedSheet === "More" && (
             <More
-              roomState={roomState}
+              roomState={uiRoomState}
               tab={moreTab}
               onTabChanged={setMoreTab}
               effectType={effectType}
@@ -237,6 +343,9 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
               onVirtualBackgroundChanged={setVirtualBackground}
               keepScreenAwake={keepScreenAwake}
               onKeepScreenAwakeChanged={setKeepScreenAwake}
+              onToggleHandRaised={() => act("toggleHandRaised")}
+              onSwitchCamera={() => act("switchCamera")}
+              onCloseMeeting={() => act("closeMeeting")}
             />
           )}
         </View>
@@ -284,7 +393,17 @@ function SheetTabs({selected, onSelect}: {selected?: string; onSelect: (sheet: s
   );
 }
 
-function Members({participants}: {participants: RoomParticipant[]}) {
+function Members({
+  participants,
+  onHostToggleParticipantAudio,
+  onHostToggleParticipantVideo,
+  onRemoveParticipant,
+}: {
+  participants: RoomParticipant[];
+  onHostToggleParticipantAudio: (participant: RoomParticipant) => void;
+  onHostToggleParticipantVideo: (participant: RoomParticipant) => void;
+  onRemoveParticipant: (participant: RoomParticipant) => void;
+}) {
   return (
     <ScrollView>
       <Text style={styles.sheetTitle}>成员</Text>
@@ -294,9 +413,9 @@ function Members({participants}: {participants: RoomParticipant[]}) {
           <Text style={styles.memberMeta}>{participant.roleLabel} · {participant.statusLabel}</Text>
           {!participant.isLocal && (
             <View style={styles.rowActions}>
-              <Control compact label={participant.audioEnabled ? "静音" : "开麦"} onPress={() => perform("hostToggleParticipantAudio", participant)} />
-              <Control compact label={participant.videoEnabled ? "关视频" : "开视频"} onPress={() => perform("hostToggleParticipantVideo", participant)} />
-              <Control compact danger label="移出" onPress={() => perform("removeParticipant", participant)} />
+              <Control compact label={participant.audioEnabled ? "静音" : "开麦"} onPress={() => onHostToggleParticipantAudio(participant)} />
+              <Control compact label={participant.videoEnabled ? "关视频" : "开视频"} onPress={() => onHostToggleParticipantVideo(participant)} />
+              <Control compact danger label="移出" onPress={() => onRemoveParticipant(participant)} />
             </View>
           )}
         </View>
@@ -336,6 +455,9 @@ function More({
   onVirtualBackgroundChanged,
   keepScreenAwake,
   onKeepScreenAwakeChanged,
+  onToggleHandRaised,
+  onSwitchCamera,
+  onCloseMeeting,
 }: {
   roomState: RoomState;
   tab: "actions" | "background" | "audio" | "android";
@@ -346,6 +468,9 @@ function More({
   onVirtualBackgroundChanged: (background: string) => void;
   keepScreenAwake: boolean;
   onKeepScreenAwakeChanged: (enabled: boolean) => void;
+  onToggleHandRaised: () => void;
+  onSwitchCamera: () => void;
+  onCloseMeeting: () => void;
 }) {
   return (
     <View>
@@ -365,11 +490,11 @@ function More({
       {tab === "actions" && (
         <View style={styles.moreGrid}>
           <Control label={roomState.screenSharing ? "停止共享" : "屏幕共享"} onPress={() => perform("toggleScreenShare")} />
-          <Control label={roomState.handRaised ? "取消举手" : "举手"} onPress={() => perform("toggleHandRaised")} />
-          <Control label="切换摄像头" onPress={() => perform("switchCamera")} />
+          <Control label={roomState.handRaised ? "取消举手" : "举手"} onPress={onToggleHandRaised} />
+          <Control label="切换摄像头" onPress={onSwitchCamera} />
           <Control label={roomState.captionsEnabled ? "关闭字幕" : "字幕"} onPress={() => perform("toggleCaptions")} />
           <Control label="设置" onPress={() => perform("openMeetingSettings")} />
-          <Control danger label="关闭会议" onPress={() => client.closeRoom().finally(() => perform("closeMeeting"))} />
+          <Control danger label="关闭会议" onPress={onCloseMeeting} />
         </View>
       )}
       {tab === "background" && (
@@ -426,6 +551,15 @@ function Control({label, danger = false, compact = false, onPress}: {label: stri
 
 function perform(action: string, payload?: Record<string, unknown>) {
   MeetingRoomBridge?.perform?.(action, payload ?? {});
+}
+
+function findParticipant(payload: Record<string, unknown> | undefined, participants: RoomParticipant[]) {
+  if (!payload) return undefined;
+  const peerId = typeof payload.peerId === "string" ? payload.peerId : "";
+  const userId = typeof payload.userId === "string" ? payload.userId : "";
+  return participants.find(participant =>
+    (peerId && participant.peerId === peerId) || (userId && participant.userId === userId),
+  );
 }
 
 function formatDuration(seconds: number) {

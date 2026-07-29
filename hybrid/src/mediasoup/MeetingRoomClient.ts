@@ -252,6 +252,75 @@ export class MeetingRoomClient {
     });
   }
 
+  async toggleAudio(enabled?: boolean) {
+    const producer = this.producers.find(item => item.kind === "audio");
+    const nextEnabled = enabled ?? !(producer as any)?.paused;
+    this.updateLocalTrackEnabled("audio", nextEnabled);
+    if (producer) {
+      this.setProducerEnabled(producer, nextEnabled);
+    }
+  }
+
+  async toggleVideo(enabled?: boolean) {
+    const producer = this.producers.find(item => item.kind === "video");
+    const nextEnabled = enabled ?? !(producer as any)?.paused;
+    this.updateLocalTrackEnabled("video", nextEnabled);
+    if (producer) {
+      this.setProducerEnabled(producer, nextEnabled);
+    }
+  }
+
+  async switchCamera() {
+    const videoTrack = this.state.localStream?.getVideoTracks()[0] as any;
+    if (videoTrack?.switchCamera) {
+      await videoTrack.switchCamera();
+    }
+  }
+
+  async toggleHandRaised(raised: boolean) {
+    this.setState({
+      remoteParticipants: this.state.remoteParticipants.map(participant =>
+        participant.peerId === this.currentUserId || participant.userId === this.currentUserId
+          ? {...participant, handRaised: raised}
+          : participant,
+      ),
+    });
+    await this.emitAck("setHandRaised", {raised}).catch(() => undefined);
+  }
+
+  async sendMessage(content: string) {
+    const message = {
+      id: `${Date.now()}`,
+      senderName: this.currentUsername || "我",
+      content: content.trim(),
+      timestamp: new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}),
+      isLocal: true,
+    };
+    this.setState({chatMessages: [...this.state.chatMessages, message]});
+  }
+
+  async hostToggleParticipantAudio(participant: RoomParticipant) {
+    await this.emitAck("hostToggleAudio", {
+      roomId: this.roomId,
+      targetPeerId: participant.peerId || participant.userId,
+      enabled: !participant.audioEnabled,
+    });
+  }
+
+  async hostToggleParticipantVideo(participant: RoomParticipant) {
+    await this.emitAck("hostToggleVideo", {
+      roomId: this.roomId,
+      targetPeerId: participant.peerId || participant.userId,
+      enabled: !participant.videoEnabled,
+    });
+  }
+
+  async removeParticipant(participant: RoomParticipant) {
+    await this.emitAck("removeParticipant", {
+      targetPeerId: participant.peerId || participant.userId,
+    });
+  }
+
   private setProducerEnabled(producer: mediasoupTypes.Producer, enabled: boolean) {
     const paused = !!(producer as any).paused;
     if (enabled && paused) {
@@ -268,6 +337,13 @@ export class MeetingRoomClient {
         producerId: producer.id,
       }).catch(() => undefined);
     }
+  }
+
+  private updateLocalTrackEnabled(kind: "audio" | "video", enabled: boolean) {
+    const tracks = kind === "audio" ? this.state.localStream?.getAudioTracks() : this.state.localStream?.getVideoTracks();
+    tracks?.forEach(track => {
+      track.enabled = enabled;
+    });
   }
 
   private applyProducerState(peerId: string | undefined, kind: string | undefined, enabled: boolean) {

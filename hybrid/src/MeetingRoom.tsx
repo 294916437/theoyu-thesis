@@ -18,6 +18,7 @@ import {
 import InCallManager from "react-native-incall-manager";
 import {MeetingRoomClient, RTCView, MeetingRoomClientState} from "./mediasoup/MeetingRoomClient";
 import type {RoomChatMessage, RoomParticipant, RoomState} from "./types";
+import type {MediaStream} from "react-native-webrtc";
 
 type Props = {
   roomStateJson?: string;
@@ -262,7 +263,7 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
       <View style={styles.stage}>
         <VideoTile
           participant={activeSpeaker}
-          streamUrl={activeSpeaker.isLocal ? clientState.localStream?.toURL() : clientState.remoteStreams[activeSpeaker.peerId]?.toURL()}
+          stream={activeSpeaker.isLocal ? clientState.localStream : clientState.remoteStreams[activeSpeaker.peerId]}
           prominent
         />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filmstrip, isCompact && styles.compactFilmstrip]}>
@@ -273,7 +274,7 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
               <VideoTile
                 key={participant.peerId}
                 participant={participant}
-                streamUrl={participant.isLocal ? clientState.localStream?.toURL() : clientState.remoteStreams[participant.peerId]?.toURL()}
+                stream={participant.isLocal ? clientState.localStream : clientState.remoteStreams[participant.peerId]}
                 onPress={() => setSpotlightPeerId(participant.peerId)}
               />
             ))}
@@ -358,11 +359,11 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
   );
 }
 
-function VideoTile({participant, streamUrl, prominent = false, onPress}: {participant: RoomParticipant; streamUrl?: string; prominent?: boolean; onPress?: () => void}) {
+function VideoTile({participant, stream, prominent = false, onPress}: {participant: RoomParticipant; stream?: MediaStream; prominent?: boolean; onPress?: () => void}) {
   return (
     <Pressable style={[styles.tile, prominent ? styles.prominentTile : styles.smallTile]} onPress={onPress}>
-      {participant.videoEnabled && streamUrl ? (
-        <RTCView streamURL={streamUrl} objectFit="cover" style={StyleSheet.absoluteFill} />
+      {participant.videoEnabled && stream ? (
+        <RTCView stream={stream} objectFit="cover" style={StyleSheet.absoluteFill} />
       ) : (
         <View style={styles.avatarWrap}>
           <View style={[styles.avatar, prominent && styles.prominentAvatar]}>

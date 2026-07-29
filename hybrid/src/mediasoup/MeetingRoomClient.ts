@@ -5,6 +5,7 @@ import {
   MediaStreamTrack,
   RTCView,
 } from "react-native-webrtc";
+import {Platform} from "react-native";
 import {io, Socket} from "socket.io-client";
 import type {RoomChatMessage, RoomParticipant, RoomState, SfuProducerState, SfuTransportState} from "../types";
 
@@ -56,7 +57,13 @@ export class MeetingRoomClient {
       this.roomId = nextRoomId;
       this.currentUserId = roomState.currentUserId || "";
       this.currentUsername = roomState.currentUsername || "我";
-      this.socket = io(roomState.meeting.sfuServerUrl || DEFAULT_SFU_SOCKET_URL, {
+      
+      let sfuUrl = roomState.meeting.sfuServerUrl || DEFAULT_SFU_SOCKET_URL;
+      if (Platform.OS === "android") {
+        sfuUrl = sfuUrl.replace("127.0.0.1", "10.0.2.2").replace("localhost", "10.0.2.2");
+      }
+      
+      this.socket = io(sfuUrl, {
         transports: ["websocket"],
         auth: {token: roomState.authToken},
       });

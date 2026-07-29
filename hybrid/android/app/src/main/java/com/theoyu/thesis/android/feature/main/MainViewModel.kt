@@ -93,7 +93,7 @@ class MainViewModel(
         _uiState.update {
             it.copy(
                 route = MainRoute.JoinMeeting,
-                joinMeetingNo = initialMeetingNo.filter(Char::isDigit).take(MEETING_NO_MAX_LENGTH),
+                joinMeetingNo = cleanMeetingNo(initialMeetingNo),
                 joinError = null,
                 validatedMeeting = null,
                 message = null,
@@ -726,6 +726,17 @@ class MainViewModel(
         }
     }
 
+    fun joinMeetingDirectly(meeting: MeetingSummary) {
+        _uiState.update {
+            it.copy(
+                validatedMeeting = meeting,
+                joinMeetingNo = cleanMeetingNo(meeting.roomNo),
+                message = null,
+            )
+        }
+        joinValidatedMeeting()
+    }
+
     fun consumeMessage() {
         _uiState.update { it.copy(message = null) }
     }
@@ -1040,7 +1051,7 @@ class MainViewModel(
         )
 
     private fun cleanMeetingNo(value: String): String =
-        value.filter(Char::isDigit).take(MEETING_NO_MAX_LENGTH)
+        value.filter { it.isLetterOrDigit() }.take(MEETING_NO_MAX_LENGTH)
 
     private fun parseMeetingList(element: JsonElement): List<MeetingSummary> {
         val body = element.asJsonObjectOrNull()

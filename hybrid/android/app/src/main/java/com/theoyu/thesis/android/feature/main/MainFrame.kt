@@ -59,6 +59,7 @@ fun MainFrame(
         onJoinMeetingNoChanged = viewModel::updateJoinMeetingNo,
         onValidateMeeting = viewModel::validateJoinMeeting,
         onJoinValidatedMeeting = viewModel::joinValidatedMeeting,
+        onJoinMeetingDirectly = viewModel::joinMeetingDirectly,
         onCreateTitleChanged = viewModel::updateCreateTitle,
         onCreateTypeChanged = viewModel::updateCreateType,
         onCreateDateChanged = viewModel::updateCreateDate,
@@ -111,6 +112,7 @@ private fun MainFrameContent(
     onJoinMeetingNoChanged: (String) -> Unit,
     onValidateMeeting: () -> Unit,
     onJoinValidatedMeeting: () -> Unit,
+    onJoinMeetingDirectly: (MeetingSummary) -> Unit,
     onCreateTitleChanged: (String) -> Unit,
     onCreateTypeChanged: (MeetingCreateType) -> Unit,
     onCreateDateChanged: (java.time.LocalDate) -> Unit,
@@ -199,6 +201,7 @@ private fun MainFrameContent(
                     MainTab.Meetings -> MeetingsScreen(
                         upcomingMeetings = uiState.upcomingMeetings,
                         recentMeetings = uiState.recentMeetings,
+                        onMeetingClick = { meeting -> onJoinMeetingDirectly(meeting) },
                     )
 
                     MainTab.Profile -> ProfileScreen(
@@ -315,6 +318,7 @@ private fun MainFramePreview() {
             onJoinMeetingNoChanged = {},
             onValidateMeeting = {},
             onJoinValidatedMeeting = {},
+            onJoinMeetingDirectly = {},
             onCreateTitleChanged = {},
             onCreateTypeChanged = {},
             onCreateDateChanged = {},

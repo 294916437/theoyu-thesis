@@ -90,7 +90,7 @@ async function startServer() {
 		logger.info("Initializing Socket Handler...")
 		const socketHandler = new SocketHandler(io)
 
-		socketHandler["monitoring"].startPeriodicLogging(60000)
+		// socketHandler["monitoring"].startPeriodicLogging(60000)
 
 		// 启动 E2E 延迟采集（论文测试用，5 秒一次，不影响业务）
 		// LatencyCollector.getInstance().start()

@@ -207,17 +207,48 @@ export class MeetingRoomClient {
     }) as Promise<MediaStream>;
   }
 
+  private async produceVideoSafely(track: MediaStreamTrack) {
+    if (!this.sendTransport) return null;
+    try {
+      const producer = await this.sendTransport.produce({
+        track: track as any,
+        encodings: SIMULCAST_ENCODINGS,
+        appData: {source: "react-native"},
+      });
+      return producer;
+    } catch (err) {
+      console.warn("Failed to produce video with simulcast on Android, falling back to single encoding...", err);
+      try {
+        const producer = await this.sendTransport.produce({
+          track: track as any,
+          appData: {source: "react-native"},
+        });
+        return producer;
+      } catch (fallbackErr) {
+        console.error("Fallback video production also failed", fallbackErr);
+        throw fallbackErr;
+      }
+    }
+  }
+
   private async publishLocalTracks(stream: MediaStream) {
     if (!this.sendTransport) return;
     for (const track of stream.getTracks() as MediaStreamTrack[]) {
       const isVideo = track.kind === "video";
-      const producer = await this.sendTransport.produce({
-        track: track as any,
-        encodings: isVideo ? SIMULCAST_ENCODINGS : undefined,
-        appData: {source: "react-native"},
-      });
-      this.producers.push(producer);
-      this.monitorProducerScore(producer);
+      if (isVideo) {
+        const producer = await this.produceVideoSafely(track);
+        if (producer) {
+          this.producers.push(producer);
+          this.monitorProducerScore(producer);
+        }
+      } else {
+        const producer = await this.sendTransport.produce({
+          track: track as any,
+          appData: {source: "react-native"},
+        });
+        this.producers.push(producer);
+        this.monitorProducerScore(producer);
+      }
     }
   }
 
@@ -360,13 +391,11 @@ export class MeetingRoomClient {
             this.setState({ localStream: this.state.localStream });
           }
           if (this.sendTransport) {
-            producer = await this.sendTransport.produce({
-              track: videoTrack as any,
-              encodings: SIMULCAST_ENCODINGS,
-              appData: { source: "react-native" },
-            });
-            this.producers.push(producer);
-            this.monitorProducerScore(producer);
+            producer = await this.produceVideoSafely(videoTrack) || undefined;
+            if (producer) {
+              this.producers.push(producer);
+              this.monitorProducerScore(producer);
+            }
           }
         }
       } catch (err) {

@@ -10,17 +10,27 @@ import {io, Socket} from "socket.io-client";
 import type {RoomChatMessage, RoomParticipant, RoomState, SfuProducerState, SfuTransportState} from "../types";
 
 export type MeetingRoomClientState = {
-  phase: "idle" | "connecting" | "ready" | "failed";
+  phase: "idle" | "connecting" | "ready" | "failed" | "removed" | "closed";
   message?: string;
   localStream?: MediaStream;
   remoteStreams: Record<string, MediaStream>;
   remoteParticipants: RoomParticipant[];
   chatMessages: RoomChatMessage[];
+  networkQuality?: string;
+  networkQualityLabel?: string;
+  rttMillis?: number;
+  globalSpotlightPeerId?: string;
 };
 
 type Listener = (state: MeetingRoomClientState) => void;
 
 const DEFAULT_SFU_SOCKET_URL = "http://10.0.2.2:3000";
+
+const SIMULCAST_ENCODINGS = [
+  { rid: "r0", scaleResolutionDownBy: 4, maxBitrate: 100000 },
+  { rid: "r1", scaleResolutionDownBy: 2, maxBitrate: 300000 },
+  { rid: "r2", scaleResolutionDownBy: 1, maxBitrate: 900000 },
+];
 
 export class MeetingRoomClient {
   private device?: mediasoupTypes.Device;
@@ -142,7 +152,7 @@ export class MeetingRoomClient {
     this.roomId = "";
     this.currentUserId = "";
     this.currentUsername = "";
-    this.setState({phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: [], localStream: undefined, message: undefined});
+    this.setState({phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: [], localStream: undefined, message: undefined, networkQuality: undefined, networkQualityLabel: undefined, rttMillis: undefined, globalSpotlightPeerId: undefined});
   }
 
   private async createTransports() {
@@ -200,15 +210,43 @@ export class MeetingRoomClient {
   private async publishLocalTracks(stream: MediaStream) {
     if (!this.sendTransport) return;
     for (const track of stream.getTracks() as MediaStreamTrack[]) {
+      const isVideo = track.kind === "video";
       const producer = await this.sendTransport.produce({
         track: track as any,
+        encodings: isVideo ? SIMULCAST_ENCODINGS : undefined,
         appData: {source: "react-native"},
       });
       this.producers.push(producer);
+      this.monitorProducerScore(producer);
     }
   }
 
   private bindRoomEvents() {
+    this.socket?.off("ping");
+    this.socket?.on("ping", data => {
+      this.socket?.emit("pong", { timestamp: data?.timestamp || Date.now() });
+    });
+
+    this.socket?.off("rtt");
+    this.socket?.on("rtt", data => {
+      this.setState({ rttMillis: data?.rtt });
+    });
+
+    this.socket?.off("removedFromRoom");
+    this.socket?.on("removedFromRoom", () => {
+      this.setState({ phase: "removed", message: "您已被主持人移出会议" });
+    });
+
+    this.socket?.off("roomClosed");
+    this.socket?.on("roomClosed", () => {
+      this.setState({ phase: "closed", message: "会议已由主持人关闭" });
+    });
+
+    this.socket?.off("spotlightChanged");
+    this.socket?.on("spotlightChanged", data => {
+      this.setState({ globalSpotlightPeerId: data?.active ? data.targetPeerId : undefined });
+    });
+
     this.socket?.off("newPeer");
     this.socket?.on("newPeer", peer => {
       this.upsertRemoteParticipant(toParticipant(peer));
@@ -285,6 +323,7 @@ export class MeetingRoomClient {
               appData: { source: "react-native" },
             });
             this.producers.push(producer);
+            this.monitorProducerScore(producer);
           }
         }
       } catch (err) {
@@ -323,9 +362,11 @@ export class MeetingRoomClient {
           if (this.sendTransport) {
             producer = await this.sendTransport.produce({
               track: videoTrack as any,
+              encodings: SIMULCAST_ENCODINGS,
               appData: { source: "react-native" },
             });
             this.producers.push(producer);
+            this.monitorProducerScore(producer);
           }
         }
       } catch (err) {
@@ -388,6 +429,30 @@ export class MeetingRoomClient {
     await this.emitAck("removeParticipant", {
       targetPeerId: participant.peerId || participant.userId,
     });
+  }
+
+  async muteAll() {
+    await this.emitAck("hostMuteAll", { roomId: this.roomId }).catch(() => undefined);
+  }
+
+  async disableAllVideo() {
+    await this.emitAck("hostDisableAllVideo", { roomId: this.roomId }).catch(() => undefined);
+  }
+
+  async requestSpotlight() {
+    await this.emitAck("requestSpotlight", {
+      roomId: this.roomId,
+      requesterId: this.currentUserId,
+      requesterUsername: this.currentUsername,
+    }).catch(() => undefined);
+  }
+
+  async setSpotlight(targetPeerId: string | null, active: boolean) {
+    await this.emitAck("setSpotlight", {
+      roomId: this.roomId,
+      targetPeerId,
+      active,
+    }).catch(() => undefined);
   }
 
   private setProducerEnabled(producer: mediasoupTypes.Producer, enabled: boolean) {
@@ -479,6 +544,7 @@ export class MeetingRoomClient {
         rtpParameters: response.rtpParameters,
       });
       this.consumers.push(consumer);
+      this.monitorConsumerScore(consumer);
       this.consumedProducerIds.add(producer.id);
       await this.emitAck("resumeConsumer", {
         roomId: this.roomId,
@@ -498,6 +564,33 @@ export class MeetingRoomClient {
         },
       });
     }
+  }
+
+  private monitorProducerScore(producer: mediasoupTypes.Producer) {
+    (producer as any).on("score", (scoreArray: any) => {
+      const score = Array.isArray(scoreArray) && scoreArray.length > 0 ? scoreArray[0].score : (scoreArray as any)?.score;
+      this.updateNetworkQuality(score);
+    });
+  }
+
+  private monitorConsumerScore(consumer: mediasoupTypes.Consumer) {
+    (consumer as any).on("score", (score: any) => {
+      this.updateNetworkQuality((score as any)?.score);
+    });
+  }
+
+  private updateNetworkQuality(score?: number) {
+    if (typeof score !== "number") return;
+    let quality = "good";
+    let label = "流畅";
+    if (score >= 8) {
+      quality = "excellent";
+      label = "极佳";
+    } else if (score < 5) {
+      quality = "poor";
+      label = "较差";
+    }
+    this.setState({ networkQuality: quality, networkQualityLabel: label });
   }
 
   private emitAck(event: string, payload: Record<string, unknown>): Promise<any> {

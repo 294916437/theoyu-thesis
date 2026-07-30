@@ -115,6 +115,20 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
   }, [meetingStartedAt]);
 
   useEffect(() => {
+    if (clientState.phase === "removed" || clientState.phase === "closed") {
+      Alert.alert("提示", clientState.message || "会议已结束", [
+        {
+          text: "确定",
+          onPress: async () => {
+            await client.close();
+            perform("leaveRoom");
+          },
+        },
+      ]);
+    }
+  }, [clientState.phase, clientState.message, client]);
+
+  useEffect(() => {
     client.update({
       ...roomState,
       audioEnabled: roomControls.audioEnabled,
@@ -138,6 +152,7 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
     }),
     [roomState, roomControls],
   );
+  const isHost = uiRoomState.meeting?.hostId === uiRoomState.currentUserId;
   const participants = useMemo<RoomParticipant[]>(
     () => {
       const localFallback: RoomParticipant = {
@@ -178,6 +193,7 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
     [roomState.chatMessages, clientState.chatMessages],
   );
   const activeSpeaker =
+    participants.find(item => item.peerId === clientState.globalSpotlightPeerId) ??
     participants.find(item => item.peerId === spotlightPeerId) ??
     participants.find(item => item.peerId === uiRoomState.activeSpeakerPeerId) ??
     participants[0];
@@ -246,6 +262,14 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
       }
       return;
     }
+    if (action === "muteAll") {
+      await client.muteAll();
+      return;
+    }
+    if (action === "disableAllVideo") {
+      await client.disableAllVideo();
+      return;
+    }
     if (action === "openSheet") {
       setRoomControls(prev => ({...prev, selectedSheet: (payload?.sheet as RoomState["selectedSheet"]) || undefined}));
       return;
@@ -287,7 +311,7 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
             {uiRoomState.meeting?.title || "会议房间"}
           </Text>
           <Text style={styles.caption} numberOfLines={1}>
-            {formatDuration(elapsedSeconds)} · {uiRoomState.mediaState.phaseLabel} · {clientState.phase === "failed" ? clientState.message : uiRoomState.networkQualityLabel}
+            {formatDuration(elapsedSeconds)} · {uiRoomState.mediaState.phaseLabel} · {clientState.phase === "failed" ? clientState.message : (clientState.networkQualityLabel || uiRoomState.networkQualityLabel)} {clientState.rttMillis ? `(${clientState.rttMillis}ms)` : ""}
           </Text>
         </View>
         <View style={styles.badge}>
@@ -319,9 +343,12 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
           {uiRoomState.selectedSheet === "Members" && (
             <Members
               participants={participants}
+              isHost={isHost}
               onHostToggleParticipantAudio={participant => act("hostToggleParticipantAudio", participant)}
               onHostToggleParticipantVideo={participant => act("hostToggleParticipantVideo", participant)}
               onRemoveParticipant={participant => act("removeParticipant", participant)}
+              onMuteAll={() => act("muteAll")}
+              onDisableAllVideo={() => act("disableAllVideo")}
             />
           )}
           {uiRoomState.selectedSheet === "Chat" && (
@@ -363,6 +390,7 @@ function VideoTile({participant, stream, prominent = false, onPress}: {participa
   return (
     <Pressable style={[styles.tile, prominent ? styles.prominentTile : styles.smallTile]} onPress={onPress}>
       {participant.videoEnabled && stream ? (
+        // @ts-ignore
         <RTCView stream={stream} objectFit="cover" style={StyleSheet.absoluteFill} />
       ) : (
         <View style={styles.avatarWrap}>
@@ -400,18 +428,32 @@ function SheetTabs({selected, onSelect}: {selected?: string; onSelect: (sheet: s
 
 function Members({
   participants,
+  isHost,
   onHostToggleParticipantAudio,
   onHostToggleParticipantVideo,
   onRemoveParticipant,
+  onMuteAll,
+  onDisableAllVideo,
 }: {
   participants: RoomParticipant[];
+  isHost: boolean;
   onHostToggleParticipantAudio: (participant: RoomParticipant) => void;
   onHostToggleParticipantVideo: (participant: RoomParticipant) => void;
   onRemoveParticipant: (participant: RoomParticipant) => void;
+  onMuteAll: () => void;
+  onDisableAllVideo: () => void;
 }) {
   return (
     <ScrollView>
-      <Text style={styles.sheetTitle}>成员</Text>
+      <View style={styles.sheetHeaderWithActions}>
+        <Text style={[styles.sheetTitle, styles.sheetTitleNoMargin]}>成员</Text>
+        {isHost && (
+          <View style={styles.rowActions}>
+            <Control compact label="全体静音" onPress={onMuteAll} />
+            <Control compact label="全体关视频" onPress={onDisableAllVideo} />
+          </View>
+        )}
+      </View>
       {participants.map(participant => (
         <View key={participant.peerId} style={styles.memberRow}>
           <Text style={styles.memberName}>{participant.username}</Text>
@@ -629,6 +671,8 @@ const styles = StyleSheet.create({
   sheetTabText: {fontSize: 13, fontWeight: "700", color: "#374151"},
   sheetTabTextActive: {color: "white"},
   sheetTitle: {fontSize: 20, fontWeight: "800", color: "#111827", marginBottom: 14},
+  sheetTitleNoMargin: {marginBottom: 0},
+  sheetHeaderWithActions: {flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14},
   memberRow: {paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#e5e7eb"},
   memberName: {fontSize: 15, fontWeight: "700", color: "#111827"},
   memberMeta: {fontSize: 12, color: "#6b7280", marginTop: 2},

@@ -68,6 +68,7 @@ export type RoomState = {
   participants: RoomParticipant[];
   chatMessages: RoomChatMessage[];
   activeSpeakerPeerId?: string;
+  spotlightPeerId?: string;
   networkQuality: string;
   networkQualityLabel: string;
   socketConnected: boolean;

@@ -19,6 +19,7 @@ import InCallManager from "react-native-incall-manager";
 import {MeetingRoomClient, RTCView, MeetingRoomClientState} from "./mediasoup/MeetingRoomClient";
 import type {RoomChatMessage, RoomParticipant, RoomState} from "./types";
 import type {MediaStream} from "react-native-webrtc";
+import {colors, rgba} from "./theme";
 
 type Props = {
   roomStateJson?: string;
@@ -283,7 +284,7 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
 
   return (
     <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#111827" />
+      <StatusBar barStyle="light-content" backgroundColor={colors.backgroundDark} />
       <View style={styles.stage}>
         <VideoTile
           participant={activeSpeaker}
@@ -388,7 +389,11 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
 
 function VideoTile({participant, stream, prominent = false, onPress}: {participant: RoomParticipant; stream?: MediaStream; prominent?: boolean; onPress?: () => void}) {
   return (
-    <Pressable style={[styles.tile, prominent ? styles.prominentTile : styles.smallTile]} onPress={onPress}>
+    <Pressable 
+      android_ripple={{color: 'rgba(255,255,255,0.15)'}}
+      style={[styles.tile, prominent ? styles.prominentTile : styles.smallTile]} 
+      onPress={onPress}
+    >
       {participant.videoEnabled && stream ? (
         // @ts-ignore
         <RTCView stream={stream} objectFit="cover" style={StyleSheet.absoluteFill} />
@@ -418,7 +423,12 @@ function SheetTabs({selected, onSelect}: {selected?: string; onSelect: (sheet: s
         ["Chat", "聊天"],
         ["More", "更多"],
       ].map(([sheet, label]) => (
-        <Pressable key={sheet} style={[styles.sheetTab, selected === sheet && styles.sheetTabActive]} onPress={() => onSelect(sheet)}>
+        <Pressable 
+          key={sheet} 
+          android_ripple={{color: selected === sheet ? rgba(colors.primary, 0.2) : 'rgba(0,0,0,0.1)'}}
+          style={[styles.sheetTab, selected === sheet && styles.sheetTabActive]} 
+          onPress={() => onSelect(sheet)}
+        >
           <Text style={[styles.sheetTabText, selected === sheet && styles.sheetTabTextActive]}>{label}</Text>
         </Pressable>
       ))}
@@ -582,7 +592,11 @@ function More({
 
 function Choice({label, active, onPress}: {label: string; active: boolean; onPress: () => void}) {
   return (
-    <Pressable style={[styles.choice, active && styles.choiceActive]} onPress={onPress}>
+    <Pressable 
+      android_ripple={{color: active ? rgba(colors.primary, 0.2) : 'rgba(0,0,0,0.1)'}}
+      style={[styles.choice, active && styles.choiceActive]} 
+      onPress={onPress}
+    >
       <Text style={[styles.choiceText, active && styles.choiceTextActive]} numberOfLines={1}>{label}</Text>
     </Pressable>
   );
@@ -590,7 +604,11 @@ function Choice({label, active, onPress}: {label: string; active: boolean; onPre
 
 function Control({label, danger = false, compact = false, onPress}: {label: string; danger?: boolean; compact?: boolean; onPress: () => void}) {
   return (
-    <Pressable style={[styles.control, danger && styles.dangerControl, compact && styles.compactControl]} onPress={onPress}>
+    <Pressable 
+      android_ripple={{color: danger ? rgba(colors.error, 0.2) : 'rgba(0,0,0,0.1)'}}
+      style={[styles.control, danger && styles.dangerControl, compact && styles.compactControl]} 
+      onPress={onPress}
+    >
       <Text style={[styles.controlText, danger && styles.dangerText]} numberOfLines={1}>{label}</Text>
     </Pressable>
   );
@@ -634,65 +652,65 @@ function parseRoomState(value?: string): RoomState {
 }
 
 const styles = StyleSheet.create({
-  root: {flex: 1, backgroundColor: "#111827"},
-  stage: {flex: 1, padding: 12, paddingBottom: 96, gap: 10},
+  root: {flex: 1, backgroundColor: colors.backgroundDark},
+  stage: {flex: 1, padding: 16, paddingBottom: 112, gap: 12},
   prominentTile: {flex: 1},
-  smallTile: {width: 150, height: 112, marginRight: 8},
-  tile: {borderRadius: 8, overflow: "hidden", backgroundColor: "#1f2937"},
+  smallTile: {width: 150, height: 112, marginRight: 12},
+  tile: {borderRadius: 12, overflow: "hidden", backgroundColor: colors.surfaceDark, elevation: 2},
   avatarWrap: {flex: 1, alignItems: "center", justifyContent: "center"},
-  avatar: {width: 46, height: 46, borderRadius: 23, backgroundColor: "#2563eb", alignItems: "center", justifyContent: "center"},
+  avatar: {width: 46, height: 46, borderRadius: 23, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center"},
   prominentAvatar: {width: 88, height: 88, borderRadius: 44},
-  avatarText: {color: "white", fontWeight: "700", fontSize: 22},
-  placeholder: {marginTop: 8, color: "#d1d5db", fontSize: 12},
-  filmstrip: {maxHeight: 120},
-  compactFilmstrip: {maxHeight: 108},
-  tileFooter: {position: "absolute", left: 0, right: 0, bottom: 0, padding: 8, backgroundColor: "rgba(17,24,39,0.84)", flexDirection: "row", alignItems: "center"},
-  tileName: {flex: 1, color: "white", fontSize: 13, fontWeight: "600"},
-  tileIcon: {color: "#d1d5db", fontSize: 11},
-  topBar: {position: "absolute", top: 12, left: 12, right: 12, flexDirection: "row", gap: 8, alignItems: "center"},
-  titleBlock: {flex: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "rgba(17,24,39,0.78)"},
-  title: {color: "white", fontWeight: "700", fontSize: 16},
-  caption: {color: "#d1d5db", fontSize: 12, marginTop: 2},
-  badge: {borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, backgroundColor: "rgba(17,24,39,0.78)"},
-  badgeText: {color: "white", fontWeight: "600", fontSize: 12},
-  handBanner: {position: "absolute", top: 68, left: 12, right: 12, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: "rgba(22,163,74,0.92)"},
-  handText: {color: "white", fontSize: 13, fontWeight: "700"},
-  controls: {position: "absolute", left: 0, right: 0, bottom: 0, padding: 12, paddingBottom: 18, backgroundColor: "#f9fafb", flexDirection: "row", gap: 6},
-  control: {flex: 1, minHeight: 42, borderRadius: 8, borderWidth: 1, borderColor: "#d1d5db", backgroundColor: "white", alignItems: "center", justifyContent: "center", paddingHorizontal: 6},
-  compactControl: {flex: 0, minHeight: 34, paddingHorizontal: 10},
-  dangerControl: {borderColor: "#fecaca", backgroundColor: "#fff1f2"},
-  controlText: {fontSize: 12, color: "#111827", fontWeight: "700"},
-  dangerText: {color: "#dc2626"},
-  scrim: {flex: 1, backgroundColor: "rgba(0,0,0,0.34)"},
-  sheet: {maxHeight: "70%", backgroundColor: "white", padding: 18, borderTopLeftRadius: 8, borderTopRightRadius: 8},
-  sheetTabs: {flexDirection: "row", gap: 8, marginBottom: 14},
-  sheetTab: {flex: 1, minHeight: 36, borderRadius: 8, borderWidth: 1, borderColor: "#d1d5db", alignItems: "center", justifyContent: "center"},
-  sheetTabActive: {backgroundColor: "#2563eb", borderColor: "#2563eb"},
-  sheetTabText: {fontSize: 13, fontWeight: "700", color: "#374151"},
-  sheetTabTextActive: {color: "white"},
-  sheetTitle: {fontSize: 20, fontWeight: "800", color: "#111827", marginBottom: 14},
+  avatarText: {color: colors.textDark, fontWeight: "700", fontSize: 22},
+  placeholder: {marginTop: 8, color: colors.textMutedDark, fontSize: 12},
+  filmstrip: {maxHeight: 124},
+  compactFilmstrip: {maxHeight: 112},
+  tileFooter: {position: "absolute", left: 0, right: 0, bottom: 0, padding: 10, backgroundColor: rgba(colors.backgroundDark, 0.84), flexDirection: "row", alignItems: "center"},
+  tileName: {flex: 1, color: colors.textDark, fontSize: 13, fontWeight: "600"},
+  tileIcon: {color: colors.textMutedDark, fontSize: 11},
+  topBar: {position: "absolute", top: 16, left: 16, right: 16, flexDirection: "row", gap: 10, alignItems: "center"},
+  titleBlock: {flex: 1, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: rgba(colors.backgroundDark, 0.85), elevation: 4},
+  title: {color: colors.textDark, fontWeight: "700", fontSize: 16},
+  caption: {color: colors.textMutedDark, fontSize: 12, marginTop: 4},
+  badge: {borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: rgba(colors.backgroundDark, 0.85), elevation: 4},
+  badgeText: {color: colors.textDark, fontWeight: "600", fontSize: 12},
+  handBanner: {position: "absolute", top: 76, left: 16, right: 16, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: rgba(colors.speaking, 0.95), elevation: 6},
+  handText: {color: colors.textDark, fontSize: 14, fontWeight: "700"},
+  controls: {position: "absolute", left: 0, right: 0, bottom: 0, padding: 16, paddingBottom: 24, backgroundColor: colors.surface, flexDirection: "row", gap: 8, elevation: 16, borderTopWidth: 1, borderTopColor: colors.surfaceVariant},
+  control: {flex: 1, minHeight: 48, borderRadius: 10, borderWidth: 1, borderColor: colors.surfaceVariant, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", paddingHorizontal: 8, elevation: 1},
+  compactControl: {flex: 0, minHeight: 38, paddingHorizontal: 12},
+  dangerControl: {borderColor: colors.errorContainer, backgroundColor: colors.errorContainer},
+  controlText: {fontSize: 13, color: colors.text, fontWeight: "700"},
+  dangerText: {color: colors.error},
+  scrim: {flex: 1, backgroundColor: rgba("#000000", 0.4)},
+  sheet: {maxHeight: "75%", backgroundColor: colors.surface, padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16, elevation: 24},
+  sheetTabs: {flexDirection: "row", gap: 10, marginBottom: 16},
+  sheetTab: {flex: 1, minHeight: 40, borderRadius: 10, borderWidth: 1, borderColor: colors.surfaceVariant, alignItems: "center", justifyContent: "center"},
+  sheetTabActive: {backgroundColor: colors.primary, borderColor: colors.primary},
+  sheetTabText: {fontSize: 14, fontWeight: "700", color: colors.text},
+  sheetTabTextActive: {color: colors.surface},
+  sheetTitle: {fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 14},
   sheetTitleNoMargin: {marginBottom: 0},
   sheetHeaderWithActions: {flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14},
-  memberRow: {paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#e5e7eb"},
-  memberName: {fontSize: 15, fontWeight: "700", color: "#111827"},
-  memberMeta: {fontSize: 12, color: "#6b7280", marginTop: 2},
+  memberRow: {paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.surfaceVariant},
+  memberName: {fontSize: 15, fontWeight: "700", color: colors.text},
+  memberMeta: {fontSize: 12, color: colors.textMuted, marginTop: 2},
   rowActions: {flexDirection: "row", gap: 8, marginTop: 8},
   chatList: {height: 280},
-  chatLine: {fontSize: 14, color: "#111827", paddingVertical: 5},
+  chatLine: {fontSize: 14, color: colors.text, paddingVertical: 5},
   inputRow: {flexDirection: "row", gap: 8, alignItems: "center", marginTop: 12},
-  input: {flex: 1, minHeight: 42, borderWidth: 1, borderColor: "#d1d5db", borderRadius: 8, paddingHorizontal: 12, color: "#111827"},
+  input: {flex: 1, minHeight: 42, borderWidth: 1, borderColor: colors.outline, borderRadius: 8, paddingHorizontal: 12, color: colors.text},
   moreGrid: {flexDirection: "row", flexWrap: "wrap", gap: 10},
   segmented: {flexDirection: "row", gap: 6, marginBottom: 14},
-  segment: {flex: 1, minHeight: 34, borderRadius: 8, backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center"},
-  segmentActive: {backgroundColor: "#dbeafe"},
-  segmentText: {fontSize: 12, fontWeight: "700", color: "#4b5563"},
-  segmentTextActive: {color: "#1d4ed8"},
+  segment: {flex: 1, minHeight: 34, borderRadius: 8, backgroundColor: colors.surfaceVariant, alignItems: "center", justifyContent: "center"},
+  segmentActive: {backgroundColor: colors.primaryContainer},
+  segmentText: {fontSize: 12, fontWeight: "700", color: colors.textMuted},
+  segmentTextActive: {color: colors.primaryContainerDark},
   backgroundGrid: {flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 12},
-  choice: {minWidth: 94, minHeight: 44, borderRadius: 8, borderWidth: 1, borderColor: "#d1d5db", alignItems: "center", justifyContent: "center", paddingHorizontal: 10, backgroundColor: "white"},
-  choiceActive: {borderColor: "#2563eb", backgroundColor: "#eff6ff"},
-  choiceText: {fontSize: 13, color: "#111827", fontWeight: "700"},
-  choiceTextActive: {color: "#1d4ed8"},
-  note: {fontSize: 12, color: "#6b7280", lineHeight: 18, marginTop: 12},
+  choice: {minWidth: 94, minHeight: 44, borderRadius: 8, borderWidth: 1, borderColor: colors.outline, alignItems: "center", justifyContent: "center", paddingHorizontal: 10, backgroundColor: colors.surface},
+  choiceActive: {borderColor: colors.primary, backgroundColor: colors.primaryContainer},
+  choiceText: {fontSize: 13, color: colors.text, fontWeight: "700"},
+  choiceTextActive: {color: colors.primaryContainerDark},
+  note: {fontSize: 12, color: colors.textMuted, lineHeight: 18, marginTop: 12},
 });
 
 export default MeetingRoom;

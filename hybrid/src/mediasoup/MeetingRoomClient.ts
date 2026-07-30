@@ -1,4 +1,4 @@
-import {Device, types as mediasoupTypes} from "mediasoup-client";
+import { Device, types as mediasoupTypes} from "mediasoup-client";
 import {
   mediaDevices,
   MediaStream,
@@ -59,6 +59,8 @@ export class MeetingRoomClient {
       this.currentUsername = roomState.currentUsername || "我";
       
       let sfuUrl = roomState.meeting.sfuServerUrl || DEFAULT_SFU_SOCKET_URL;
+      sfuUrl = sfuUrl.replace(/^ws:\/\//, "http://").replace(/^wss:\/\//, "https://");
+      
       if (Platform.OS === "android") {
         sfuUrl = sfuUrl.replace("127.0.0.1", "10.0.2.2").replace("localhost", "10.0.2.2");
       }

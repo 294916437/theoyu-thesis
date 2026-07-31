@@ -52,7 +52,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
-    implementation("com.mediasfu:mediasoup-client:1.0.0")
+    implementation("com.mediasfu:mediasoup-client:1.0.7")
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.okhttp.logging.interceptor)

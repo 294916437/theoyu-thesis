@@ -3,7 +3,6 @@ package com.theoyu.thesis.android.core.sfu
 import android.content.Context
 import com.theoyu.thesis.android.core.signaling.SocketIoClient
 import com.theoyu.thesis.android.feature.main.RoomMediaState
-import com.theoyu.thesis.android.feature.main.RoomParticipant
 import com.theoyu.thesis.android.feature.main.SfuConsumerState
 import com.theoyu.thesis.android.feature.main.SfuMediaPhase
 import com.theoyu.thesis.android.feature.main.SfuProducerState
@@ -12,8 +11,6 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.mediasoup.droid.Consumer
 import org.mediasoup.droid.Device
-import org.mediasoup.droid.MediasoupClient
-import org.mediasoup.droid.MediasoupException
 import org.mediasoup.droid.Producer
 import org.mediasoup.droid.RecvTransport
 import org.mediasoup.droid.SendTransport
@@ -44,6 +41,11 @@ class RoomMediaEngine(
     private val onRemoteVideoTrackChanged: (peerId: String, track: VideoTrack?) -> Unit,
 ) {
     private val appContext = context.applicationContext
+
+    init {
+        WebRtcEnvironment.initialize(appContext)
+    }
+
     private val device = Device()
     private val eglBase: EglBase = WebRtcEnvironment.eglBase
     private val peerConnectionFactory: PeerConnectionFactory
@@ -66,7 +68,6 @@ class RoomMediaEngine(
     private var lastState: RoomMediaState = RoomMediaState()
 
     init {
-        MediasoupClient.initialize(appContext)
         audioDeviceModule = JavaAudioDeviceModule.builder(appContext)
             .setUseHardwareAcousticEchoCanceler(true)
             .setUseHardwareNoiseSuppressor(true)

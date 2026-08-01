@@ -177,11 +177,22 @@ class RoomMediaEngine(
         ensureLocalAudioTrack()
         ensureLocalVideoTrack()
 
-        if (audioEnabled && device.canProduce("audio")) {
+        localAudioTrack?.setEnabled(audioEnabled)
+        localVideoTrack?.setEnabled(videoEnabled)
+
+        if (device.canProduce("audio")) {
             localAudioProducer = produceTrack(localAudioTrack, "audio", "opus", producerAppData("audio"))
+            if (!audioEnabled) {
+                localAudioProducer?.pause()
+                localAudioProducer?.id?.let(::pauseProducerOnServer)
+            }
         }
-        if (videoEnabled && device.canProduce("video")) {
+        if (device.canProduce("video")) {
             localVideoProducer = produceTrack(localVideoTrack, "video", "VP8", producerAppData("video", source = "camera"))
+            if (!videoEnabled) {
+                localVideoProducer?.pause()
+                localVideoProducer?.id?.let(::pauseProducerOnServer)
+            }
             onLocalPreviewChanged(localVideoTrack)
         }
         syncLocalProducerState()
@@ -209,6 +220,24 @@ class RoomMediaEngine(
             lastState.copy(
                 remoteProducers = lastState.remoteProducers.filterNot { it.id == producerId },
                 consumers = lastState.consumers.filterNot { it.producerId == producerId },
+                remoteVideoTracks = consumerState?.peerId?.let { peerId -> lastState.remoteVideoTracks - peerId }
+                    ?: lastState.remoteVideoTracks,
+            ),
+        )
+    }
+
+    fun closeConsumer(consumerId: String) {
+        if (consumerId.isBlank()) return
+        val consumer = remoteConsumers.values.firstOrNull { it.id == consumerId } ?: return
+        val consumerState = lastState.consumers.firstOrNull { it.id == consumerId }
+        remoteConsumers.remove(consumer.producerId)
+        consumer.close()
+        if (consumer.kind == "video" && consumerState != null) {
+            onRemoteVideoTrackChanged(consumerState.peerId, null)
+        }
+        updateState(
+            lastState.copy(
+                consumers = lastState.consumers.filterNot { it.id == consumerId },
                 remoteVideoTracks = consumerState?.peerId?.let { peerId -> lastState.remoteVideoTracks - peerId }
                     ?: lastState.remoteVideoTracks,
             ),
@@ -259,9 +288,17 @@ class RoomMediaEngine(
             remoteConsumers[producer.id] = consumer
             consumer.resume()
             resumeConsumerOnServer(consumer.id)
+            if (consumer.kind == "video") {
+                setPreferredLayersOnServer(consumer.id, DEFAULT_MOBILE_SPATIAL_LAYER, DEFAULT_MOBILE_TEMPORAL_LAYER)
+            }
             val track = if (consumer.kind == "video") consumer.track as? VideoTrack else null
             if (track != null) {
                 onRemoteVideoTrackChanged(producer.peerId, track)
+            }
+            val nextRemoteVideoTracks = if (track != null) {
+                lastState.remoteVideoTracks + (producer.peerId to track)
+            } else {
+                lastState.remoteVideoTracks
             }
             updateState(
                 lastState.copy(
@@ -275,7 +312,7 @@ class RoomMediaEngine(
                             producerPaused = producer.paused,
                         ),
                     ),
-                    remoteVideoTracks = lastState.remoteVideoTracks + (producer.peerId to track),
+                    remoteVideoTracks = nextRemoteVideoTracks,
                     phase = SfuMediaPhase.Connected,
                 ),
             )
@@ -286,12 +323,21 @@ class RoomMediaEngine(
     }
 
     fun toggleAudio(enabled: Boolean) {
+        ensureLocalAudioTrack()
+        localAudioTrack?.setEnabled(enabled)
+        if (enabled && localAudioProducer == null && device.canProduce("audio")) {
+            localAudioProducer = produceTrack(localAudioTrack, "audio", "opus", producerAppData("audio"))
+        }
         if (enabled) localAudioProducer?.resume() else localAudioProducer?.pause()
         syncLocalProducerState()
     }
 
     fun toggleVideo(enabled: Boolean) {
+        ensureLocalVideoTrack()
         if (enabled) {
+            if (localVideoProducer == null && screenVideoProducer == null && device.canProduce("video")) {
+                localVideoProducer = produceTrack(localVideoTrack, "video", "VP8", producerAppData("video", source = "camera"))
+            }
             localVideoProducer?.resume()
             localVideoTrack?.setEnabled(true)
         } else {
@@ -638,5 +684,44 @@ class RoomMediaEngine(
                 )
             }
         }
+    }
+
+    private fun pauseProducerOnServer(producerId: String) {
+        if (producerId.isBlank()) return
+        runBlocking {
+            runCatching {
+                socketIoClient.emit(
+                    "pauseProducer",
+                    JSONObject()
+                        .put("roomId", roomId)
+                        .put("producerId", producerId),
+                )
+            }
+        }
+    }
+
+    private fun setPreferredLayersOnServer(
+        consumerId: String,
+        spatialLayer: Int,
+        temporalLayer: Int,
+    ) {
+        if (consumerId.isBlank()) return
+        runBlocking {
+            runCatching {
+                socketIoClient.emit(
+                    "setPreferredLayers",
+                    JSONObject()
+                        .put("roomId", roomId)
+                        .put("consumerId", consumerId)
+                        .put("spatialLayer", spatialLayer)
+                        .put("temporalLayer", temporalLayer),
+                )
+            }
+        }
+    }
+
+    private companion object {
+        const val DEFAULT_MOBILE_SPATIAL_LAYER = 1
+        const val DEFAULT_MOBILE_TEMPORAL_LAYER = 2
     }
 }

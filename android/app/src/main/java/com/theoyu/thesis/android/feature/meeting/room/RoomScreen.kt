@@ -112,7 +112,8 @@ fun RoomScreen(
     val participants = roomState.participants.ifEmpty {
         listOf(RoomParticipant(peerId = "local", username = "我", isLocal = true))
     }
-    val activeSpeaker = participants.firstOrNull { it.peerId == roomState.activeSpeakerPeerId }
+    val activeSpeaker = participants.firstOrNull { it.peerId == roomState.screenSharePeerId }
+        ?: participants.firstOrNull { it.peerId == roomState.activeSpeakerPeerId }
         ?: participants.first()
     val isHost = participants.any { it.isLocal && it.role == ParticipantRole.Host }
 
@@ -386,7 +387,11 @@ private fun RoomTopOverlay(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "当前发言人：${activeSpeaker.username} · ${roomState.mediaState.phase.label}",
+                    text = if (activeSpeaker.peerId == roomState.screenSharePeerId) {
+                        "${activeSpeaker.username} 正在共享屏幕 · ${roomState.mediaState.phase.label}"
+                    } else {
+                        "当前发言人：${activeSpeaker.username} · ${roomState.mediaState.phase.label}"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

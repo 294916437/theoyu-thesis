@@ -2,6 +2,9 @@ package com.theoyu.thesis.android.feature.main
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonArray
@@ -145,6 +148,7 @@ class MainViewModel(
     }
 
     fun selectAudioRoute(route: AudioRoute) {
+        applyAudioRoute(route)
         _uiState.update { it.copy(audioRoute = route) }
     }
 
@@ -344,6 +348,7 @@ class MainViewModel(
                 val remoteProducers = parseJoinRoomProducers(joinResponse)
                 remoteProducers.forEach(mediaEngine::registerRemoteProducer)
                 mediaEngine.consumeExistingRemoteProducers(remoteProducers)
+                applyAudioRoute(_uiState.value.audioRoute)
                 mediaEngine.startLocalPublish(
                     audioEnabled = _uiState.value.createForm.audioEnabled,
                     videoEnabled = _uiState.value.createForm.videoEnabled,
@@ -365,6 +370,7 @@ class MainViewModel(
                 }
             }
             roomMediaEngine?.closeSession()
+            resetAudioRoute()
             clearRoomSocketListeners()
             socketIoClient.disconnect()
             _uiState.update {
@@ -583,6 +589,7 @@ class MainViewModel(
                 socketResult.isFailure -> _uiState.update { it.copy(message = socketResult.exceptionOrNull()?.message ?: "关闭会议失败") }
                 else -> {
                     roomMediaEngine?.closeSession()
+                    resetAudioRoute()
                     clearRoomSocketListeners()
                     socketIoClient.disconnect()
                     _uiState.update {
@@ -983,12 +990,22 @@ class MainViewModel(
             val kind = body.optString("kind")
             val enabled = !body.optBoolean("paused", false)
             val producerId = body.optString("producerId")
-            if (producerId.isNotBlank()) {
+            val localPeerId = _uiState.value.activeRoom.participants.firstOrNull(RoomParticipant::isLocal)?.peerId
+                ?: _uiState.value.userSummary.userId
+            val isLocalPeer = peerId == localPeerId || peerId == _uiState.value.userSummary.userId
+            if (isLocalPeer) {
+                when (kind) {
+                    "audio" -> roomMediaEngine?.toggleAudio(enabled)
+                    "video" -> roomMediaEngine?.toggleVideo(enabled)
+                }
+            } else if (producerId.isNotBlank()) {
                 roomMediaEngine?.registerRemoteProducer(body.toProducerState())
             }
             _uiState.update {
                 it.copy(
                     activeRoom = it.activeRoom.copy(
+                        audioEnabled = if (isLocalPeer && kind == "audio") enabled else it.activeRoom.audioEnabled,
+                        videoEnabled = if (isLocalPeer && kind == "video") enabled else it.activeRoom.videoEnabled,
                         participants = it.activeRoom.participants.map { participant ->
                             if (participant.peerId != peerId) {
                                 participant
@@ -1069,6 +1086,7 @@ class MainViewModel(
         roomSocketSubscriptions += socketIoClient.on("consumerClosed") { args ->
             val body = args.firstJsonObject() ?: return@on
             val consumerId = body.optString("consumerId")
+            roomMediaEngine?.closeConsumer(consumerId)
             _uiState.update {
                 it.copy(
                     activeRoom = it.activeRoom.copy(
@@ -1199,6 +1217,35 @@ class MainViewModel(
                 ),
             )
         }
+    }
+
+    private fun applyAudioRoute(route: AudioRoute) {
+        val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val targetType = when (route) {
+                AudioRoute.Speaker -> AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                AudioRoute.Earpiece -> AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+            }
+            val targetDevice = audioManager.availableCommunicationDevices.firstOrNull { it.type == targetType }
+            if (targetDevice != null) {
+                audioManager.setCommunicationDevice(targetDevice)
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = route == AudioRoute.Speaker
+        }
+    }
+
+    private fun resetAudioRoute() {
+        val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            audioManager.clearCommunicationDevice()
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = false
+        }
+        audioManager.mode = AudioManager.MODE_NORMAL
     }
 
     private fun updateHandRaised(

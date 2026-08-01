@@ -1,7 +1,12 @@
 package com.theoyu.thesis.android
 
+import android.app.Activity
+import android.content.Context
+import android.media.projection.MediaProjectionManager
 import android.os.Bundle
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -11,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import com.theoyu.thesis.android.core.session.SessionStore
 import com.theoyu.thesis.android.feature.auth.AuthScreen
 import com.theoyu.thesis.android.feature.auth.AuthViewModel
@@ -81,6 +87,16 @@ private fun BlueSkyApp(
     var destination by remember { mutableStateOf(AppDestination.Splash) }
     val authState by authViewModel.uiState.collectAsStateWithLifecycle()
     val mainState by mainViewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val screenShareLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            mainViewModel.startScreenShare(result.resultCode, result.data)
+        } else {
+            mainViewModel.consumeScreenShareRequest()
+        }
+    }
 
     LaunchedEffect(Unit) {
         delay(SPLASH_DURATION_MILLIS)
@@ -102,6 +118,14 @@ private fun BlueSkyApp(
         if (mainState.loggedOut) {
             authViewModel.resetAuthenticationState()
             destination = AppDestination.Auth
+        }
+    }
+
+    LaunchedEffect(mainState.screenShareRequestId) {
+        if (mainState.screenShareRequestId != null) {
+            val projectionManager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            screenShareLauncher.launch(projectionManager.createScreenCaptureIntent())
+            mainViewModel.consumeScreenShareRequest()
         }
     }
 

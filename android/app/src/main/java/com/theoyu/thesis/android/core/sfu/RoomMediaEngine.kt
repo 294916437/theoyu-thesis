@@ -1,6 +1,8 @@
 package com.theoyu.thesis.android.core.sfu
 
 import android.content.Context
+import android.content.Intent
+import android.media.projection.MediaProjection
 import com.theoyu.thesis.android.core.signaling.SocketIoClient
 import com.theoyu.thesis.android.feature.main.RoomMediaState
 import com.theoyu.thesis.android.feature.main.SfuConsumerState
@@ -26,6 +28,7 @@ import org.webrtc.MediaConstraints
 import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.RtpParameters
+import org.webrtc.ScreenCapturerAndroid
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoCapturer
 import org.webrtc.VideoSource
@@ -39,6 +42,7 @@ class RoomMediaEngine(
     private val onMessageChanged: (String?) -> Unit,
     private val onLocalPreviewChanged: (VideoTrack?) -> Unit,
     private val onRemoteVideoTrackChanged: (peerId: String, track: VideoTrack?) -> Unit,
+    private val onScreenShareChanged: (Boolean) -> Unit,
 ) {
     private val appContext = context.applicationContext
 
@@ -64,6 +68,11 @@ class RoomMediaEngine(
     private var audioSource: AudioSource? = null
     private var localAudioProducer: Producer? = null
     private var localVideoProducer: Producer? = null
+    private var screenVideoProducer: Producer? = null
+    private var screenCapturer: ScreenCapturerAndroid? = null
+    private var screenVideoSource: VideoSource? = null
+    private var screenVideoTrack: VideoTrack? = null
+    private var stoppingScreenShare = false
     private val remoteConsumers = mutableMapOf<String, Consumer>()
     private var lastState: RoomMediaState = RoomMediaState()
 
@@ -172,7 +181,7 @@ class RoomMediaEngine(
             localAudioProducer = produceTrack(localAudioTrack, "audio", "opus", producerAppData("audio"))
         }
         if (videoEnabled && device.canProduce("video")) {
-            localVideoProducer = produceTrack(localVideoTrack, "video", "VP8", producerAppData("video"))
+            localVideoProducer = produceTrack(localVideoTrack, "video", "VP8", producerAppData("video", source = "camera"))
             onLocalPreviewChanged(localVideoTrack)
         }
         syncLocalProducerState()
@@ -185,6 +194,25 @@ class RoomMediaEngine(
 
     fun registerRemoteProducer(producer: SfuProducerState) {
         updateState(lastState.copy(remoteProducers = lastState.remoteProducers.upsertProducer(producer)))
+    }
+
+    fun closeRemoteProducer(producerId: String) {
+        val consumer = remoteConsumers.remove(producerId)
+        val consumerState = lastState.consumers.firstOrNull { it.producerId == producerId }
+        if (consumer != null) {
+            consumer.close()
+            if (consumer.kind == "video" && consumerState != null) {
+                onRemoteVideoTrackChanged(consumerState.peerId, null)
+            }
+        }
+        updateState(
+            lastState.copy(
+                remoteProducers = lastState.remoteProducers.filterNot { it.id == producerId },
+                consumers = lastState.consumers.filterNot { it.producerId == producerId },
+                remoteVideoTracks = consumerState?.peerId?.let { peerId -> lastState.remoteVideoTracks - peerId }
+                    ?: lastState.remoteVideoTracks,
+            ),
+        )
     }
 
     fun consumeRemoteProducer(producer: SfuProducerState) {
@@ -230,6 +258,7 @@ class RoomMediaEngine(
             )
             remoteConsumers[producer.id] = consumer
             consumer.resume()
+            resumeConsumerOnServer(consumer.id)
             val track = if (consumer.kind == "video") consumer.track as? VideoTrack else null
             if (track != null) {
                 onRemoteVideoTrackChanged(producer.peerId, track)
@@ -272,6 +301,79 @@ class RoomMediaEngine(
         syncLocalProducerState()
     }
 
+    fun startScreenShare(resultCode: Int, data: Intent) {
+        if (!device.canProduce("video") || screenVideoProducer != null) return
+
+        runCatching {
+            localVideoProducer?.let { producer ->
+                closeProducerOnServer(producer.id)
+                producer.close()
+                localVideoProducer = null
+            }
+
+            val capturer = ScreenCapturerAndroid(
+                data,
+                object : MediaProjection.Callback() {
+                    override fun onStop() {
+                        stopScreenShare()
+                    }
+                },
+            )
+            val source = peerConnectionFactory.createVideoSource(true)
+            capturer.initialize(surfaceTextureHelper, appContext, source.capturerObserver)
+            capturer.startCapture(1280, 720, 30)
+
+            val track = peerConnectionFactory.createVideoTrack("screen-$userId", source)
+            val producer = produceTrack(track, "video", "VP8", producerAppData("video", source = "screen"))
+
+            screenCapturer = capturer
+            screenVideoSource = source
+            screenVideoTrack = track
+            screenVideoProducer = producer
+            onLocalPreviewChanged(track)
+            onScreenShareChanged(true)
+            syncLocalProducerState()
+        }.onFailure { error ->
+            stopScreenShare()
+            updateState(lastState.copy(phase = SfuMediaPhase.Failed, error = error.message))
+            onMessageChanged(error.message)
+        }
+    }
+
+    fun stopScreenShare() {
+        if (screenVideoProducer == null && screenCapturer == null) return
+
+        runCatching {
+            if (stoppingScreenShare) return@runCatching
+            stoppingScreenShare = true
+            screenVideoProducer?.let { producer ->
+                closeProducerOnServer(producer.id)
+                producer.close()
+            }
+            screenCapturer?.stopCaptureSafely()
+            screenVideoTrack?.dispose()
+            screenVideoSource?.dispose()
+
+            screenVideoProducer = null
+            screenCapturer = null
+            screenVideoTrack = null
+            screenVideoSource = null
+
+            ensureLocalVideoTrack()
+            if (localVideoProducer == null && localVideoTrack != null && device.canProduce("video")) {
+                localVideoProducer = produceTrack(localVideoTrack, "video", "VP8", producerAppData("video", source = "camera"))
+            }
+            onLocalPreviewChanged(localVideoTrack)
+            onScreenShareChanged(false)
+            syncLocalProducerState()
+        }.onFailure { error ->
+            updateState(lastState.copy(phase = SfuMediaPhase.Failed, error = error.message))
+            onMessageChanged(error.message)
+        }.also {
+            stoppingScreenShare = false
+        }
+    }
+
     fun switchCamera() {
         cameraCapturer?.switchCamera(null)
     }
@@ -279,8 +381,18 @@ class RoomMediaEngine(
     fun closeSession() {
         remoteConsumers.values.forEach { runCatching { it.close() } }
         remoteConsumers.clear()
+        screenVideoProducer?.close()
+        screenCapturer?.stopCaptureSafely()
+        screenVideoTrack?.dispose()
+        screenVideoSource?.dispose()
+        screenVideoProducer = null
+        screenCapturer = null
+        screenVideoTrack = null
+        screenVideoSource = null
         localAudioProducer?.close()
         localVideoProducer?.close()
+        localAudioProducer = null
+        localVideoProducer = null
         sendTransport?.close()
         recvTransport?.close()
         sendTransport = null
@@ -313,7 +425,13 @@ class RoomMediaEngine(
         return transport.produce(
             object : Producer.Listener {
                 override fun onTransportClose(producer: Producer) {
-                    if (kind == "audio") localAudioProducer = null else localVideoProducer = null
+                    if (kind == "audio") {
+                        localAudioProducer = null
+                    } else if (producer.id == screenVideoProducer?.id) {
+                        screenVideoProducer = null
+                    } else {
+                        localVideoProducer = null
+                    }
                 }
             },
             actualTrack,
@@ -407,6 +525,21 @@ class RoomMediaEngine(
                         kind = "video",
                         paused = it.isPaused,
                         local = true,
+                        source = "camera",
+                    ),
+                )
+            }
+            screenVideoProducer?.let {
+                add(
+                    SfuProducerState(
+                        id = it.id,
+                        peerId = userId,
+                        userId = userId,
+                        username = displayName,
+                        kind = "video",
+                        paused = it.isPaused,
+                        local = true,
+                        source = "screen",
                     ),
                 )
             }
@@ -414,7 +547,7 @@ class RoomMediaEngine(
         updateState(
             lastState.copy(
                 localProducers = producers,
-                localVideoTrack = localVideoTrack,
+                localVideoTrack = screenVideoTrack ?: localVideoTrack,
             ),
         )
     }
@@ -431,12 +564,13 @@ class RoomMediaEngine(
             .put("direction", direction)
             .toString()
 
-    private fun producerAppData(kind: String): String =
+    private fun producerAppData(kind: String, source: String = ""): String =
         JSONObject()
             .put("roomId", roomId)
             .put("userId", userId)
             .put("username", displayName)
             .put("kind", kind)
+            .put("source", source.ifBlank { kind })
             .toString()
 
     private fun consumerAppData(producer: SfuProducerState): String =
@@ -472,5 +606,37 @@ class RoomMediaEngine(
 
     private fun CameraVideoCapturer.stopCaptureSafely() {
         runCatching { stopCapture() }
+    }
+
+    private fun ScreenCapturerAndroid.stopCaptureSafely() {
+        runCatching { stopCapture() }
+    }
+
+    private fun closeProducerOnServer(producerId: String) {
+        if (producerId.isBlank()) return
+        runBlocking {
+            runCatching {
+                socketIoClient.emit(
+                    "closeProducer",
+                    JSONObject()
+                        .put("roomId", roomId)
+                        .put("producerId", producerId),
+                )
+            }
+        }
+    }
+
+    private fun resumeConsumerOnServer(consumerId: String) {
+        if (consumerId.isBlank()) return
+        runBlocking {
+            runCatching {
+                socketIoClient.emit(
+                    "resumeConsumer",
+                    JSONObject()
+                        .put("roomId", roomId)
+                        .put("consumerId", consumerId),
+                )
+            }
+        }
     }
 }

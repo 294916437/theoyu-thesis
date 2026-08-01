@@ -1,6 +1,7 @@
 package com.theoyu.thesis.android.feature.main
 
 import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonArray
@@ -260,7 +261,7 @@ class MainViewModel(
                 if (!socketIoClient.isConnected) {
                     socketIoClient.connect(
                         url = meeting.sfuServerUrl.ifBlank { DEFAULT_SFU_SOCKET_URL },
-                        config = SocketIoConfig(),
+                        config = SocketIoConfig(auth = mapOf("token" to session.token.orEmpty())),
                     )
                 }
                 setupRoomSocketListeners()
@@ -463,13 +464,50 @@ class MainViewModel(
     }
 
     fun toggleScreenShare() {
+        val room = _uiState.value.activeRoom
+        if (room.screenSharing) {
+            roomMediaEngine?.stopScreenShare()
+            _uiState.update {
+                it.copy(
+                    activeRoom = it.activeRoom.copy(screenSharing = false, screenSharePeerId = null),
+                    message = "屏幕共享已停止",
+                )
+            }
+        } else {
+            _uiState.update {
+                it.copy(
+                    screenShareRequestId = System.currentTimeMillis(),
+                    message = "请选择要共享的屏幕内容",
+                )
+            }
+        }
+    }
+
+    fun startScreenShare(resultCode: Int, data: Intent?) {
+        if (data == null) {
+            _uiState.update { it.copy(message = "未获得屏幕共享授权") }
+            return
+        }
+        roomMediaEngine?.startScreenShare(resultCode, data)
         _uiState.update {
-            val next = !it.activeRoom.screenSharing
+            val localPeerId = it.activeRoom.participants.firstOrNull(RoomParticipant::isLocal)?.peerId
+                ?: it.userSummary.userId
             it.copy(
-                activeRoom = it.activeRoom.copy(screenSharing = next),
-                message = if (next) "屏幕共享已开启" else "屏幕共享已停止",
+                activeRoom = it.activeRoom.copy(
+                    screenSharing = true,
+                    screenSharePeerId = localPeerId,
+                    videoEnabled = true,
+                    participants = it.activeRoom.participants.map { participant ->
+                        if (participant.isLocal) participant.copy(videoEnabled = true) else participant
+                    },
+                ),
+                message = "屏幕共享已开启",
             )
         }
+    }
+
+    fun consumeScreenShareRequest() {
+        _uiState.update { it.copy(screenShareRequestId = null) }
     }
 
     fun toggleHandRaised() {
@@ -547,6 +585,22 @@ class MainViewModel(
         super.onCleared()
     }
 
+    fun muteAllParticipants() {
+        hostControlAll(
+            event = "hostMuteAll",
+            successMessage = "已静音全体成员",
+            transform = { it.copy(audioEnabled = false) },
+        )
+    }
+
+    fun disableAllParticipantVideo() {
+        hostControlAll(
+            event = "hostDisableAllVideo",
+            successMessage = "已关闭全体成员摄像头",
+            transform = { it.copy(videoEnabled = false) },
+        )
+    }
+
     private fun getRoomMediaEngine(): RoomMediaEngine =
         roomMediaEngine ?: RoomMediaEngine(
             context = appContext,
@@ -567,6 +621,18 @@ class MainViewModel(
                             mediaState = state.activeRoom.mediaState.copy(
                                 remoteVideoTracks = state.activeRoom.mediaState.remoteVideoTracks + (peerId to track),
                             ),
+                        ),
+                    )
+                }
+            },
+            onScreenShareChanged = { sharing ->
+                _uiState.update { state ->
+                    val localPeerId = state.activeRoom.participants.firstOrNull(RoomParticipant::isLocal)?.peerId
+                        ?: state.userSummary.userId
+                    state.copy(
+                        activeRoom = state.activeRoom.copy(
+                            screenSharing = sharing,
+                            screenSharePeerId = if (sharing) localPeerId else null,
                         ),
                     )
                 }
@@ -865,8 +931,18 @@ class MainViewModel(
         }
         roomSocketSubscriptions += socketIoClient.on("peerLeft") { args ->
             val peerId = args.firstJsonObject()?.optString("peerId").orEmpty()
+            _uiState.value.activeRoom.mediaState.remoteProducers
+                .filter { it.peerId == peerId }
+                .forEach { roomMediaEngine?.closeRemoteProducer(it.id) }
             _uiState.update {
-                it.copy(activeRoom = it.activeRoom.copy(participants = it.activeRoom.participants.filterNot { p -> p.peerId == peerId }))
+                val wasScreenShare = it.activeRoom.screenSharePeerId == peerId
+                it.copy(
+                    activeRoom = it.activeRoom.copy(
+                        participants = it.activeRoom.participants.filterNot { p -> p.peerId == peerId },
+                        screenSharing = if (wasScreenShare) false else it.activeRoom.screenSharing,
+                        screenSharePeerId = if (wasScreenShare) null else it.activeRoom.screenSharePeerId,
+                    ),
+                )
             }
         }
         roomSocketSubscriptions += socketIoClient.on("producerStateChanged") { args ->
@@ -902,6 +978,26 @@ class MainViewModel(
                 )
             }
         }
+        roomSocketSubscriptions += socketIoClient.on("producerClosed") { args ->
+            val body = args.firstJsonObject() ?: return@on
+            val producerId = body.optString("producerId")
+            val peerId = body.optString("peerId")
+            roomMediaEngine?.closeRemoteProducer(producerId)
+            _uiState.update {
+                val wasScreenShare = it.activeRoom.screenSharePeerId == peerId
+                it.copy(
+                    activeRoom = it.activeRoom.copy(
+                        screenSharing = if (wasScreenShare) false else it.activeRoom.screenSharing,
+                        screenSharePeerId = if (wasScreenShare) null else it.activeRoom.screenSharePeerId,
+                        mediaState = it.activeRoom.mediaState.copy(
+                            remoteProducers = it.activeRoom.mediaState.remoteProducers.filterNot { producer -> producer.id == producerId },
+                            consumers = it.activeRoom.mediaState.consumers.filterNot { consumer -> consumer.producerId == producerId },
+                            remoteVideoTracks = it.activeRoom.mediaState.remoteVideoTracks - peerId,
+                        ),
+                    ),
+                )
+            }
+        }
         roomSocketSubscriptions += socketIoClient.on("handRaiseChanged") { args ->
             val body = args.firstJsonObject() ?: return@on
             val userId = body.optString("userId")
@@ -921,14 +1017,17 @@ class MainViewModel(
         roomSocketSubscriptions += socketIoClient.on("newProducer") { args ->
             val body = args.firstJsonObject() ?: return@on
             val producer = body.toProducerState()
-            val participant = participantFromJson(body).copy(
-                audioEnabled = body.optString("kind") != "video",
-                videoEnabled = body.optString("kind") != "audio",
-            )
             _uiState.update {
+                val current = it.activeRoom.participants.firstOrNull { participant -> participant.peerId == producer.peerId }
+                val participant = participantFromJson(body).copy(
+                    audioEnabled = if (producer.kind == "audio") !producer.paused else current?.audioEnabled ?: true,
+                    videoEnabled = if (producer.kind == "video") !producer.paused else current?.videoEnabled ?: true,
+                )
                 it.copy(
                     activeRoom = it.activeRoom.copy(
                         participants = it.activeRoom.participants.upsert(participant),
+                        screenSharing = if (producer.source == "screen") true else it.activeRoom.screenSharing,
+                        screenSharePeerId = if (producer.source == "screen") producer.peerId else it.activeRoom.screenSharePeerId,
                     ),
                 )
             }
@@ -1015,6 +1114,38 @@ class MainViewModel(
                 refreshRoomParticipants()
             }.onFailure { error ->
                 _uiState.update { it.copy(message = error.message ?: "成员状态控制失败") }
+            }
+        }
+    }
+
+    private fun hostControlAll(
+        event: String,
+        successMessage: String,
+        transform: (RoomParticipant) -> RoomParticipant,
+    ) {
+        val roomId = _uiState.value.activeRoom.meeting?.roomId.orEmpty()
+        if (roomId.isBlank()) return
+        viewModelScope.launch {
+            runCatching {
+                socketIoClient.emit(event, JSONObject().put("roomId", roomId))
+            }.onSuccess {
+                _uiState.update { state ->
+                    state.copy(
+                        activeRoom = state.activeRoom.copy(
+                            participants = state.activeRoom.participants.map { participant ->
+                                if (participant.isLocal || participant.role == ParticipantRole.Host) {
+                                    participant
+                                } else {
+                                    transform(participant)
+                                }
+                            },
+                        ),
+                        message = successMessage,
+                    )
+                }
+                refreshRoomParticipants()
+            }.onFailure { error ->
+                _uiState.update { it.copy(message = error.message ?: "全体控制失败") }
             }
         }
     }
@@ -1158,6 +1289,7 @@ class MainViewModel(
                             username = peer.optString("username"),
                             kind = producer.optString("kind"),
                             paused = producer.optBoolean("paused", false),
+                            source = producer.optString("source", producer.optJSONObject("appData")?.optString("source").orEmpty()),
                         ),
                     )
                 }
@@ -1181,6 +1313,7 @@ class MainViewModel(
                         username = username,
                         kind = "audio",
                         local = true,
+                        source = "audio",
                     ),
                 )
             }
@@ -1193,6 +1326,7 @@ class MainViewModel(
                         username = username,
                         kind = "video",
                         local = true,
+                        source = "camera",
                     ),
                 )
             }
@@ -1216,6 +1350,7 @@ class MainViewModel(
             username = optString("username"),
             kind = optString("kind"),
             paused = optBoolean("paused", false),
+            source = optString("source", optJSONObject("appData")?.optString("source").orEmpty()),
         )
 
     private fun mergeParticipants(

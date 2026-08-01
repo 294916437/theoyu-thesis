@@ -94,6 +94,8 @@ fun RoomScreen(
     onHostToggleParticipantAudio: (RoomParticipant) -> Unit,
     onHostToggleParticipantVideo: (RoomParticipant) -> Unit,
     onRemoveParticipant: (RoomParticipant) -> Unit,
+    onMuteAllParticipants: () -> Unit,
+    onDisableAllParticipantVideo: () -> Unit,
     onToggleScreenShare: () -> Unit,
     onToggleHandRaised: () -> Unit,
     onSwitchCamera: () -> Unit,
@@ -172,6 +174,8 @@ fun RoomScreen(
                     onToggleAudio = onHostToggleParticipantAudio,
                     onToggleVideo = onHostToggleParticipantVideo,
                     onRemoveParticipant = onRemoveParticipant,
+                    onMuteAll = onMuteAllParticipants,
+                    onDisableAllVideo = onDisableAllParticipantVideo,
                 )
 
                 RoomSheet.Chat -> ChatSheet(
@@ -490,6 +494,8 @@ private fun ParticipantSheet(
     onToggleAudio: (RoomParticipant) -> Unit,
     onToggleVideo: (RoomParticipant) -> Unit,
     onRemoveParticipant: (RoomParticipant) -> Unit,
+    onMuteAll: () -> Unit,
+    onDisableAllVideo: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -508,6 +514,20 @@ private fun ParticipantSheet(
             }
             OutlinedButton(onClick = onRefresh) {
                 Text("刷新")
+            }
+        }
+        if (isHost) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(modifier = Modifier.weight(1f), onClick = onMuteAll) {
+                    Icon(Icons.Filled.MicOff, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("全体静音")
+                }
+                OutlinedButton(modifier = Modifier.weight(1f), onClick = onDisableAllVideo) {
+                    Icon(Icons.Filled.VideocamOff, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("全体关摄像头")
+                }
             }
         }
         if (roomState.participantsLoading) {

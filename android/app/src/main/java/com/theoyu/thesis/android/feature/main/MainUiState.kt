@@ -30,6 +30,7 @@ data class MainUiState(
     val isLoggingOut: Boolean = false,
     val message: String? = null,
     val loggedOut: Boolean = false,
+    val screenShareRequestId: Long? = null,
 )
 
 enum class MainTab(
@@ -89,6 +90,7 @@ data class RoomUiState(
     val participantsTotal: Int = 0,
     val handRaised: Boolean = false,
     val screenSharing: Boolean = false,
+    val screenSharePeerId: String? = null,
     val captionsEnabled: Boolean = false,
     val mediaState: RoomMediaState = RoomMediaState(),
 )
@@ -145,6 +147,7 @@ data class SfuProducerState(
     val kind: String,
     val paused: Boolean = false,
     val local: Boolean = false,
+    val source: String = "",
 )
 
 data class SfuConsumerState(

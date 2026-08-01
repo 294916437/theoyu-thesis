@@ -20,7 +20,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.theoyu.thesis.android.feature.main.MainUiState
 import com.theoyu.thesis.android.feature.main.component.EmptyState
@@ -54,8 +56,9 @@ fun HomeScreen(
                         value = uiState.homeMeetingNo,
                         onValueChange = onMeetingNoChanged,
                         label = { Text("会议号") },
-                        placeholder = { Text("输入会议号") },
+                        placeholder = { Text("输入会议号或英文邀请码") },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
                     )
                     Button(
                         modifier = Modifier.fillMaxWidth(),

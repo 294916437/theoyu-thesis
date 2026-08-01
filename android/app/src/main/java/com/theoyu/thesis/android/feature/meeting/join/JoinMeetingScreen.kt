@@ -11,7 +11,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.theoyu.thesis.android.feature.main.JoinMeetingError
 import com.theoyu.thesis.android.feature.main.MeetingSummary
@@ -42,6 +44,7 @@ fun JoinMeetingScreen(
                 isError = error != null,
                 supportingText = error?.let { { Text(it.message) } },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
             )
         }
         item {

@@ -1,6 +1,7 @@
 package com.theoyu.thesis.android.feature.main.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -56,8 +57,15 @@ fun UserSummaryCard(userSummary: UserSummary) {
 }
 
 @Composable
-fun MeetingSummaryCard(meeting: MeetingSummary) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+fun MeetingSummaryCard(
+    meeting: MeetingSummary,
+    onClick: (() -> Unit)? = null,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)),
+    ) {
         Column(
             modifier = Modifier.padding(16.dp),
         ) {

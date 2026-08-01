@@ -17,6 +17,7 @@ import com.theoyu.thesis.android.feature.main.component.SectionTitle
 fun MeetingsScreen(
     upcomingMeetings: List<MeetingSummary>,
     recentMeetings: List<MeetingSummary>,
+    onMeetingClick: (MeetingSummary) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -27,13 +28,17 @@ fun MeetingsScreen(
         if (upcomingMeetings.isEmpty()) {
             item { EmptyState("暂无预约会议") }
         } else {
-            items(upcomingMeetings, key = { "upcoming-${it.roomId}-${it.roomNo}" }) { MeetingSummaryCard(it) }
+            items(upcomingMeetings, key = { "upcoming-${it.roomId}-${it.roomNo}" }) { meeting ->
+                MeetingSummaryCard(meeting = meeting, onClick = { onMeetingClick(meeting) })
+            }
         }
         item { SectionTitle("最近会议") }
         if (recentMeetings.isEmpty()) {
             item { EmptyState("暂无最近会议") }
         } else {
-            items(recentMeetings, key = { "recent-${it.roomId}-${it.roomNo}" }) { MeetingSummaryCard(it) }
+            items(recentMeetings, key = { "recent-${it.roomId}-${it.roomNo}" }) { meeting ->
+                MeetingSummaryCard(meeting = meeting, onClick = { onMeetingClick(meeting) })
+            }
         }
     }
 }

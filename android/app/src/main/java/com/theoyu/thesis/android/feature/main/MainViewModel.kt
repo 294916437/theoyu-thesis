@@ -84,7 +84,7 @@ class MainViewModel(
         _uiState.update {
             it.copy(
                 route = MainRoute.JoinMeeting,
-                joinMeetingNo = initialMeetingNo.filter(Char::isDigit).take(MEETING_NO_MAX_LENGTH),
+                joinMeetingNo = cleanMeetingNo(initialMeetingNo),
                 joinError = null,
                 validatedMeeting = null,
                 message = null,
@@ -180,7 +180,11 @@ class MainViewModel(
         _uiState.update {
             it.copy(
                 profileEditOpen = true,
-                profileEditForm = ProfileEditForm(nickname = it.userSummary.displayName),
+                profileEditForm = ProfileEditForm(
+                    nickname = it.userSummary.displayName,
+                    phone = it.userSummary.phone,
+                    avatar = it.userSummary.avatar,
+                ),
                 message = null,
             )
         }
@@ -194,10 +198,20 @@ class MainViewModel(
         _uiState.update { it.copy(profileEditForm = it.profileEditForm.copy(nickname = value.take(TITLE_MAX_LENGTH))) }
     }
 
+    fun updateProfilePhone(value: String) {
+        _uiState.update { it.copy(profileEditForm = it.profileEditForm.copy(phone = value.filter(Char::isDigit).take(PHONE_MAX_LENGTH))) }
+    }
+
+    fun updateProfileAvatar(value: String) {
+        _uiState.update { it.copy(profileEditForm = it.profileEditForm.copy(avatar = value.trim().take(AVATAR_MAX_LENGTH))) }
+    }
+
     fun saveProfile() {
         val state = _uiState.value
         val userId = state.userSummary.userId
         val nickname = state.profileEditForm.nickname.trim()
+        val phone = state.profileEditForm.phone.trim()
+        val avatar = state.profileEditForm.avatar.trim()
         if (userId.isBlank()) {
             _uiState.update { it.copy(message = "缺少用户信息，请重新登录") }
             return
@@ -209,17 +223,23 @@ class MainViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmitting = true, message = null) }
-            when (val result = userRepository.updateUserProfile(mapOf("userId" to userId, "nickname" to nickname))) {
+            val request = buildMap {
+                put("userId", userId)
+                put("nickname", nickname)
+                put("phone", phone)
+                put("avatar", avatar)
+            }
+            when (val result = userRepository.updateUserProfile(request)) {
                 is ApiResult.Success -> {
                     sessionStore.saveUserProfile(
                         userId = userId,
                         nickname = nickname,
-                        phone = _uiState.value.userSummary.phone,
-                        avatar = _uiState.value.userSummary.avatar,
+                        phone = phone,
+                        avatar = avatar,
                     )
                     _uiState.update {
                         it.copy(
-                            userSummary = it.userSummary.copy(displayName = nickname),
+                            userSummary = it.userSummary.copy(displayName = nickname, phone = phone, avatar = avatar),
                             profileEditOpen = false,
                             message = "资料已更新",
                         )
@@ -779,6 +799,18 @@ class MainViewModel(
             validateJoinMeeting()
             return
         }
+        joinMeetingAndOpenPreview(meeting)
+    }
+
+    fun openMeetingPreview(meeting: MeetingSummary) {
+        if (meeting.roomId.isBlank() && meeting.roomNo.isBlank()) {
+            _uiState.update { it.copy(message = "缺少会议号，无法打开预览") }
+            return
+        }
+        joinMeetingAndOpenPreview(meeting)
+    }
+
+    private fun joinMeetingAndOpenPreview(meeting: MeetingSummary) {
         val roomId = meeting.roomId.ifBlank { meeting.roomNo }
 
         viewModelScope.launch {
@@ -1185,7 +1217,7 @@ class MainViewModel(
         )
 
     private fun cleanMeetingNo(value: String): String =
-        value.filter(Char::isDigit).take(MEETING_NO_MAX_LENGTH)
+        value.filter(Char::isLetterOrDigit).uppercase().take(MEETING_NO_MAX_LENGTH)
 
     private fun parseMeetingList(element: JsonElement): List<MeetingSummary> {
         val body = element.asJsonObjectOrNull()
@@ -1510,6 +1542,8 @@ class MainViewModel(
         const val DESCRIPTION_MAX_LENGTH = 500
         const val MEETING_NO_MAX_LENGTH = 12
         const val MEETING_NO_MIN_LENGTH = 4
+        const val PHONE_MAX_LENGTH = 20
+        const val AVATAR_MAX_LENGTH = 300
         const val TITLE_MAX_LENGTH = 50
         const val DEFAULT_SFU_SOCKET_URL = "http://10.0.2.2:3000"
         const val PARTICIPANT_ROLE_MEMBER = 1

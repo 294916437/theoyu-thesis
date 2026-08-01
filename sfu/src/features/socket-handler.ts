@@ -205,6 +205,8 @@ export class SocketHandler {
 				id: producer.id,
 				kind: producer.kind,
 				paused: producer.paused,
+				appData: producer.appData,
+				source: producer.appData?.source,
 			})),
 		}))
 
@@ -383,6 +385,8 @@ export class SocketHandler {
 			username: peer.username,
 			kind: producer.kind,
 			paused: producer.paused,
+			appData: producer.appData,
+			source: producer.appData?.source,
 		})
 
 		callback({ id: producer.id })

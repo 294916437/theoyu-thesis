@@ -59,6 +59,7 @@ fun MainFrame(
         onJoinMeetingNoChanged = viewModel::updateJoinMeetingNo,
         onValidateMeeting = viewModel::validateJoinMeeting,
         onJoinValidatedMeeting = viewModel::joinValidatedMeeting,
+        onMeetingSelected = viewModel::openMeetingPreview,
         onCreateTitleChanged = viewModel::updateCreateTitle,
         onCreateTypeChanged = viewModel::updateCreateType,
         onCreateDateChanged = viewModel::updateCreateDate,
@@ -75,6 +76,8 @@ fun MainFrame(
         onOpenProfileEditor = viewModel::openProfileEditor,
         onDismissProfileEditor = viewModel::dismissProfileEditor,
         onProfileNicknameChanged = viewModel::updateProfileNickname,
+        onProfilePhoneChanged = viewModel::updateProfilePhone,
+        onProfileAvatarChanged = viewModel::updateProfileAvatar,
         onSaveProfile = viewModel::saveProfile,
         onLogout = viewModel::logout,
         onEnterMeeting = viewModel::enterMeetingFromPreview,
@@ -113,6 +116,7 @@ private fun MainFrameContent(
     onJoinMeetingNoChanged: (String) -> Unit,
     onValidateMeeting: () -> Unit,
     onJoinValidatedMeeting: () -> Unit,
+    onMeetingSelected: (MeetingSummary) -> Unit,
     onCreateTitleChanged: (String) -> Unit,
     onCreateTypeChanged: (MeetingCreateType) -> Unit,
     onCreateDateChanged: (java.time.LocalDate) -> Unit,
@@ -129,6 +133,8 @@ private fun MainFrameContent(
     onOpenProfileEditor: () -> Unit,
     onDismissProfileEditor: () -> Unit,
     onProfileNicknameChanged: (String) -> Unit,
+    onProfilePhoneChanged: (String) -> Unit,
+    onProfileAvatarChanged: (String) -> Unit,
     onSaveProfile: () -> Unit,
     onLogout: () -> Unit,
     onEnterMeeting: () -> Unit,
@@ -203,6 +209,7 @@ private fun MainFrameContent(
                     MainTab.Meetings -> MeetingsScreen(
                         upcomingMeetings = uiState.upcomingMeetings,
                         recentMeetings = uiState.recentMeetings,
+                        onMeetingClick = onMeetingSelected,
                     )
 
                     MainTab.Profile -> ProfileScreen(
@@ -210,6 +217,8 @@ private fun MainFrameContent(
                         onEditProfile = onOpenProfileEditor,
                         onDismissEditor = onDismissProfileEditor,
                         onNicknameChanged = onProfileNicknameChanged,
+                        onPhoneChanged = onProfilePhoneChanged,
+                        onAvatarChanged = onProfileAvatarChanged,
                         onSaveProfile = onSaveProfile,
                         onLogout = onLogout,
                     )
@@ -321,6 +330,7 @@ private fun MainFramePreview() {
             onJoinMeetingNoChanged = {},
             onValidateMeeting = {},
             onJoinValidatedMeeting = {},
+            onMeetingSelected = {},
             onCreateTitleChanged = {},
             onCreateTypeChanged = {},
             onCreateDateChanged = {},
@@ -337,6 +347,8 @@ private fun MainFramePreview() {
             onOpenProfileEditor = {},
             onDismissProfileEditor = {},
             onProfileNicknameChanged = {},
+            onProfilePhoneChanged = {},
+            onProfileAvatarChanged = {},
             onSaveProfile = {},
             onLogout = {},
             onEnterMeeting = {},

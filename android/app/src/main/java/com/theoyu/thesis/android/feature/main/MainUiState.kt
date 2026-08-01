@@ -229,6 +229,8 @@ data class CreateMeetingForm(
 
 data class ProfileEditForm(
     val nickname: String = "",
+    val phone: String = "",
+    val avatar: String = "",
 )
 
 enum class MeetingCreateType(

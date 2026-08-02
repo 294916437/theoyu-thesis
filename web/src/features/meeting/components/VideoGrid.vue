@@ -93,8 +93,8 @@
 		<!-- 聚光灯覆盖层：Zoom 风格 —— 中央主视频 + 右侧纵向缩略图条 -->
 		<div v-if="spotlightParticipant" class="spotlight-overlay">
 			<!-- 主视频区 -->
-			<div class="spotlight-main">
-				<video v-show="spotlightParticipant.videoEnabled" ref="spotlightVideoRef" autoplay playsinline
+			<div class="spotlight-main" ref="spotlightMainRef">
+				<video v-show="spotlightParticipant.videoEnabled && !(spotlightParticipant.isLocal && props.effectCanvas)" ref="spotlightVideoRef" autoplay playsinline
 					:muted="spotlightParticipant.isLocal" class="spotlight-main-video"
 					:class="{ 'is-mirrored': spotlightParticipant.isLocal && localPreviewMirrored }"></video>
 				<div v-if="!spotlightParticipant.videoEnabled" class="spotlight-main-placeholder">
@@ -219,6 +219,7 @@ const videoRefs = new Map()
 const thumbnailRefs = new Map()
 const spotlightThumbRefs = new Map()
 const spotlightVideoRef = ref(null)
+const spotlightMainRef = ref(null)
 const localCanvasRenderer = shallowRef(null)
 const videoRenderers = new Map()
 // 使用 WeakMap 缓存流对象，避免重复创建
@@ -572,12 +573,19 @@ watch(
 
 // 监听特效 canvas 变化
 watch(
-	[() => props.effectCanvas, localMediaWrapper],
-	([canvas, wrapper]) => {
-		if (!wrapper) return
-		// 移除旧的特效 canvas（如有）
-		const prev = wrapper.querySelector('canvas.local-effect-canvas')
-		if (prev) prev.remove()
+	[() => props.effectCanvas, localMediaWrapper, spotlightMainRef, () => props.spotlightPeerId],
+	([canvas, wrapper, spotlightMain, spotlightId]) => {
+		const isLocalSpotlit = spotlightId === 'local' || (props.localPeerId && spotlightId === props.localPeerId)
+
+		if (wrapper) {
+			const prev = wrapper.querySelector('canvas.local-effect-canvas')
+			if (prev) prev.remove()
+		}
+		if (spotlightMain) {
+			const prev = spotlightMain.querySelector('canvas.local-effect-canvas')
+			if (prev) prev.remove()
+		}
+
 		if (canvas) {
 			canvas.classList.add('local-effect-canvas')
 			// 用内联样式直接保证尺寸，绕过 scoped 约束
@@ -585,7 +593,21 @@ watch(
 			canvas.style.width = '100%'
 			canvas.style.height = '100%'
 			canvas.style.objectFit = 'cover'
-			wrapper.appendChild(canvas)
+			// 对于 spotlight-main 为了覆盖可能存在的其他元素设定层级
+			if (isLocalSpotlit) {
+				canvas.style.position = 'absolute'
+				canvas.style.top = '0'
+				canvas.style.left = '0'
+				canvas.style.zIndex = '1'
+			} else {
+				canvas.style.position = 'static'
+			}
+
+			if (isLocalSpotlit && spotlightMain) {
+				spotlightMain.appendChild(canvas)
+			} else if (wrapper && !isLocalSpotlit) {
+				wrapper.appendChild(canvas)
+			}
 		}
 	},
 	{ immediate: true },

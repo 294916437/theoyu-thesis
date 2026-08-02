@@ -96,7 +96,12 @@ export function useMedia() {
 	let originalCameraTrack = null
 	let screenStream = null
 	let originalVideoTrack = null
+	let videoEnabledBeforeScreenShare = true
 	let stopEffectWatcher = null
+	let socketListenerCleanups = []
+	let manualLeaveInProgress = false
+	let mediaRecovering = false
+	let lastJoinContext = null
 	// 缓存 TypedArray 视图——在 initBackgroundEffect 后初始化，整个 session 内复用
 	let cachedInputView = null // Uint8Array(PROC_W * PROC_H * 4) → WASM input_ptr
 	let cachedMaskView = null // Float32Array(MASK_WIDTH * MASK_HEIGHT) → WASM mask_ptr
@@ -624,27 +629,34 @@ export function useMedia() {
 
 		const effectProducer = mediasoupClient.producers.get('video')
 
+		let newTrack = null
 		if (originalCameraTrack && originalCameraTrack.readyState === 'live') {
-			if (effectProducer) {
-				await effectProducer.replaceTrack({ track: originalCameraTrack })
-				Object.assign(effectProducer.appData, { source: 'camera' })
-				mediasoupClient.producers.set('video', effectProducer)
-				updateLocalProducer('video', effectProducer)
-			}
+			newTrack = originalCameraTrack
 		} else {
 			// 重新请求摄像头
 			const stream = await navigator.mediaDevices.getUserMedia({
 				video: { width: VIDEO_WIDTH, height: VIDEO_HEIGHT },
 			})
-			const newTrack = stream.getVideoTracks()[0]
-			if (effectProducer) {
-				await effectProducer.replaceTrack({ track: newTrack })
-				Object.assign(effectProducer.appData, { source: 'camera' })
-				mediasoupClient.producers.set('video', effectProducer)
-				updateLocalProducer('video', effectProducer)
-			}
-			// 摄像头需重新打开：将新轨道加入 localStream 供 VideoGrid 摄像头预览使用
-			if (localStream.value) {
+			newTrack = stream.getVideoTracks()[0]
+		}
+
+		if (effectProducer) {
+			await effectProducer.replaceTrack({ track: newTrack })
+			Object.assign(effectProducer.appData, { source: 'camera' })
+			mediasoupClient.producers.set('video', effectProducer)
+			updateLocalProducer('video', effectProducer)
+		}
+
+		// 统一清理旧轨道并加入新轨道 (对比并恢复旧的 replaceVideoTrack 逻辑)
+		if (localStream.value) {
+			const oldTracks = localStream.value.getVideoTracks()
+			oldTracks.forEach(track => {
+				if (track !== newTrack) {
+					track.stop()
+					localStream.value.removeTrack(track)
+				}
+			})
+			if (!localStream.value.getVideoTracks().includes(newTrack)) {
 				localStream.value.addTrack(newTrack)
 			}
 		}
@@ -664,39 +676,6 @@ export function useMedia() {
 		participants.value = [...participants.value]
 	}
 
-	/**
-	 * 替换视频轨道（用于特效切换）
-	 */
-	async function replaceVideoTrack(newTrack) {
-		const videoProducer = mediasoupClient.producers.get('video')
-		if (!videoProducer) {
-			console.warn('[BackgroundEffect] No video producer found')
-			return
-		}
-
-		try {
-			// 替换 producer 轨道
-			await videoProducer.replaceTrack({ track: newTrack })
-
-			// 更新本地流时，清理所有旧的视频轨道
-			const oldTracks = localStream.value.getVideoTracks()
-			oldTracks.forEach(track => {
-				track.stop()
-				localStream.value.removeTrack(track)
-			})
-
-			localStream.value.addTrack(newTrack)
-			if (!effectProducerActive.value) {
-				ensureLocalPreviewRenderer(localStream.value)
-			}
-
-			console.log('[BackgroundEffect] Video track replaced:', newTrack.id)
-		} catch (error) {
-			console.error('[BackgroundEffect] Failed to replace track:', error)
-			throw error
-		}
-	}
-
 	function ensureEffectWatcher() {
 		if (stopEffectWatcher) return
 
@@ -712,21 +691,7 @@ export function useMedia() {
 
 				// 情况1: 关闭所有效果
 				if (newType === 'none') {
-					// 停止特效
 					await stopEffectStream()
-
-					// 重新获取原始摄像头轨道
-					const stream = await navigator.mediaDevices.getUserMedia({
-						video: {
-							width: { ideal: VIDEO_WIDTH, max: 1920 },
-							height: { ideal: VIDEO_HEIGHT, max: 1080 },
-							frameRate: { ideal: 30, max: 60 },
-						},
-					})
-
-					const newVideoTrack = stream.getVideoTracks()[0]
-					await replaceVideoTrack(newVideoTrack)
-
 					console.log('[BackgroundEffect] Original camera restored')
 					return
 				}
@@ -1019,6 +984,8 @@ export function useMedia() {
 		let sfuUrl = ''
 		let socketConnection = null
 		try {
+			manualLeaveInProgress = false
+			mediaRecovering = false
 			connectionState.value = 'connecting'
 			joinError.value = ''
 
@@ -1036,6 +1003,14 @@ export function useMedia() {
 			sfuUrl = joinAllocRes.data.sfuServerUrl || import.meta.env.VITE_SFU_URL || window.location.origin
 			console.log(`[Join] Allocated SFU URL: ${sfuUrl}`)
 			socketConnection = resolveSocketConnection(sfuUrl)
+			lastJoinContext = {
+				meetingId,
+				userIdParam,
+				usernameParam,
+				token,
+				withMedia,
+				socketConnection,
+			}
 
 			// 2. 连接 Socket.io
 			await socketClient.connect(socketConnection.url, {
@@ -1054,44 +1029,10 @@ export function useMedia() {
 			peerId.value = joinResponse.peerId
 
 			// 3. 设置参与者
-			participants.value = [
-				{
-					peerId: joinResponse.peerId,
-					userId: userIdParam,
-					username: usernameParam,
-					streams: {},
-					producers: {},
-					consumers: {},
-					isLocal: true,
-				},
-				...joinResponse.peers.map(peer => ({
-					peerId: peer.peerId,
-					userId: peer.userId,
-					username: peer.username,
-					streams: {},
-					producers: {},
-					consumers: {},
-					isLocal: false,
-				})),
-			]
+			participants.value = buildParticipantsFromJoin(joinResponse, userIdParam, usernameParam)
 
-			// 4. 获取路由器 RTP 能力
-			const { rtpCapabilities } = await socketClient.emit('getRouterRtpCapabilities', {
-				roomId: meetingId,
-			})
-
-			// 5. 初始化 Mediasoup Device
-			mediasoupClient = new MediasoupClient()
-			await mediasoupClient.loadDevice(rtpCapabilities)
-
-			// 6. 创建传输层
-			try {
-				await mediasoupClient.createSendTransport(meetingId)
-				await mediasoupClient.createRecvTransport(meetingId)
-			} catch (error) {
-				console.error('Failed to create transports:', error)
-				throw new Error('传输层创建失败，请检查网络连接')
-			}
+			// 4-6. 获取 RTP 能力并初始化收发传输层
+			await initializeMediaTransports(meetingId)
 
 			// 7. 获取本地媒体流
 			if (withMedia) {
@@ -1105,31 +1046,14 @@ export function useMedia() {
 			}
 
 			// 8. 发布本地媒体流（仅 withMedia 时）
-			if (withMedia && localStream.value) {
-				const audioTrack = localStream.value.getAudioTracks()[0]
-				const videoTrack = localStream.value.getVideoTracks()[0]
-
-				try {
-					if (audioTrack) {
-						await publishLocalTrack(audioTrack, 'audio', {
-							appData: {
-								noiseSuppression: audioNoiseSuppressionEnabled.value,
-							},
-						})
-					}
-					if (videoTrack) {
-						await publishLocalTrack(videoTrack, 'video', {
-							encodings: SIMULCAST_ENCODINGS,
-							codecOptions: { videoGoogleStartBitrate: 1000 },
-						})
-					}
-				} catch (error) {
-					console.error('Failed to publish media streams:', error)
-					if (error.message.includes('timeout')) {
-						$notify.error('媒体流发布超时，请检查网络或防火墙设置')
-					} else {
-						$notify.error('发布媒体流失败，但仍可以接收其他人的视频')
-					}
+			try {
+				await publishExistingLocalMedia(withMedia)
+			} catch (error) {
+				console.error('Failed to publish media streams:', error)
+				if (error.message.includes('timeout')) {
+					$notify.error('媒体流发布超时，请检查网络或防火墙设置')
+				} else {
+					$notify.error('发布媒体流失败，但仍可以接收其他人的视频')
 				}
 			}
 
@@ -1142,18 +1066,22 @@ export function useMedia() {
 			}
 
 			// 11. 订阅现有参与者的媒体流
-			for (const peer of joinResponse.peers) {
-				if (peer.producers && peer.producers.length > 0) {
-					for (const producer of peer.producers) {
-						await consumeProducer(producer.id, peer.peerId)
-					}
-				}
-			}
+			await consumePeerProducers(joinResponse.peers)
 
 			connectionState.value = 'connected'
 			joinError.value = ''
 		} catch (error) {
 			console.error('Failed to join meeting', error)
+			cleanupSocketListeners()
+			mediasoupClient?.close()
+			mediasoupClient = null
+			lastJoinContext = null
+			localStream.value?.getTracks().forEach(track => track.stop())
+			localStream.value = null
+			screenStream?.getTracks().forEach(track => track.stop())
+			screenStream = null
+			stopLocalPreviewRenderer({ clearCanvasRef: true })
+			socketClient.disconnect()
 			connectionState.value = 'failed'
 			const joinErrorDetails = formatJoinError(error, {
 				sfuUrl,
@@ -1164,6 +1092,76 @@ export function useMedia() {
 			console.error('[Join] Error details:\n' + joinErrorDetails)
 			joinError.value = error?.message || '当前无法加入会议，请稍后重试'
 			throw error
+		}
+	}
+
+	async function recoverMediaSession(trigger = 'socket_reconnect') {
+		if (manualLeaveInProgress || mediaRecovering || !lastJoinContext) return
+		if (!socketClient.connected.value) return
+
+		mediaRecovering = true
+		const { meetingId, userIdParam, usernameParam, token, withMedia } = lastJoinContext
+
+		try {
+			console.log(`[Reconnect] Recovering media session after ${trigger}`)
+			connectionState.value = 'connecting'
+			joinError.value = ''
+
+			cleanupSocketListeners()
+			cleanupRemoteMediaState({ keepParticipants: true })
+			mediasoupClient?.close()
+			mediasoupClient = null
+
+			const joinResponse = await socketClient.emit('joinRoom', {
+				roomId: meetingId,
+				userId: userIdParam,
+				username: usernameParam,
+				token,
+			})
+
+			peerId.value = joinResponse.peerId
+			participants.value = buildParticipantsFromJoin(joinResponse, userIdParam, usernameParam)
+			syncLocalParticipantStream()
+
+			await initializeMediaTransports(meetingId)
+
+			try {
+				await publishExistingLocalMedia(withMedia)
+			} catch (error) {
+				console.error('[Reconnect] Failed to republish local media:', error)
+				$notify.warning('网络已恢复，但本地媒体流重新发布失败')
+			}
+
+			setupSocketListeners()
+			if (withMedia) {
+				ensureEffectWatcher()
+			}
+			await consumePeerProducers(joinResponse.peers)
+
+			connectionState.value = 'connected'
+			joinError.value = ''
+			console.log('[Reconnect] Media session recovered')
+		} catch (error) {
+			console.error('[Reconnect] Failed to recover media session:', error)
+			cleanupRemoteMediaState({ keepParticipants: true })
+			mediasoupClient?.close()
+			mediasoupClient = null
+			connectionState.value = 'failed'
+			joinError.value = error?.message || '网络恢复失败，请重试'
+			$notify.error('网络恢复失败，请点击重试')
+		} finally {
+			mediaRecovering = false
+		}
+	}
+
+	function handleSocketDisconnected(reason) {
+		if (manualLeaveInProgress || !lastJoinContext) return
+
+		console.warn('[Reconnect] Socket disconnected:', reason)
+		connectionState.value = 'disconnected'
+
+		if (reason === 'io server disconnect') {
+			$notify.warning('会议连接已断开，正在尝试恢复')
 		}
 	}
 
@@ -1235,6 +1233,187 @@ export function useMedia() {
 			track.stop()
 			localStream.value.removeTrack(track)
 		})
+	}
+
+	function removeTrackFromStream(stream, trackToRemove, options = {}) {
+		const { stop = true } = options
+		if (!(stream instanceof MediaStream) || !trackToRemove) return
+
+		stream.getTracks().forEach(track => {
+			if (track.id === trackToRemove.id) {
+				stream.removeTrack(track)
+				if (stop) {
+					track.stop()
+				}
+			}
+		})
+	}
+
+	function clearEmptyStream(participant, kind) {
+		if (participant?.streams?.[kind]?.getTracks().length === 0) {
+			delete participant.streams[kind]
+		}
+	}
+
+	function buildParticipantsFromJoin(joinResponse, userIdParam, usernameParam) {
+		return [
+			{
+				peerId: joinResponse.peerId,
+				userId: userIdParam,
+				username: usernameParam,
+				streams: {},
+				producers: {},
+				consumers: {},
+				isLocal: true,
+			},
+			...joinResponse.peers.map(peer => ({
+				peerId: peer.peerId,
+				userId: peer.userId,
+				username: peer.username,
+				streams: {},
+				producers: {},
+				consumers: {},
+				isLocal: false,
+			})),
+		]
+	}
+
+	function cleanupRemoteMediaState(options = {}) {
+		const { keepParticipants = true } = options
+
+		participants.value.forEach(participant => {
+			if (participant.isLocal) return
+
+			Object.values(participant.streams || {}).forEach(stream => {
+				if (stream instanceof MediaStream) {
+					stream.getTracks().forEach(track => track.stop())
+				}
+			})
+
+			Object.keys(participant.consumers || {}).forEach(consumerId => {
+				cleanupParticipantConsumer(participant, consumerId)
+			})
+
+			participant.streams = {}
+			participant.consumers = {}
+			participant.producers = {}
+		})
+
+		if (!keepParticipants) {
+			participants.value = participants.value.filter(participant => participant.isLocal)
+		} else {
+			participants.value = [...participants.value]
+		}
+	}
+
+	async function initializeMediaTransports(meetingId) {
+		const { rtpCapabilities } = await socketClient.emit('getRouterRtpCapabilities', {
+			roomId: meetingId,
+		})
+
+		mediasoupClient = new MediasoupClient()
+		await mediasoupClient.loadDevice(rtpCapabilities)
+
+		try {
+			await mediasoupClient.createSendTransport(meetingId)
+			await mediasoupClient.createRecvTransport(meetingId)
+		} catch (error) {
+			console.error('Failed to create transports:', error)
+			throw new Error('传输层创建失败，请检查网络连接')
+		}
+	}
+
+	async function publishExistingLocalMedia(withMedia) {
+		if (!withMedia || !localStream.value) return
+
+		const audioTrack = localStream.value.getAudioTracks().find(track => track.readyState === 'live')
+		const screenTrack = screenSharing.value ? screenStream?.getVideoTracks().find(track => track.readyState === 'live') : null
+		const effectTrack = effectProducerActive.value ? effectStream?.getVideoTracks().find(track => track.readyState === 'live') : null
+		const cameraTrack = localStream.value.getVideoTracks().find(track => track.readyState === 'live')
+		const videoTrack = screenTrack || effectTrack || cameraTrack
+
+		if (audioTrack) {
+			audioTrack.enabled = audioEnabled.value
+			await publishLocalTrack(audioTrack, 'audio', {
+				appData: {
+					noiseSuppression: audioNoiseSuppressionEnabled.value,
+				},
+			})
+
+			if (!audioEnabled.value) {
+				await socketClient.emit('toggleAudio', {
+					roomId: roomId.value,
+					enabled: false,
+				})
+			}
+		}
+
+		if (videoTrack) {
+			videoTrack.enabled = screenTrack ? true : videoEnabled.value
+
+			const videoOptions = screenTrack
+				? {
+						encodings: [{ dtx: true, maxBitrate: 1500000 }],
+						appData: { source: 'screen', shareType: 'display' },
+					}
+				: effectTrack
+					? {
+							encodings: SIMULCAST_ENCODINGS,
+							codecOptions: { videoGoogleStartBitrate: 1000 },
+							appData: { source: 'effect', effectType: effectType.value },
+						}
+					: {
+							encodings: SIMULCAST_ENCODINGS,
+							codecOptions: { videoGoogleStartBitrate: 1000 },
+							appData: { source: 'camera' },
+						}
+
+			await publishLocalTrack(videoTrack, 'video', videoOptions)
+
+			if (!screenTrack && !videoEnabled.value) {
+				await socketClient.emit('toggleVideo', {
+					roomId: roomId.value,
+					enabled: false,
+				})
+			}
+		}
+
+		syncLocalParticipantStream()
+	}
+
+	async function consumePeerProducers(peers = []) {
+		for (const peer of peers) {
+			if (peer.producers && peer.producers.length > 0) {
+				for (const producer of peer.producers) {
+					await consumeProducer(producer.id, peer.peerId)
+				}
+			}
+		}
+	}
+
+	function cleanupSocketListeners() {
+		socketListenerCleanups.forEach(cleanup => cleanup())
+		socketListenerCleanups = []
+	}
+
+	function cleanupParticipantConsumer(participant, consumerId, options = {}) {
+		const { stopTrack = true } = options
+		if (!participant?.consumers?.[consumerId]) return null
+
+		const consumer = participant.consumers[consumerId]
+		const kind = consumer.track?.kind
+		const track = consumer.track
+
+		mediasoupClient?.consumers?.delete?.(consumerId)
+		consumer.close()
+		delete participant.consumers[consumerId]
+
+		if (kind && participant.streams?.[kind]) {
+			removeTrackFromStream(participant.streams[kind], track, { stop: stopTrack })
+			clearEmptyStream(participant, kind)
+		}
+
+		return { consumer, kind }
 	}
 
 	async function publishLocalTrack(track, kind, extraOptions = {}, timeout = 15000) {
@@ -1431,20 +1610,60 @@ export function useMedia() {
 	 * 设置 Socket 事件监听
 	 */
 	function setupSocketListeners() {
+		cleanupSocketListeners()
+		const on = (event, handler) => {
+			socketListenerCleanups.push(socketClient.on(event, handler))
+		}
+		const onManager = (event, handler) => {
+			if (typeof socketClient.onManager === 'function') {
+				socketListenerCleanups.push(socketClient.onManager(event, handler))
+			}
+		}
+
+		on('disconnect', reason => {
+			handleSocketDisconnected(reason)
+		})
+
+		on('connect', () => {
+			if (lastJoinContext && connectionState.value !== 'connected') {
+				recoverMediaSession('socket_connect')
+			}
+		})
+
+		onManager('reconnect_attempt', attemptNumber => {
+			if (!manualLeaveInProgress && lastJoinContext) {
+				console.log(`[Reconnect] Socket reconnect attempt ${attemptNumber}`)
+				connectionState.value = 'disconnected'
+			}
+		})
+
+		onManager('reconnect', attemptNumber => {
+			console.log(`[Reconnect] Socket reconnected after ${attemptNumber} attempt(s)`)
+			recoverMediaSession('socket_manager_reconnect')
+		})
+
+		onManager('reconnect_failed', () => {
+			if (!manualLeaveInProgress && lastJoinContext) {
+				connectionState.value = 'failed'
+				joinError.value = '网络连接已断开，请检查网络后重试'
+				$notify.error('网络连接已断开，请检查网络后重试')
+			}
+		})
+
 		// 注册心跳监听
-		socketClient.on('ping', data => {
+		on('ping', data => {
 			console.log('Received ping from server', data)
 			// 立即响应 pong
 			socketClient.socket.emit('pong', { timestamp: data?.timestamp || Date.now() })
 		})
 
 		// 监听 RTT
-		socketClient.on('rtt', data => {
+		on('rtt', data => {
 			console.log(`RTT: ${data.rtt}ms`)
 		})
 
 		// 新参与者加入
-		socketClient.on('newPeer', async data => {
+		on('newPeer', async data => {
 			console.log('New peer joined', data)
 
 			const existingPeer = participants.value.find(p => p.peerId === data.peerId)
@@ -1462,7 +1681,7 @@ export function useMedia() {
 		})
 
 		// 参与者离开
-		socketClient.on('peerLeft', data => {
+		on('peerLeft', data => {
 			console.log('Peer left', data)
 
 			const index = participants.value.findIndex(p => p.peerId === data.peerId)
@@ -1477,8 +1696,8 @@ export function useMedia() {
 				})
 
 				// 清理消费者
-				Object.values(participant.consumers).forEach(consumer => {
-					consumer.close()
+				Object.keys(participant.consumers || {}).forEach(consumerId => {
+					cleanupParticipantConsumer(participant, consumerId)
 				})
 
 				participants.value.splice(index, 1)
@@ -1491,7 +1710,7 @@ export function useMedia() {
 			}
 		})
 		// 监听被踢出事件
-		socketClient.on('removedFromRoom', async data => {
+		on('removedFromRoom', async data => {
 			$notify.error('您已被主持人移出会议', {
 				timeout: 3000,
 			})
@@ -1505,7 +1724,7 @@ export function useMedia() {
 			}, 3000)
 		})
 
-		socketClient.on('roomClosed', async data => {
+		on('roomClosed', async data => {
 			console.log('Room closed', data)
 			$notify.info('会议已由主持人关闭', {
 				timeout: 3000,
@@ -1519,7 +1738,7 @@ export function useMedia() {
 		})
 
 		// 新生产者
-		socketClient.on('newProducer', async data => {
+		on('newProducer', async data => {
 			console.log('New producer', data)
 
 			const { producerId, peerId: remotePeerId, userId: remoteUserId, username, kind } = data
@@ -1549,6 +1768,7 @@ export function useMedia() {
 				id: producerId,
 				kind: kind,
 				paused: data.paused || false,
+				appData: data.appData || (data.source ? { source: data.source } : {}),
 			}
 
 			// 订阅这个新的生产者
@@ -1556,7 +1776,7 @@ export function useMedia() {
 		})
 
 		// 生产者关闭
-		socketClient.on('producerClosed', data => {
+		on('producerClosed', data => {
 			console.log('Producer closed', data)
 
 			const participant = participants.value.find(p => p.peerId === data.peerId)
@@ -1571,26 +1791,8 @@ export function useMedia() {
 
 				const kind = consumer?.track?.kind || participant.producers?.[producerKind]?.kind || producerKind
 
-				// 关闭消费者
-				if (consumer) {
-					consumer.close()
-					delete participant.consumers[consumerId]
-				}
-
-				// 从流中移除轨道
-				if (consumer && kind && participant.streams[kind]) {
-					const stream = participant.streams[kind]
-					stream.getTracks().forEach(track => {
-						if (track.id === consumer.track.id) {
-							track.stop()
-							stream.removeTrack(track)
-						}
-					})
-
-					// 如果流为空，删除流
-					if (stream.getTracks().length === 0) {
-						delete participant.streams[kind]
-					}
+				if (consumer && consumerId) {
+					cleanupParticipantConsumer(participant, consumerId)
 				}
 
 				// 从生产者列表中移除
@@ -1603,20 +1805,17 @@ export function useMedia() {
 		})
 
 		// 消费者关闭
-		socketClient.on('consumerClosed', data => {
+		on('consumerClosed', data => {
 			console.log('Consumer closed', data)
 
-			const participant = participants.value.find(p => Object.values(p.consumers).some(c => c.id === data.consumerId))
+			const participant = participants.value.find(p => Object.values(p.consumers || {}).some(c => c.id === data.consumerId))
 			if (participant) {
-				const consumer = participant.consumers[data.consumerId]
-				if (consumer) {
-					consumer.close()
-					delete participant.consumers[data.consumerId]
-				}
+				cleanupParticipantConsumer(participant, data.consumerId)
+				participants.value = [...participants.value]
 			}
 		})
 		// 添加统一状态变化监听
-		socketClient.on('producerStateChanged', data => {
+		on('producerStateChanged', data => {
 			const { producerId, peerId: remotePeerId, kind, paused, reason } = data
 
 			// 1. 更新参与者的 producers 状态
@@ -1626,16 +1825,16 @@ export function useMedia() {
 			participants.value = [...participants.value]
 		})
 		// 监听聚光灯申请（只有主持人 UI 会处理）
-		socketClient.on('spotlightRequest', data => {
+		on('spotlightRequest', data => {
 			spotlightRequest.value = data
 		})
 
 		// 监听聚光灯状态变化
-		socketClient.on('spotlightChanged', data => {
+		on('spotlightChanged', data => {
 			spotlightPeerId.value = data.active ? data.targetPeerId : null
 		})
 
-		socketClient.on('handRaiseChanged', data => {
+		on('handRaiseChanged', data => {
 			raisedHandStates.value = {
 				...raisedHandStates.value,
 				[data.peerId]: Boolean(data.raised),
@@ -1655,7 +1854,7 @@ export function useMedia() {
 		})
 
 		// 监听 Simulcast 层级变化 (码率自适应)
-		socketClient.on('consumerLayersChanged', data => {
+		on('consumerLayersChanged', data => {
 			const { consumerId, spatialLayer } = data
 
 			// 如果 spatialLayer 为 0，说明 SFU 因为带宽不足将流降级到了最低画质
@@ -1920,6 +2119,7 @@ export function useMedia() {
 				effectType.value = 'none'
 				$notify.info('已关闭背景特效以开始屏幕共享')
 			}
+			videoEnabledBeforeScreenShare = videoEnabled.value
 
 			// 1. 获取屏幕共享流
 			const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -1941,6 +2141,9 @@ export function useMedia() {
 			if (currentVideoProducer) {
 				// 保存原始轨道（用于恢复）
 				originalVideoTrack = currentVideoProducer.track
+				if (originalVideoTrack) {
+					originalVideoTrack.enabled = false
+				}
 
 				// 通知服务器关闭原 producer
 				await socketClient.emit('closeProducer', {
@@ -1985,7 +2188,6 @@ export function useMedia() {
 					const videoStream = localPeer.streams.video
 					const oldTracks = videoStream.getVideoTracks()
 					oldTracks.forEach(track => {
-						track.stop()
 						videoStream.removeTrack(track)
 					})
 					videoStream.addTrack(screenVideoTrack)
@@ -1997,7 +2199,6 @@ export function useMedia() {
 				if (localStream.value) {
 					const oldTracks = localStream.value.getVideoTracks()
 					oldTracks.forEach(track => {
-						track.stop()
 						localStream.value.removeTrack(track)
 					})
 					localStream.value.addTrack(screenVideoTrack)
@@ -2005,6 +2206,7 @@ export function useMedia() {
 			}
 
 			screenSharing.value = true
+			videoEnabled.value = true
 
 			// 5. 监听用户主动停止共享
 			screenVideoTrack.onended = async () => {
@@ -2017,6 +2219,8 @@ export function useMedia() {
 			return screenProducer
 		} catch (error) {
 			screenSharing.value = false
+			videoEnabled.value = videoEnabledBeforeScreenShare
+			videoEnabledBeforeScreenShare = true
 
 			if (error.name === 'NotAllowedError') {
 				console.log('User cancelled screen share')
@@ -2066,9 +2270,28 @@ export function useMedia() {
 				console.log('Screen producer closed')
 			}
 
-			// 3. 重新创建摄像头 producer
-			if (originalVideoTrack && originalVideoTrack.readyState === 'live') {
+			// 3. 按共享前状态恢复摄像头；共享前关闭摄像头时保持关闭，避免误开启
+			if (!videoEnabledBeforeScreenShare) {
+				const localPeer = participants.value.find(p => p.peerId === peerId.value)
+				if (localPeer?.producers?.video?.appData?.source === 'screen') {
+					delete localPeer.producers.video
+				}
+				if (localPeer?.streams?.video) {
+					localPeer.streams.video.getVideoTracks().forEach(track => {
+						localPeer.streams.video.removeTrack(track)
+					})
+					clearEmptyStream(localPeer, 'video')
+				}
+				if (localStream.value) {
+					localStream.value.getVideoTracks().forEach(track => {
+						localStream.value.removeTrack(track)
+					})
+				}
+				videoEnabled.value = false
+				ensureLocalPreviewRenderer(localStream.value)
+			} else if (originalVideoTrack && originalVideoTrack.readyState === 'live') {
 				// 如果原轨道还活着，直接复用
+				originalVideoTrack.enabled = true
 				const newProducer = await mediasoupClient.produce(originalVideoTrack, {
 					kind: 'video',
 					encodings: SIMULCAST_ENCODINGS,
@@ -2150,6 +2373,7 @@ export function useMedia() {
 			// 4. 更新状态
 			screenSharing.value = false
 			originalVideoTrack = null
+			videoEnabledBeforeScreenShare = true
 
 			// 强制更新 UI
 			participants.value = [...participants.value]
@@ -2159,6 +2383,8 @@ export function useMedia() {
 			console.error('Failed to stop screen share:', error)
 			screenSharing.value = false
 			screenStream = null
+			videoEnabled.value = videoEnabledBeforeScreenShare
+			videoEnabledBeforeScreenShare = true
 			$notify.error('停止屏幕共享失败')
 		}
 	}
@@ -2327,6 +2553,9 @@ export function useMedia() {
 	 */
 	async function leaveMeeting(options = {}) {
 		const { reason = 'self_leave', notifyServer = true } = options
+		manualLeaveInProgress = true
+		mediaRecovering = false
+		lastJoinContext = null
 		try {
 			// 1. 先同步停止背景特效
 			await stopEffectStream()
@@ -2365,6 +2594,7 @@ export function useMedia() {
 			mediasoupClient = null
 
 			// 6. 断开 Socket 连接
+			cleanupSocketListeners()
 			socketClient.disconnect()
 
 			// 7. 清理 WASM 和 ONNX（放到最后，确保循环已停止）
@@ -2431,6 +2661,8 @@ export function useMedia() {
 		} catch (error) {
 			console.error('Failed to leave meeting', error)
 			throw error
+		} finally {
+			mediaRecovering = false
 		}
 	}
 

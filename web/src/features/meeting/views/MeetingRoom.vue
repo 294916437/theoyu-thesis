@@ -760,7 +760,7 @@
 												<v-list-item v-if="spotlightPeerId"
 													@click="handleSetSpotlight({ targetPeerId: null, active: false })">
 													<template #prepend>
-														<v-icon icon="mdi-spotlight-off"
+														<v-icon icon="mdi-spotlight"
 															color="on-surface-variant"></v-icon>
 													</template>
 													<v-list-item-title>关闭聚光灯</v-list-item-title>

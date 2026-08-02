@@ -7,6 +7,7 @@ class SocketClient {
 		this.connected = ref(false)
 		this.reconnecting = ref(false)
 		this.eventHandlers = new Map()
+		this.lifecycleHandlers = new Map()
 	}
 
 	connect(url, options = {}) {
@@ -14,8 +15,23 @@ class SocketClient {
 			console.warn('Socket already connected')
 			return Promise.resolve()
 		}
+		if (this.socket) {
+			this.disconnect()
+		}
 
 		return new Promise((resolve, reject) => {
+			let settled = false
+			const resolveOnce = value => {
+				if (settled) return
+				settled = true
+				resolve(value)
+			}
+			const rejectOnce = error => {
+				if (settled) return
+				settled = true
+				reject(error)
+			}
+
 			this.socket = io(url, {
 				transports: ['websocket', 'polling'],
 				reconnection: true,
@@ -29,13 +45,13 @@ class SocketClient {
 				console.log('Socket connected', this.socket.id)
 				this.connected.value = true
 				this.reconnecting.value = false
-				resolve()
+				resolveOnce()
 			})
 
 			this.socket.on('connect_error', error => {
 				console.error('Socket connect error', error)
 				this.connected.value = false
-				reject(error)
+				rejectOnce(error)
 			})
 
 			this.socket.on('disconnect', reason => {
@@ -47,20 +63,31 @@ class SocketClient {
 				}
 			})
 
-			this.socket.on('reconnecting', attemptNumber => {
+			this.socket.io.on('reconnect_attempt', attemptNumber => {
 				console.log('Socket reconnecting attempt', attemptNumber)
 				this.reconnecting.value = true
 			})
 
-			this.socket.on('reconnect_failed', () => {
+			this.socket.io.on('reconnect', attemptNumber => {
+				console.log('Socket reconnected', attemptNumber)
+				this.connected.value = true
+				this.reconnecting.value = false
+			})
+
+			this.socket.io.on('reconnect_error', error => {
+				console.error('Socket reconnect error', error)
+				this.connected.value = false
+				this.reconnecting.value = true
+			})
+
+			this.socket.io.on('reconnect_failed', () => {
 				console.error('Socket reconnection failed')
 				this.reconnecting.value = false
-				reject(new Error('Reconnection failed'))
 			})
 
 			this.socket.on('error', error => {
 				console.error('Socket error', error)
-				reject(error)
+				rejectOnce(error)
 			})
 		})
 	}
@@ -70,7 +97,9 @@ class SocketClient {
 			this.socket.disconnect()
 			this.socket = null
 			this.connected.value = false
+			this.reconnecting.value = false
 			this.eventHandlers.clear()
+			this.lifecycleHandlers.clear()
 		}
 	}
 
@@ -117,6 +146,28 @@ class SocketClient {
 			}
 		}
 		this.socket?.off(event, handler)
+	}
+
+	onManager(event, handler) {
+		if (!this.lifecycleHandlers.has(event)) {
+			this.lifecycleHandlers.set(event, new Set())
+		}
+
+		this.lifecycleHandlers.get(event).add(handler)
+		this.socket?.io?.on(event, handler)
+
+		return () => this.offManager(event, handler)
+	}
+
+	offManager(event, handler) {
+		const handlers = this.lifecycleHandlers.get(event)
+		if (handlers) {
+			handlers.delete(handler)
+			if (handlers.size === 0) {
+				this.lifecycleHandlers.delete(event)
+			}
+		}
+		this.socket?.io?.off(event, handler)
 	}
 
 	once(event, handler) {

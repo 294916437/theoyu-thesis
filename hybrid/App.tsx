@@ -1,39 +1,26 @@
 import React from "react";
-import {SafeAreaView, StatusBar, StyleSheet, Text, View} from "react-native";
+import MeetingRoom from "./src/MeetingRoom";
+import {AuthScreen, MainScreen, SplashScreen} from "./src/screens";
+import {useBlueSkyApp} from "./src/useBlueSkyApp";
 
 function App(): React.JSX.Element {
+  const {booting, auth, main, actions} = useBlueSkyApp();
+
+  if (booting) {
+    return <SplashScreen />;
+  }
+
+  if (!auth.authenticated) {
+    return <AuthScreen state={auth} actions={actions} />;
+  }
+
   return (
-    <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#111827" />
-      <View style={styles.content}>
-        <Text style={styles.title}>BlueSky Hybrid</Text>
-        <Text style={styles.subtitle}>React Native runtime is ready.</Text>
-      </View>
-    </SafeAreaView>
+    <MainScreen
+      state={main}
+      actions={actions}
+      room={<MeetingRoom roomStateJson={JSON.stringify(main.activeRoom)} onAction={actions.handleRoomAction} />}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#111827",
-  },
-  content: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
-  title: {
-    color: "white",
-    fontSize: 24,
-    fontWeight: "800",
-  },
-  subtitle: {
-    color: "#d1d5db",
-    marginTop: 8,
-    fontSize: 14,
-  },
-});
 
 export default App;

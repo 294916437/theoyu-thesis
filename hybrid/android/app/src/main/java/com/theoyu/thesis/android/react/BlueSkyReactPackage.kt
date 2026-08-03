@@ -7,7 +7,10 @@ import com.facebook.react.uimanager.ViewManager
 
 class BlueSkyReactPackage : ReactPackage {
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> =
-        listOf(MeetingRoomBridgeModule(reactContext))
+        listOf(
+            BlueSkySessionStorageModule(reactContext),
+            MeetingRoomBridgeModule(reactContext),
+        )
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =
         emptyList()

@@ -9,13 +9,9 @@ import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.ReactPackage
 import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
-import com.theoyu.thesis.android.core.di.AppContainer
 import com.theoyu.thesis.android.react.BlueSkyReactPackage
 
 class BlueSkyApplication : Application(), ReactApplication {
-    lateinit var appContainer: AppContainer
-        private set
-
     private val reactPackages: List<ReactPackage> by lazy {
         PackageList(this).packages.apply {
             add(BlueSkyReactPackage())
@@ -25,7 +21,6 @@ class BlueSkyApplication : Application(), ReactApplication {
     override fun onCreate() {
         super.onCreate()
         loadReactNative(this)
-        appContainer = AppContainer(this)
     }
 
     override val reactNativeHost: ReactNativeHost =

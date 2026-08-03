@@ -16,7 +16,7 @@ class MeetingRoomBridgeModule(
 
     @ReactMethod
     fun perform(action: String, payload: ReadableMap?) {
-        MeetingRoomActionDispatcher.dispatch(action, payload)
+        // Room business actions are handled in React Native after the full RN migration.
     }
 
     @ReactMethod

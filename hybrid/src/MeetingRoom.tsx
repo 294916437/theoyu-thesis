@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useRef, useState} from "react";
+import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {
   Alert,
   DeviceEventEmitter,
@@ -23,6 +23,7 @@ import {colors, rgba} from "./theme";
 
 type Props = {
   roomStateJson?: string;
+  onAction?: (action: string, payload?: Record<string, unknown>) => void;
 };
 
 const {MeetingRoomBridge} = NativeModules;
@@ -54,7 +55,7 @@ const EMPTY_ROOM: RoomState = {
   selectedAudioRoute: "Speaker",
 };
 
-function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
+function MeetingRoom({roomStateJson, onAction}: Props): React.JSX.Element {
   const [roomState, setRoomState] = useState(() => parseRoomState(roomStateJson));
   const [clientState, setClientState] = useState<MeetingRoomClientState>({
     phase: "idle",
@@ -80,6 +81,10 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
   const {width} = useWindowDimensions();
   const client = useRef(new MeetingRoomClient()).current;
   const meetingStartedAt = useRef(Date.now()).current;
+  const performAction = useCallback((action: string, payload?: Record<string, unknown>) => {
+    onAction?.(action, payload);
+    perform(action, payload);
+  }, [onAction]);
 
   useEffect(() => {
     const subscription = DeviceEventEmitter.addListener(
@@ -88,6 +93,10 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
     );
     return () => subscription.remove();
   }, []);
+
+  useEffect(() => {
+    setRoomState(parseRoomState(roomStateJson));
+  }, [roomStateJson]);
 
   useEffect(() => {
     client.subscribe(setClientState);
@@ -105,8 +114,8 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
   }, [keepScreenAwake]);
 
   useEffect(() => {
-    perform("setVideoEffect", {type: effectType, background: virtualBackground});
-  }, [effectType, virtualBackground]);
+    performAction("setVideoEffect", {type: effectType, background: virtualBackground});
+  }, [effectType, virtualBackground, performAction]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -122,12 +131,12 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
           text: "确定",
           onPress: async () => {
             await client.close();
-            perform("leaveRoom");
+            performAction("leaveRoom");
           },
         },
       ]);
     }
-  }, [clientState.phase, clientState.message, client]);
+  }, [clientState.phase, clientState.message, client, performAction]);
 
   useEffect(() => {
     client.update({
@@ -226,18 +235,33 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
       const next = !uiRoomState.audioEnabled;
       setRoomControls(prev => ({...prev, audioEnabled: next}));
       await client.toggleAudio(next);
+      performAction(action, {enabled: next});
       return;
     }
     if (action === "toggleVideo") {
       const next = !uiRoomState.videoEnabled;
       setRoomControls(prev => ({...prev, videoEnabled: next}));
       await client.toggleVideo(next);
+      performAction(action, {enabled: next});
       return;
     }
     if (action === "toggleHandRaised") {
       const next = !uiRoomState.handRaised;
       setRoomControls(prev => ({...prev, handRaised: next}));
       await client.toggleHandRaised(next);
+      performAction(action, {enabled: next});
+      return;
+    }
+    if (action === "toggleScreenShare") {
+      const next = !uiRoomState.screenSharing;
+      setRoomControls(prev => ({...prev, screenSharing: next}));
+      performAction(action, payload);
+      return;
+    }
+    if (action === "toggleCaptions") {
+      const next = !uiRoomState.captionsEnabled;
+      setRoomControls(prev => ({...prev, captionsEnabled: next}));
+      performAction(action, payload);
       return;
     }
     if (action === "switchCamera") {
@@ -273,13 +297,15 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
     }
     if (action === "openSheet") {
       setRoomControls(prev => ({...prev, selectedSheet: (payload?.sheet as RoomState["selectedSheet"]) || undefined}));
+      performAction(action, payload);
       return;
     }
     if (action === "closeSheet") {
       setRoomControls(prev => ({...prev, selectedSheet: undefined}));
+      performAction(action, payload);
       return;
     }
-    perform(action, payload);
+    performAction(action, payload);
   };
 
   return (
@@ -377,8 +403,11 @@ function MeetingRoom({roomStateJson}: Props): React.JSX.Element {
               keepScreenAwake={keepScreenAwake}
               onKeepScreenAwakeChanged={setKeepScreenAwake}
               onToggleHandRaised={() => act("toggleHandRaised")}
+              onToggleScreenShare={() => act("toggleScreenShare")}
               onSwitchCamera={() => act("switchCamera")}
+              onToggleCaptions={() => act("toggleCaptions")}
               onCloseMeeting={() => act("closeMeeting")}
+              onPerform={performAction}
             />
           )}
         </View>
@@ -513,8 +542,11 @@ function More({
   keepScreenAwake,
   onKeepScreenAwakeChanged,
   onToggleHandRaised,
+  onToggleScreenShare,
   onSwitchCamera,
+  onToggleCaptions,
   onCloseMeeting,
+  onPerform,
 }: {
   roomState: RoomState;
   tab: "actions" | "background" | "audio" | "android";
@@ -526,8 +558,11 @@ function More({
   keepScreenAwake: boolean;
   onKeepScreenAwakeChanged: (enabled: boolean) => void;
   onToggleHandRaised: () => void;
+  onToggleScreenShare: () => void;
   onSwitchCamera: () => void;
+  onToggleCaptions: () => void;
   onCloseMeeting: () => void;
+  onPerform: (action: string, payload?: Record<string, unknown>) => void;
 }) {
   return (
     <View>
@@ -546,11 +581,11 @@ function More({
       </View>
       {tab === "actions" && (
         <View style={styles.moreGrid}>
-          <Control label={roomState.screenSharing ? "停止共享" : "屏幕共享"} onPress={() => perform("toggleScreenShare")} />
+          <Control label={roomState.screenSharing ? "停止共享" : "屏幕共享"} onPress={onToggleScreenShare} />
           <Control label={roomState.handRaised ? "取消举手" : "举手"} onPress={onToggleHandRaised} />
           <Control label="切换摄像头" onPress={onSwitchCamera} />
-          <Control label={roomState.captionsEnabled ? "关闭字幕" : "字幕"} onPress={() => perform("toggleCaptions")} />
-          <Control label="设置" onPress={() => perform("openMeetingSettings")} />
+          <Control label={roomState.captionsEnabled ? "关闭字幕" : "字幕"} onPress={onToggleCaptions} />
+          <Control label="设置" onPress={() => onPerform("openMeetingSettings")} />
           <Control danger label="关闭会议" onPress={onCloseMeeting} />
         </View>
       )}
@@ -573,7 +608,7 @@ function More({
         <View>
           <View style={styles.moreGrid}>
             {roomState.availableAudioRoutes.map(route => (
-              <Choice key={route} label={route === "Speaker" ? "扬声器" : "听筒"} active={roomState.selectedAudioRoute === route} onPress={() => perform("selectAudioRoute", {route})} />
+              <Choice key={route} label={route === "Speaker" ? "扬声器" : "听筒"} active={roomState.selectedAudioRoute === route} onPress={() => onPerform("selectAudioRoute", {route})} />
             ))}
           </View>
           <Choice label="智能降噪" active onPress={() => Alert.alert("智能降噪", "移动端音频处理入口已预留，可接入 RN 音频处理模块。")} />
@@ -583,7 +618,7 @@ function More({
         <View style={styles.moreGrid}>
           <Choice label={keepScreenAwake ? "关闭常亮" : "屏幕常亮"} active={keepScreenAwake} onPress={() => onKeepScreenAwakeChanged(!keepScreenAwake)} />
           <Choice label="画中画" active={false} onPress={() => MeetingRoomBridge?.enterPictureInPicture?.()} />
-          <Choice label="听筒优化" active={roomState.selectedAudioRoute === "Earpiece"} onPress={() => perform("selectAudioRoute", {route: "Earpiece"})} />
+          <Choice label="听筒优化" active={roomState.selectedAudioRoute === "Earpiece"} onPress={() => onPerform("selectAudioRoute", {route: "Earpiece"})} />
         </View>
       )}
     </View>

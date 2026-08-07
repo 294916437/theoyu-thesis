@@ -13,6 +13,8 @@ export type MeetingRoomClientState = {
   phase: "idle" | "connecting" | "ready" | "failed" | "removed" | "closed";
   message?: string;
   localStream?: MediaStream;
+  localAudioEnabled?: boolean;
+  localVideoEnabled?: boolean;
   remoteStreams: Record<string, MediaStream>;
   remoteParticipants: RoomParticipant[];
   chatMessages: RoomChatMessage[];
@@ -116,7 +118,13 @@ export class MeetingRoomClient {
         ...parseJoinRoomProducers(joinResponse),
       ]);
 
-      this.setState({phase: "ready", message: undefined, localStream});
+      this.setState({
+        phase: "ready",
+        message: undefined,
+        localStream,
+        localAudioEnabled: roomState.audioEnabled,
+        localVideoEnabled: roomState.videoEnabled,
+      });
     } catch (error) {
       this.setState({
         phase: "failed",
@@ -158,7 +166,7 @@ export class MeetingRoomClient {
     this.roomId = "";
     this.currentUserId = "";
     this.currentUsername = "";
-    this.setState({phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: [], consumerLayers: {}, localStream: undefined, message: undefined, networkQuality: undefined, networkQualityLabel: undefined, rttMillis: undefined, globalSpotlightPeerId: undefined, spotlightRequest: undefined, lastStats: undefined});
+    this.setState({phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: [], consumerLayers: {}, localStream: undefined, localAudioEnabled: undefined, localVideoEnabled: undefined, message: undefined, networkQuality: undefined, networkQualityLabel: undefined, rttMillis: undefined, globalSpotlightPeerId: undefined, spotlightRequest: undefined, lastStats: undefined});
   }
 
   private async createTransports() {
@@ -423,6 +431,7 @@ export class MeetingRoomClient {
     }
 
     this.updateLocalTrackEnabled("audio", nextEnabled);
+    this.setState({localAudioEnabled: nextEnabled});
     if (producer) {
       this.setProducerEnabled(producer, nextEnabled, false);
     }
@@ -465,6 +474,7 @@ export class MeetingRoomClient {
     }
 
     this.updateLocalTrackEnabled("video", nextEnabled);
+    this.setState({localVideoEnabled: nextEnabled});
     if (producer) {
       this.setProducerEnabled(producer, nextEnabled, false);
     }
@@ -611,6 +621,16 @@ export class MeetingRoomClient {
 
   private applyProducerState(peerId: string | undefined, kind: string | undefined, enabled: boolean) {
     if (!peerId || !kind) return;
+    if (peerId === this.currentUserId) {
+      if (kind === "audio") {
+        this.updateLocalTrackEnabled("audio", enabled);
+        this.setState({localAudioEnabled: enabled});
+      }
+      if (kind === "video") {
+        this.updateLocalTrackEnabled("video", enabled);
+        this.setState({localVideoEnabled: enabled});
+      }
+    }
     this.setState({
       remoteParticipants: this.state.remoteParticipants.map(participant => {
         if (participant.peerId !== peerId && participant.userId !== peerId) {

@@ -151,17 +151,25 @@ function MeetingRoom({roomStateJson, onAction}: Props): React.JSX.Element {
     });
   }, [client, roomState, roomControls]);
 
+  useEffect(() => {
+    setRoomControls(prev => ({
+      ...prev,
+      audioEnabled: clientState.localAudioEnabled ?? prev.audioEnabled,
+      videoEnabled: clientState.localVideoEnabled ?? prev.videoEnabled,
+    }));
+  }, [clientState.localAudioEnabled, clientState.localVideoEnabled]);
+
   const uiRoomState = useMemo(
     () => ({
       ...roomState,
-      audioEnabled: roomControls.audioEnabled,
-      videoEnabled: roomControls.videoEnabled,
+      audioEnabled: clientState.localAudioEnabled ?? roomControls.audioEnabled,
+      videoEnabled: clientState.localVideoEnabled ?? roomControls.videoEnabled,
       handRaised: roomControls.handRaised,
       screenSharing: roomControls.screenSharing,
       captionsEnabled: roomControls.captionsEnabled,
       selectedSheet: roomControls.selectedSheet,
     }),
-    [roomState, roomControls],
+    [roomState, roomControls, clientState.localAudioEnabled, clientState.localVideoEnabled],
   );
   const isHost = uiRoomState.meeting?.hostId === uiRoomState.currentUserId;
   const participants = useMemo<RoomParticipant[]>(
@@ -288,6 +296,22 @@ function MeetingRoom({roomStateJson, onAction}: Props): React.JSX.Element {
       }
       return;
     }
+    if (action === "setSpotlight") {
+      const participant = findParticipant(payload, participants);
+      if (!participant) return;
+      setSpotlightPeerId(participant.peerId);
+      await client.setSpotlight(participant.peerId, true);
+      return;
+    }
+    if (action === "clearSpotlight") {
+      setSpotlightPeerId(undefined);
+      await client.setSpotlight(null, false);
+      return;
+    }
+    if (action === "requestSpotlight") {
+      await client.requestSpotlight();
+      return;
+    }
     if (action === "muteAll") {
       await client.muteAll();
       return;
@@ -313,6 +337,7 @@ function MeetingRoom({roomStateJson, onAction}: Props): React.JSX.Element {
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={colors.backgroundDark} />
       <View style={styles.stage}>
+        <RemoteAudioStreams remoteStreams={clientState.remoteStreams} />
         <VideoTile
           participant={activeSpeaker}
           stream={activeSpeaker.isLocal ? clientState.localStream : clientState.remoteStreams[activeSpeaker.peerId]}
@@ -377,6 +402,8 @@ function MeetingRoom({roomStateJson, onAction}: Props): React.JSX.Element {
               onRemoveParticipant={participant => act("removeParticipant", participant)}
               onMuteAll={() => act("muteAll")}
               onDisableAllVideo={() => act("disableAllVideo")}
+              onSetSpotlight={participant => act("setSpotlight", participant)}
+              onClearSpotlight={() => act("clearSpotlight")}
             />
           )}
           {uiRoomState.selectedSheet === "Chat" && (
@@ -408,6 +435,7 @@ function MeetingRoom({roomStateJson, onAction}: Props): React.JSX.Element {
               onSwitchCamera={() => act("switchCamera")}
               onToggleCaptions={() => act("toggleCaptions")}
               onCloseMeeting={() => act("closeMeeting")}
+              onRequestSpotlight={() => act("requestSpotlight")}
               onPerform={performAction}
             />
           )}
@@ -445,6 +473,19 @@ function VideoTile({participant, stream, prominent = false, onPress}: {participa
   );
 }
 
+function RemoteAudioStreams({remoteStreams}: {remoteStreams: Record<string, MediaStream>}) {
+  return (
+    <View pointerEvents="none" style={styles.hiddenAudioViews}>
+      {Object.entries(remoteStreams)
+        .filter(([, stream]) => stream.getAudioTracks().length > 0 && stream.getVideoTracks().length === 0)
+        .map(([peerId, stream]) => (
+          // @ts-ignore
+          <RTCView key={`audio-${peerId}`} stream={stream} style={styles.hiddenAudioView} />
+        ))}
+    </View>
+  );
+}
+
 function SheetTabs({selected, onSelect}: {selected?: string; onSelect: (sheet: string) => void}) {
   return (
     <View style={styles.sheetTabs}>
@@ -474,6 +515,8 @@ function Members({
   onRemoveParticipant,
   onMuteAll,
   onDisableAllVideo,
+  onSetSpotlight,
+  onClearSpotlight,
 }: {
   participants: RoomParticipant[];
   isHost: boolean;
@@ -482,6 +525,8 @@ function Members({
   onRemoveParticipant: (participant: RoomParticipant) => void;
   onMuteAll: () => void;
   onDisableAllVideo: () => void;
+  onSetSpotlight: (participant: RoomParticipant) => void;
+  onClearSpotlight: () => void;
 }) {
   return (
     <ScrollView>
@@ -491,6 +536,7 @@ function Members({
           <View style={styles.rowActions}>
             <Control compact label="全体静音" onPress={onMuteAll} />
             <Control compact label="全体关视频" onPress={onDisableAllVideo} />
+            <Control compact label="取消焦点" onPress={onClearSpotlight} />
           </View>
         )}
       </View>
@@ -502,6 +548,7 @@ function Members({
             <View style={styles.rowActions}>
               <Control compact label={participant.audioEnabled ? "静音" : "开麦"} onPress={() => onHostToggleParticipantAudio(participant)} />
               <Control compact label={participant.videoEnabled ? "关视频" : "开视频"} onPress={() => onHostToggleParticipantVideo(participant)} />
+              <Control compact label="设为焦点" onPress={() => onSetSpotlight(participant)} />
               <Control compact danger label="移出" onPress={() => onRemoveParticipant(participant)} />
             </View>
           )}
@@ -547,6 +594,7 @@ function More({
   onSwitchCamera,
   onToggleCaptions,
   onCloseMeeting,
+  onRequestSpotlight,
   onPerform,
 }: {
   roomState: RoomState;
@@ -563,6 +611,7 @@ function More({
   onSwitchCamera: () => void;
   onToggleCaptions: () => void;
   onCloseMeeting: () => void;
+  onRequestSpotlight: () => void;
   onPerform: (action: string, payload?: Record<string, unknown>) => void;
 }) {
   return (
@@ -586,6 +635,7 @@ function More({
           <Control label={roomState.handRaised ? "取消举手" : "举手"} onPress={onToggleHandRaised} />
           <Control label="切换摄像头" onPress={onSwitchCamera} />
           <Control label={roomState.captionsEnabled ? "关闭字幕" : "字幕"} onPress={onToggleCaptions} />
+          <Control label="申请焦点" onPress={onRequestSpotlight} />
           <Control label="设置" onPress={() => onPerform("openMeetingSettings")} />
           <Control danger label="关闭会议" onPress={onCloseMeeting} />
         </View>
@@ -690,6 +740,8 @@ function parseRoomState(value?: string): RoomState {
 const styles = StyleSheet.create({
   root: {flex: 1, backgroundColor: colors.backgroundDark},
   stage: {flex: 1, padding: 16, paddingBottom: 112, gap: 12},
+  hiddenAudioViews: {position: "absolute", width: 1, height: 1, opacity: 0},
+  hiddenAudioView: {width: 1, height: 1},
   prominentTile: {flex: 1},
   smallTile: {width: 150, height: 112, marginRight: 12},
   tile: {borderRadius: 12, overflow: "hidden", backgroundColor: colors.surfaceDark, elevation: 2},

@@ -51,6 +51,7 @@ export type MeetingSummary = {
   roomId: string;
   roomNo: string;
   title: string;
+  type?: number;
   hostId: string;
   hostName: string;
   startTime: string;

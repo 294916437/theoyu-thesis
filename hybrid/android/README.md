@@ -1,24 +1,12 @@
-# Android Client
+# React Native Android Target
 
-This directory is reserved for the native Android client of the thesis video conferencing system.
+This directory is the Android target generated and maintained for the React Native app in `hybrid/`.
 
-Create the Android project manually with Android Studio so the generated Gradle wrapper, Android Gradle Plugin version, SDK metadata, and IDE files match the local official tooling.
+It is required for:
 
-Recommended Android Studio setup:
+- Gradle build configuration and wrapper
+- Android manifest, app resources, launcher icons, and permissions
+- React Native host bootstrap (`MainActivity`, `BlueSkyApplication`)
+- Minimal Native Modules for platform capabilities such as session persistence, keep-screen-on, and picture-in-picture
 
-- Template: Empty Activity
-- Language: Kotlin
-- UI: Jetpack Compose
-- Minimum SDK: API 26 or higher
-- Package name: `com.theoyu.thesis.mobile`
-- Project location: `android/`
-
-Architecture direction:
-
-- UI layer: Jetpack Compose + Material 3
-- State layer: ViewModel + StateFlow
-- Backend APIs: reuse the existing Spring Cloud gateway REST APIs
-- Meeting signaling: connect to the existing Node.js SFU Socket.io signaling service
-- Media layer: isolate native WebRTC and mediasoup integration behind a dedicated gateway/service layer
-
-More details: [Android initialization guide](../docs/android-initialization.md).
+It is not an independent native Android client. Do not add Compose screens, Android ViewModels, Retrofit repositories, native Socket.IO business logic, or `libmediasoupclient`/JNI media pipelines here. Implement product UI and meeting business logic in React Native under `src/`.

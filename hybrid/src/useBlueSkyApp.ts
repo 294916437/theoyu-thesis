@@ -291,9 +291,13 @@ export function useBlueSkyApp() {
           setMain(state => ({...state, message: "会议标题至少需要 2 个字符"}));
           return;
         }
+        if (form.type === "Scheduled" && scheduledStartMillis(form) <= Date.now()) {
+          setMain(state => ({...state, message: "预约会议开始时间必须晚于当前时间"}));
+          return;
+        }
         setMain(state => ({...state, isSubmitting: true, message: undefined}));
         try {
-          const startTime = `${form.startDate} ${form.startTime}:00`;
+          const startTime = form.type === "Instant" ? formatBackendDateTime(new Date()) : `${form.startDate} ${form.startTime}:00`;
           const response = await roomApi.createMeeting({
             title: form.title.trim(),
             type: form.type === "Instant" ? 1 : 2,
@@ -303,8 +307,20 @@ export function useBlueSkyApp() {
           });
           const meeting = parseMeeting(response);
           if (!meeting) throw new Error("创建会议响应缺少会议信息");
-          await preparePreJoin(meeting, setMain);
-          await refresh();
+          if (form.type === "Instant") {
+            await preparePreJoin({...meeting, type: 1}, setMain);
+            await refresh();
+          } else {
+            await refresh();
+            setMain(state => ({
+              ...state,
+              route: "Tabs",
+              selectedTab: "Meetings",
+              preJoinMeeting: undefined,
+              createForm: defaultCreateForm(),
+              message: "预约会议已创建，可在会议列表中按时加入",
+            }));
+          }
         } catch (error) {
           setMain(state => ({...state, message: errorMessage(error)}));
         } finally {
@@ -483,7 +499,11 @@ async function preparePreJoin(meeting: MeetingSummary, setMain: React.Dispatch<R
       audioEnabled: true,
       videoEnabled: true,
     }).catch(() => undefined);
-    const joinedMeeting = parseMeeting(response) || meeting;
+    const joinData = responseDataObject(response) || response;
+    if (joinData?.allowed === false) {
+      throw new Error(firstString(joinData, "message") || "当前会议不允许加入");
+    }
+    const joinedMeeting = mergeMeeting(meeting, parseMeeting(response));
     setMain(state => ({...state, preJoinMeeting: joinedMeeting, route: "PreJoin", createForm: {...state.createForm, audioEnabled: true, videoEnabled: true}}));
   } finally {
     setMain(state => ({...state, isSubmitting: false}));
@@ -658,6 +678,7 @@ function parseMeetingFromObject(body: any): MeetingSummary | undefined {
     roomId,
     roomNo,
     title: firstString(body, "title", "name") || "未命名会议",
+    type: toOptionalNumber(body.type),
     hostId: firstString(body, "hostId") || firstString(host, "id", "userId") || "",
     hostName: firstString(body, "hostName") || firstString(host, "nickname", "username", "name") || "",
     startTime: firstString(body, "startTime", "createdTime") || "",
@@ -667,6 +688,24 @@ function parseMeetingFromObject(body: any): MeetingSummary | undefined {
     participantCount: toOptionalNumber(body.participantCount),
     description: firstString(body, "description", "settings") || "",
     sfuServerUrl: firstString(body, "sfuServerUrl", "socketUrl", "url") || DEFAULT_SFU_SOCKET_URL,
+  };
+}
+
+function mergeMeeting(base: MeetingSummary, patch?: MeetingSummary): MeetingSummary {
+  if (!patch) return base;
+  return {
+    ...base,
+    ...patch,
+    roomId: patch.roomId || base.roomId,
+    roomNo: patch.roomNo || base.roomNo,
+    title: patch.title && patch.title !== "未命名会议" ? patch.title : base.title,
+    hostId: patch.hostId || base.hostId,
+    hostName: patch.hostName || base.hostName,
+    startTime: patch.startTime || base.startTime,
+    endTime: patch.endTime || base.endTime,
+    status: patch.status || base.status,
+    description: patch.description || base.description,
+    sfuServerUrl: patch.sfuServerUrl || base.sfuServerUrl,
   };
 }
 
@@ -768,6 +807,14 @@ function formatDate(date: Date): string {
 
 function formatTime(date: Date): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatBackendDateTime(date: Date): string {
+  return `${formatDate(date)} ${formatTime(date)}:${pad(date.getSeconds())}`;
+}
+
+function scheduledStartMillis(form: CreateMeetingForm): number {
+  return new Date(`${form.startDate}T${form.startTime}:00`).getTime();
 }
 
 function pad(value: number): string {

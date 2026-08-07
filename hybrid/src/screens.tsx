@@ -199,10 +199,12 @@ function CreateMeetingScreen({state, actions}: {state: MainUiState; actions: Mai
         items={[["Instant", "立即会议"], ["Scheduled", "预约会议"]]}
         onChange={type => actions.updateCreateForm({type: type as MeetingCreateType})}
       />
-      <View style={styles.grid}>
-        <Field label="日期" value={form.startDate} onChangeText={startDate => actions.updateCreateForm({startDate})} placeholder="yyyy-MM-dd" />
-        <Field label="时间" value={form.startTime} onChangeText={startTime => actions.updateCreateForm({startTime})} placeholder="HH:mm" />
-      </View>
+      {form.type === "Scheduled" && (
+        <View style={styles.grid}>
+          <Field label="日期" value={form.startDate} onChangeText={startDate => actions.updateCreateForm({startDate})} placeholder="yyyy-MM-dd" />
+          <Field label="时间" value={form.startTime} onChangeText={startTime => actions.updateCreateForm({startTime})} placeholder="HH:mm" />
+        </View>
+      )}
       <Field label="描述" value={form.description} onChangeText={description => actions.updateCreateForm({description})} placeholder="会议说明" multiline />
       <ToggleRow label="默认开启麦克风" value={form.audioEnabled} onValueChange={audioEnabled => actions.updateCreateForm({audioEnabled})} />
       <ToggleRow label="默认开启摄像头" value={form.videoEnabled} onValueChange={videoEnabled => actions.updateCreateForm({videoEnabled})} />
@@ -313,7 +315,7 @@ function MeetingCard({meeting, onPress}: {meeting: MeetingSummary; onPress: () =
     <Pressable style={styles.meetingCard} onPress={onPress}>
       <Text style={styles.meetingTitle}>{meeting.title}</Text>
       <Text style={styles.muted}>会议号：{meeting.roomNo || meeting.roomId}</Text>
-      <Text style={styles.muted}>{meeting.startTime || "立即会议"} · {meeting.hostName || "主持人"}</Text>
+      <Text style={styles.muted}>{meeting.type === 1 ? "立即会议" : meeting.startTime || "预约会议"} · {meeting.hostName || "主持人"}</Text>
     </Pressable>
   );
 }

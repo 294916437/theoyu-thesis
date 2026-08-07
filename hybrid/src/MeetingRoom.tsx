@@ -62,6 +62,7 @@ function MeetingRoom({roomStateJson, onAction}: Props): React.JSX.Element {
     remoteStreams: {},
     remoteParticipants: [],
     chatMessages: [],
+    consumerLayers: {},
   });
   const [messageDraft, setMessageDraft] = useState("");
   const [spotlightPeerId, setSpotlightPeerId] = useState<string>();

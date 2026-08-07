@@ -20,6 +20,12 @@ export type MeetingRoomClientState = {
   networkQualityLabel?: string;
   rttMillis?: number;
   globalSpotlightPeerId?: string;
+  spotlightRequest?: {
+    requesterId: string;
+    requesterUsername: string;
+  };
+  consumerLayers: Record<string, {producerId: string; spatialLayer: number | null; temporalLayer: number | null}>;
+  lastStats?: unknown;
 };
 
 type Listener = (state: MeetingRoomClientState) => void;
@@ -44,7 +50,7 @@ export class MeetingRoomClient {
   private consumers: mediasoupTypes.Consumer[] = [];
   private consumedProducerIds = new Set<string>();
   private remoteProducers = new Map<string, SfuProducerState>();
-  private state: MeetingRoomClientState = {phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: []};
+  private state: MeetingRoomClientState = {phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: [], consumerLayers: {}};
   private listener?: Listener;
 
   subscribe(listener: Listener) {
@@ -152,7 +158,7 @@ export class MeetingRoomClient {
     this.roomId = "";
     this.currentUserId = "";
     this.currentUsername = "";
-    this.setState({phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: [], localStream: undefined, message: undefined, networkQuality: undefined, networkQualityLabel: undefined, rttMillis: undefined, globalSpotlightPeerId: undefined});
+    this.setState({phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: [], consumerLayers: {}, localStream: undefined, message: undefined, networkQuality: undefined, networkQualityLabel: undefined, rttMillis: undefined, globalSpotlightPeerId: undefined, spotlightRequest: undefined, lastStats: undefined});
   }
 
   private async createTransports() {
@@ -253,6 +259,24 @@ export class MeetingRoomClient {
   }
 
   private bindRoomEvents() {
+    this.socket?.off("connect");
+    this.socket?.on("connect", () => {
+      this.setState({message: undefined});
+    });
+
+    this.socket?.off("disconnect");
+    this.socket?.on("disconnect", reason => {
+      if (this.state.phase === "removed" || this.state.phase === "closed") {
+        return;
+      }
+      this.setState({phase: "failed", message: `Socket 已断开：${reason}`});
+    });
+
+    this.socket?.off("connect_error");
+    this.socket?.on("connect_error", error => {
+      this.setState({phase: "failed", message: error?.message || "Socket 连接失败"});
+    });
+
     this.socket?.off("ping");
     this.socket?.on("ping", data => {
       this.socket?.emit("pong", { timestamp: data?.timestamp || Date.now() });
@@ -264,13 +288,24 @@ export class MeetingRoomClient {
     });
 
     this.socket?.off("removedFromRoom");
-    this.socket?.on("removedFromRoom", () => {
-      this.setState({ phase: "removed", message: "您已被主持人移出会议" });
+    this.socket?.on("removedFromRoom", event => {
+      this.setState({ phase: "removed", message: event?.reason || "您已被主持人移出会议" });
     });
 
     this.socket?.off("roomClosed");
-    this.socket?.on("roomClosed", () => {
-      this.setState({ phase: "closed", message: "会议已由主持人关闭" });
+    this.socket?.on("roomClosed", event => {
+      this.setState({ phase: "closed", message: event?.reason ? `会议已关闭：${event.reason}` : "会议已由主持人关闭" });
+    });
+
+    this.socket?.off("spotlightRequest");
+    this.socket?.on("spotlightRequest", data => {
+      this.setState({
+        spotlightRequest: {
+          requesterId: data?.requesterId ?? "",
+          requesterUsername: data?.requesterUsername ?? "参会者",
+        },
+        message: `${data?.requesterUsername ?? "参会者"} 申请成为焦点画面`,
+      });
     });
 
     this.socket?.off("spotlightChanged");
@@ -308,6 +343,21 @@ export class MeetingRoomClient {
       this.consumers = this.consumers.filter(consumer => consumer.id !== consumerId);
     });
 
+    this.socket?.off("consumerLayersChanged");
+    this.socket?.on("consumerLayersChanged", event => {
+      if (!event?.consumerId) return;
+      this.setState({
+        consumerLayers: {
+          ...this.state.consumerLayers,
+          [event.consumerId]: {
+            producerId: event.producerId ?? "",
+            spatialLayer: event.spatialLayer ?? null,
+            temporalLayer: event.temporalLayer ?? null,
+          },
+        },
+      });
+    });
+
     this.socket?.off("producerStateChanged");
     this.socket?.on("producerStateChanged", event => {
       this.applyProducerState(event?.peerId, event?.kind, !event?.paused);
@@ -323,6 +373,16 @@ export class MeetingRoomClient {
     this.socket?.on("producerResumed", event => {
       const producer = this.remoteProducers.get(event?.producerId);
       this.applyProducerState(event?.peerId, event?.kind ?? producer?.kind, true);
+    });
+
+    this.socket?.off("producerClosed");
+    this.socket?.on("producerClosed", event => {
+      this.removeRemoteProducer(event?.producerId, event?.peerId);
+    });
+
+    this.socket?.off("handRaiseChanged");
+    this.socket?.on("handRaiseChanged", event => {
+      this.applyHandRaiseState(event?.peerId || event?.userId, !!event?.raised, event?.username);
     });
   }
 
@@ -364,8 +424,9 @@ export class MeetingRoomClient {
 
     this.updateLocalTrackEnabled("audio", nextEnabled);
     if (producer) {
-      this.setProducerEnabled(producer, nextEnabled);
+      this.setProducerEnabled(producer, nextEnabled, false);
     }
+    await this.emitAck("toggleAudio", {roomId: this.roomId, enabled: nextEnabled}).catch(() => undefined);
   }
 
   async toggleVideo(enabled?: boolean) {
@@ -405,8 +466,9 @@ export class MeetingRoomClient {
 
     this.updateLocalTrackEnabled("video", nextEnabled);
     if (producer) {
-      this.setProducerEnabled(producer, nextEnabled);
+      this.setProducerEnabled(producer, nextEnabled, false);
     }
+    await this.emitAck("toggleVideo", {roomId: this.roomId, enabled: nextEnabled}).catch(() => undefined);
   }
 
   async switchCamera() {
@@ -436,6 +498,40 @@ export class MeetingRoomClient {
       isLocal: true,
     };
     this.setState({chatMessages: [...this.state.chatMessages, message]});
+  }
+
+  async pauseConsumer(consumerId: string) {
+    await this.emitAck("pauseConsumer", {roomId: this.roomId, consumerId});
+  }
+
+  async resumeConsumer(consumerId: string) {
+    await this.emitAck("resumeConsumer", {roomId: this.roomId, consumerId});
+  }
+
+  async closeProducer(producerId: string) {
+    await this.emitAck("closeProducer", {roomId: this.roomId, producerId});
+    const producer = this.producers.find(item => item.id === producerId);
+    producer?.close();
+    this.producers = this.producers.filter(item => item.id !== producerId);
+  }
+
+  async setPreferredLayers(consumerId: string, spatialLayer: number, temporalLayer?: number) {
+    await this.emitAck("setPreferredLayers", {
+      roomId: this.roomId,
+      consumerId,
+      spatialLayer,
+      temporalLayer,
+    });
+  }
+
+  async getStats(target?: {producerId?: string; consumerId?: string}) {
+    const response = await this.emitAck("getStats", {
+      roomId: this.roomId,
+      producerId: target?.producerId,
+      consumerId: target?.consumerId,
+    });
+    this.setState({lastStats: response?.stats});
+    return response?.stats;
   }
 
   async hostToggleParticipantAudio(participant: RoomParticipant) {
@@ -484,21 +580,25 @@ export class MeetingRoomClient {
     }).catch(() => undefined);
   }
 
-  private setProducerEnabled(producer: mediasoupTypes.Producer, enabled: boolean) {
+  private setProducerEnabled(producer: mediasoupTypes.Producer, enabled: boolean, syncWithServer = true) {
     const paused = !!(producer as any).paused;
     if (enabled && paused) {
       producer.resume();
-      this.emitAck("resumeProducer", {
-        roomId: this.roomId,
-        producerId: producer.id,
-      }).catch(() => undefined);
+      if (syncWithServer) {
+        this.emitAck("resumeProducer", {
+          roomId: this.roomId,
+          producerId: producer.id,
+        }).catch(() => undefined);
+      }
     }
     if (!enabled && !paused) {
       producer.pause();
-      this.emitAck("pauseProducer", {
-        roomId: this.roomId,
-        producerId: producer.id,
-      }).catch(() => undefined);
+      if (syncWithServer) {
+        this.emitAck("pauseProducer", {
+          roomId: this.roomId,
+          producerId: producer.id,
+        }).catch(() => undefined);
+      }
     }
   }
 
@@ -525,6 +625,49 @@ export class MeetingRoomClient {
         return participant;
       }),
     });
+  }
+
+  private applyHandRaiseState(peerId: string | undefined, raised: boolean, username?: string) {
+    if (!peerId) return;
+    const existing = this.state.remoteParticipants.find(participant => participant.peerId === peerId || participant.userId === peerId);
+    if (!existing && raised) {
+      this.upsertRemoteParticipant({
+        peerId,
+        userId: peerId,
+        username: username || "参会者",
+        role: "Member",
+        roleLabel: "成员",
+        status: "Online",
+        statusLabel: "在线",
+        isLocal: false,
+        audioEnabled: true,
+        videoEnabled: true,
+        handRaised: raised,
+        speaking: false,
+      });
+      return;
+    }
+    this.setState({
+      remoteParticipants: this.state.remoteParticipants.map(participant =>
+        participant.peerId === peerId || participant.userId === peerId
+          ? {...participant, handRaised: raised}
+          : participant,
+      ),
+    });
+  }
+
+  private removeRemoteProducer(producerId?: string, peerId?: string) {
+    if (!producerId) return;
+    const producer = this.remoteProducers.get(producerId);
+    this.remoteProducers.delete(producerId);
+    this.consumedProducerIds.delete(producerId);
+    const closedConsumers = this.consumers.filter(consumer => consumer.producerId === producerId);
+    closedConsumers.forEach(consumer => consumer.close());
+    this.consumers = this.consumers.filter(consumer => consumer.producerId !== producerId);
+    const targetPeerId = peerId || producer?.peerId || producer?.userId;
+    if (targetPeerId && producer?.kind) {
+      this.applyProducerState(targetPeerId, producer.kind, false);
+    }
   }
 
   private upsertRemoteParticipant(participant: RoomParticipant) {
@@ -629,7 +772,15 @@ export class MeetingRoomClient {
         return;
       }
       this.socket.timeout(8000).emit(event, payload, (error: Error | null, response: any) => {
-        error ? reject(error) : resolve(response);
+        if (error) {
+          reject(error);
+          return;
+        }
+        if (response?.error) {
+          reject(new Error(response.error));
+          return;
+        }
+        resolve(response);
       });
     });
   }

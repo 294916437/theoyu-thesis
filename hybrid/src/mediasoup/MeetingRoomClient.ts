@@ -52,6 +52,11 @@ export class MeetingRoomClient {
   private consumers: mediasoupTypes.Consumer[] = [];
   private consumedProducerIds = new Set<string>();
   private remoteProducers = new Map<string, SfuProducerState>();
+  private pendingRemoteProducers = new Map<string, SfuProducerState>();
+  private producerPeerIds = new Map<string, string>();
+  private manuallyClosed = false;
+  private recovering = false;
+  private lastRoomState?: RoomState;
   private state: MeetingRoomClientState = {phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: [], consumerLayers: {}};
   private listener?: Listener;
 
@@ -64,6 +69,8 @@ export class MeetingRoomClient {
     if (!roomState.meeting || this.state.phase === "connecting") {
       return;
     }
+    this.lastRoomState = roomState;
+    this.manuallyClosed = false;
     const nextRoomId = roomState.meeting.roomId || roomState.meeting.roomNo;
     if (this.device && this.roomId === nextRoomId && this.state.phase === "ready") {
       return;
@@ -86,8 +93,29 @@ export class MeetingRoomClient {
       this.socket = io(sfuUrl, {
         transports: ["websocket"],
         auth: {token: roomState.authToken},
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
       });
+      this.bindRoomEvents();
       await this.waitForSocket();
+      await this.joinAndStartMedia(roomState);
+    } catch (error) {
+      this.setState({
+        phase: "failed",
+        message: error instanceof Error ? error.message : "媒体引擎初始化失败",
+      });
+    }
+  }
+
+  private async joinAndStartMedia(roomState: RoomState) {
+    if (!roomState.meeting) return;
+
+    this.roomId = roomState.meeting.roomId || roomState.meeting.roomNo;
+    this.currentUserId = roomState.currentUserId || "";
+    this.currentUsername = roomState.currentUsername || "我";
+
       const joinResponse = await this.emitAck("joinRoom", {
         roomId: this.roomId,
         userId: this.currentUserId,
@@ -112,11 +140,11 @@ export class MeetingRoomClient {
       await this.createTransports();
       const localStream = await this.createLocalStream(roomState);
       await this.publishLocalTracks(localStream);
-      this.bindRoomEvents();
       await this.consumeRemoteProducers([
         ...roomState.mediaState.remoteProducers,
         ...parseJoinRoomProducers(joinResponse),
       ]);
+      await this.flushPendingRemoteProducers();
 
       this.setState({
         phase: "ready",
@@ -125,15 +153,10 @@ export class MeetingRoomClient {
         localAudioEnabled: roomState.audioEnabled,
         localVideoEnabled: roomState.videoEnabled,
       });
-    } catch (error) {
-      this.setState({
-        phase: "failed",
-        message: error instanceof Error ? error.message : "媒体引擎初始化失败",
-      });
-    }
   }
 
   async update(roomState: RoomState) {
+    this.lastRoomState = roomState;
     if (!this.device && roomState.meeting && roomState.authToken) {
       await this.connect(roomState);
       return;
@@ -151,7 +174,38 @@ export class MeetingRoomClient {
   }
 
   close() {
+    this.manuallyClosed = true;
     this.socket?.emit("leaveRoom", {roomId: this.roomId});
+    this.closeMedia();
+    this.socket?.disconnect();
+    this.roomId = "";
+    this.currentUserId = "";
+    this.currentUsername = "";
+    this.setState({phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: [], consumerLayers: {}, localStream: undefined, localAudioEnabled: undefined, localVideoEnabled: undefined, message: undefined, networkQuality: undefined, networkQualityLabel: undefined, rttMillis: undefined, globalSpotlightPeerId: undefined, spotlightRequest: undefined, lastStats: undefined});
+  }
+
+  async recover() {
+    if (this.manuallyClosed || this.recovering || !this.lastRoomState?.meeting) {
+      return;
+    }
+    this.recovering = true;
+    this.setState({phase: "connecting", message: "正在恢复媒体连接"});
+    try {
+      this.closeMedia(true);
+      if (!this.socket?.connected) {
+        this.socket?.connect();
+        await this.waitForSocket();
+      }
+      await this.joinAndStartMedia(this.lastRoomState);
+      this.setState({message: undefined});
+    } catch (error) {
+      this.setState({phase: "failed", message: error instanceof Error ? error.message : "媒体连接恢复失败"});
+    } finally {
+      this.recovering = false;
+    }
+  }
+
+  private closeMedia(clearState = false) {
     this.state.localStream?.getTracks().forEach(track => track.stop());
     Object.values(this.state.remoteStreams).forEach(stream => {
       stream.getTracks().forEach(track => track.stop());
@@ -160,13 +214,18 @@ export class MeetingRoomClient {
     this.producers.forEach(producer => producer.close());
     this.sendTransport?.close();
     this.recvTransport?.close();
-    this.socket?.disconnect();
+    this.device = undefined;
+    this.sendTransport = undefined;
+    this.recvTransport = undefined;
+    this.consumers = [];
+    this.producers = [];
     this.consumedProducerIds.clear();
     this.remoteProducers.clear();
-    this.roomId = "";
-    this.currentUserId = "";
-    this.currentUsername = "";
-    this.setState({phase: "idle", remoteStreams: {}, remoteParticipants: [], chatMessages: [], consumerLayers: {}, localStream: undefined, localAudioEnabled: undefined, localVideoEnabled: undefined, message: undefined, networkQuality: undefined, networkQualityLabel: undefined, rttMillis: undefined, globalSpotlightPeerId: undefined, spotlightRequest: undefined, lastStats: undefined});
+    this.pendingRemoteProducers.clear();
+    this.producerPeerIds.clear();
+    if (clearState) {
+      this.setState({localStream: undefined, remoteStreams: {}, remoteParticipants: [], consumerLayers: {}});
+    }
   }
 
   private async createTransports() {
@@ -277,7 +336,23 @@ export class MeetingRoomClient {
       if (this.state.phase === "removed" || this.state.phase === "closed") {
         return;
       }
-      this.setState({phase: "failed", message: `Socket 已断开：${reason}`});
+      if (!this.manuallyClosed) {
+        this.setState({phase: "connecting", message: `Socket 已断开，正在重连：${reason}`});
+      }
+    });
+
+    this.socket?.io.off("reconnect");
+    this.socket?.io.on("reconnect", () => {
+      this.recover().catch(error => {
+        this.setState({phase: "failed", message: error instanceof Error ? error.message : "媒体连接恢复失败"});
+      });
+    });
+
+    this.socket?.io.off("reconnect_error");
+    this.socket?.io.on("reconnect_error", error => {
+      if (!this.manuallyClosed) {
+        this.setState({phase: "connecting", message: error?.message || "Socket 正在重连"});
+      }
     });
 
     this.socket?.off("connect_error");
@@ -328,11 +403,7 @@ export class MeetingRoomClient {
 
     this.socket?.off("peerLeft");
     this.socket?.on("peerLeft", ({peerId, userId}: {peerId?: string; userId?: string}) => {
-      this.setState({
-        remoteParticipants: this.state.remoteParticipants.filter(
-          participant => participant.peerId !== peerId && participant.userId !== userId,
-        ),
-      });
+      this.removeRemotePeer(peerId, userId);
     });
 
     this.socket?.off("newProducer");
@@ -590,6 +661,17 @@ export class MeetingRoomClient {
     }).catch(() => undefined);
   }
 
+  async optimizeForSpotlight(targetPeerId?: string) {
+    const updates = this.consumers
+      .filter(consumer => consumer.kind === "video")
+      .map(async consumer => {
+        const peerId = this.producerPeerIds.get(consumer.producerId);
+        const spatialLayer = !targetPeerId || peerId === targetPeerId ? 2 : 0;
+        await this.setPreferredLayers(consumer.id, spatialLayer, spatialLayer === 2 ? 2 : 0).catch(() => undefined);
+      });
+    await Promise.all(updates);
+  }
+
   private setProducerEnabled(producer: mediasoupTypes.Producer, enabled: boolean, syncWithServer = true) {
     const paused = !!(producer as any).paused;
     if (enabled && paused) {
@@ -681,13 +763,52 @@ export class MeetingRoomClient {
     const producer = this.remoteProducers.get(producerId);
     this.remoteProducers.delete(producerId);
     this.consumedProducerIds.delete(producerId);
+    this.pendingRemoteProducers.delete(producerId);
+    this.producerPeerIds.delete(producerId);
     const closedConsumers = this.consumers.filter(consumer => consumer.producerId === producerId);
-    closedConsumers.forEach(consumer => consumer.close());
+    closedConsumers.forEach(consumer => {
+      const track = consumer.track as any;
+      Object.values(this.state.remoteStreams).forEach(stream => {
+        if (typeof (stream as any).removeTrack === "function") {
+          (stream as any).removeTrack(track);
+        }
+      });
+      track?.stop?.();
+      consumer.close();
+    });
     this.consumers = this.consumers.filter(consumer => consumer.producerId !== producerId);
     const targetPeerId = peerId || producer?.peerId || producer?.userId;
     if (targetPeerId && producer?.kind) {
       this.applyProducerState(targetPeerId, producer.kind, false);
     }
+    this.dropEmptyRemoteStreams();
+  }
+
+  private removeRemotePeer(peerId?: string, userId?: string) {
+    const ids = new Set([peerId, userId].filter(Boolean) as string[]);
+    if (ids.size === 0) return;
+    const producerIds = Array.from(this.remoteProducers.values())
+      .filter(producer => ids.has(producer.peerId) || ids.has(producer.userId))
+      .map(producer => producer.id);
+    producerIds.forEach(producerId => this.removeRemoteProducer(producerId));
+    const nextRemoteStreams = {...this.state.remoteStreams};
+    ids.forEach(id => {
+      nextRemoteStreams[id]?.getTracks().forEach(track => track.stop());
+      delete nextRemoteStreams[id];
+    });
+    this.setState({
+      remoteParticipants: this.state.remoteParticipants.filter(
+        participant => !ids.has(participant.peerId) && !ids.has(participant.userId),
+      ),
+      remoteStreams: nextRemoteStreams,
+    });
+  }
+
+  private dropEmptyRemoteStreams() {
+    const nextRemoteStreams = Object.fromEntries(
+      Object.entries(this.state.remoteStreams).filter(([, stream]) => stream.getTracks().length > 0),
+    );
+    this.setState({remoteStreams: nextRemoteStreams});
   }
 
   private upsertRemoteParticipant(participant: RoomParticipant) {
@@ -712,12 +833,21 @@ export class MeetingRoomClient {
   }
 
   private async consumeRemoteProducers(remoteProducers: SfuProducerState[]) {
-    if (!this.recvTransport || !this.device || !this.socket) return;
+    if (!this.recvTransport || !this.device || !this.socket) {
+      remoteProducers.forEach(producer => {
+        if (producer.id) {
+          this.pendingRemoteProducers.set(producer.id, producer);
+        }
+      });
+      return;
+    }
     for (const producer of remoteProducers) {
       if (!producer.id) {
         continue;
       }
       this.remoteProducers.set(producer.id, producer);
+      this.producerPeerIds.set(producer.id, producer.peerId || producer.userId || producer.id);
+      this.pendingRemoteProducers.delete(producer.id);
       if (this.consumedProducerIds.has(producer.id)) {
         continue;
       }
@@ -755,6 +885,13 @@ export class MeetingRoomClient {
           [peerId]: stream,
         },
       });
+    }
+  }
+
+  private async flushPendingRemoteProducers() {
+    const producers = Array.from(this.pendingRemoteProducers.values());
+    if (producers.length > 0) {
+      await this.consumeRemoteProducers(producers);
     }
   }
 

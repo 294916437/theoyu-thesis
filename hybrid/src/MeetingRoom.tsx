@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {
   Alert,
+  AppState,
   DeviceEventEmitter,
   Modal,
   NativeModules,
@@ -15,6 +16,7 @@ import {
   Vibration,
   View,
 } from "react-native";
+import NetInfo from "@react-native-community/netinfo";
 import InCallManager from "react-native-incall-manager";
 import {MeetingRoomClient, RTCView, MeetingRoomClientState} from "./mediasoup/MeetingRoomClient";
 import type {RoomChatMessage, RoomParticipant, RoomState} from "./types";
@@ -81,6 +83,7 @@ function MeetingRoom({roomStateJson, onAction}: Props): React.JSX.Element {
   });
   const {width} = useWindowDimensions();
   const client = useRef(new MeetingRoomClient()).current;
+  const clientPhaseRef = useRef(clientState.phase);
   const meetingStartedAt = useRef(Date.now()).current;
   const performAction = useCallback((action: string, payload?: Record<string, unknown>) => {
     onAction?.(action, payload);
@@ -107,6 +110,27 @@ function MeetingRoom({roomStateJson, onAction}: Props): React.JSX.Element {
       client.close();
       MeetingRoomBridge?.setKeepScreenOn?.(false);
       InCallManager.stop();
+    };
+  }, [client]);
+
+  useEffect(() => {
+    clientPhaseRef.current = clientState.phase;
+  }, [clientState.phase]);
+
+  useEffect(() => {
+    const appStateSubscription = AppState.addEventListener("change", state => {
+      if (state === "active" && clientPhaseRef.current !== "ready") {
+        client.recover().catch(() => undefined);
+      }
+    });
+    const netInfoUnsubscribe = NetInfo.addEventListener(state => {
+      if (state.isConnected && state.isInternetReachable !== false && clientPhaseRef.current !== "ready") {
+        client.recover().catch(() => undefined);
+      }
+    });
+    return () => {
+      appStateSubscription.remove();
+      netInfoUnsubscribe();
     };
   }, [client]);
 
@@ -216,6 +240,12 @@ function MeetingRoom({roomStateJson, onAction}: Props): React.JSX.Element {
     participants.find(item => item.peerId === spotlightPeerId) ??
     participants.find(item => item.peerId === uiRoomState.activeSpeakerPeerId) ??
     participants[0];
+
+  useEffect(() => {
+    if (clientState.phase === "ready" && activeSpeaker?.peerId) {
+      client.optimizeForSpotlight(activeSpeaker.peerId).catch(() => undefined);
+    }
+  }, [client, clientState.phase, activeSpeaker?.peerId]);
   const raisedHands = participants.filter(item => item.handRaised);
   const isCompact = width < 600;
   const act = async (action: string, payload?: Record<string, unknown>) => {

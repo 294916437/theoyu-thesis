@@ -66,6 +66,13 @@ class SocketIoClient {
                     }
                 }
 
+                newSocket.on("ping") { args ->
+                    val ts = (args.firstOrNull() as? JSONObject)?.optLong("timestamp")
+                        ?: (args.firstOrNull() as? Map<*, *>)?.get("timestamp")?.toString()?.toLongOrNull()
+                        ?: System.currentTimeMillis()
+                    newSocket.emit("pong", JSONObject().put("timestamp", ts))
+                }
+
                 newSocket.on(Socket.EVENT_CONNECT_ERROR) { args ->
                     val message = args.firstOrNull()?.toString() ?: "Socket connect error"
                     _connectionState.value = _connectionState.value.copy(

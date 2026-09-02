@@ -5,21 +5,33 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -63,7 +75,7 @@ fun CreateMeetingScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 96.dp),
+            contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
@@ -72,18 +84,35 @@ fun CreateMeetingScreen(
                     value = form.title,
                     onValueChange = onTitleChanged,
                     label = { Text("会议标题") },
-                    placeholder = { Text("请输入会议标题") },
+                    placeholder = { Text("请输入会议标题 (如: 毕业答辩初评)") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Title,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    },
+                    shape = RoundedCornerShape(12.dp),
                     singleLine = true,
                 )
             }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MeetingCreateType.entries.forEach { type ->
-                        FilterChip(
-                            selected = form.type == type,
-                            onClick = { onTypeChanged(type) },
-                            label = { Text(type.label) },
-                        )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "会议类型",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        MeetingCreateType.entries.forEach { type ->
+                            FilterChip(
+                                selected = form.type == type,
+                                onClick = { onTypeChanged(type) },
+                                label = { Text(type.label) },
+                                shape = RoundedCornerShape(10.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -100,23 +129,51 @@ fun CreateMeetingScreen(
                 OutlinedTextField(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp),
+                        .height(130.dp),
                     value = form.description,
                     onValueChange = onDescriptionChanged,
                     label = { Text("会议说明") },
-                    placeholder = { Text("填写会议议题或参会说明") },
+                    placeholder = { Text("填写会议议题、参会要求或备忘说明") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Description,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    shape = RoundedCornerShape(12.dp),
                     maxLines = 4,
                 )
             }
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.outlinedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Text("默认入会状态", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        SwitchRow("麦克风默认开启", form.audioEnabled, onAudioChanged)
-                        SwitchRow("摄像头默认开启", form.videoEnabled, onVideoChanged)
+                        Text(
+                            text = "默认入会状态",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        SwitchRow(
+                            label = "麦克风默认开启",
+                            description = "进入会议室时自动打开音频麦克风",
+                            checked = form.audioEnabled,
+                            onCheckedChange = onAudioChanged,
+                        )
+                        SwitchRow(
+                            label = "摄像头默认开启",
+                            description = "进入会议室时自动发布本地视频画面",
+                            checked = form.videoEnabled,
+                            onCheckedChange = onVideoChanged,
+                        )
                     }
                 }
             }
@@ -132,11 +189,16 @@ fun CreateMeetingScreen(
             Button(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
-                enabled = !isSubmitting,
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                enabled = !isSubmitting && form.title.isNotBlank(),
+                shape = RoundedCornerShape(12.dp),
                 onClick = onSubmit,
             ) {
-                Text(if (isSubmitting) "创建中..." else "创建会议")
+                Text(
+                    text = if (isSubmitting) "创建中..." else "立即创建会议",
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
             }
         }
     }

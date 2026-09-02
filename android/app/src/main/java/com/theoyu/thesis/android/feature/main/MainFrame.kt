@@ -4,7 +4,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.VideoCameraFront
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.VideoCameraFront
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -13,13 +23,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.theoyu.thesis.android.feature.meeting.create.CreateMeetingScreen
@@ -171,12 +182,26 @@ private fun MainFrameContent(
         topBar = {
             if (uiState.route != MainRoute.Room) {
                 TopAppBar(
-                    title = { Text(title) },
+                    title = {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    },
                     navigationIcon = {
                         if (uiState.route != MainRoute.Tabs) {
-                            TextButton(onClick = onBack) { Text("返回") }
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "返回",
+                                )
+                            }
                         }
                     },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                    ),
                 )
             }
         },
@@ -297,10 +322,16 @@ private fun MainNavigationBar(
 ) {
     NavigationBar {
         MainTab.entries.forEach { tab ->
+            val selected = selectedTab == tab
+            val icon = when (tab) {
+                MainTab.Home -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
+                MainTab.Meetings -> if (selected) Icons.Filled.VideoCameraFront else Icons.Outlined.VideoCameraFront
+                MainTab.Profile -> if (selected) Icons.Filled.Person else Icons.Outlined.Person
+            }
             NavigationBarItem(
-                selected = selectedTab == tab,
+                selected = selected,
                 onClick = { onTabSelected(tab) },
-                icon = { Text(tab.iconText, style = MaterialTheme.typography.labelLarge) },
+                icon = { Icon(imageVector = icon, contentDescription = tab.label) },
                 label = { Text(tab.label) },
             )
         }

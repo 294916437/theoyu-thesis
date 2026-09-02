@@ -28,18 +28,28 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PhoneIphone
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.viewinterop.AndroidView
@@ -49,6 +59,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.theoyu.thesis.android.feature.main.AudioRoute
 import com.theoyu.thesis.android.feature.main.MainUiState
+import com.theoyu.thesis.android.feature.main.component.Avatar
 import com.theoyu.thesis.android.feature.main.component.InfoRow
 import com.theoyu.thesis.android.feature.main.component.SwitchRow
 
@@ -95,7 +106,7 @@ fun PreJoinScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 112.dp),
+            contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
@@ -107,64 +118,116 @@ fun PreJoinScreen(
             }
             uiState.permissionHint?.let { hint ->
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Text(
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                        ),
+                    ) {
+                        Row(
                             modifier = Modifier.padding(16.dp),
-                            text = hint,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                            Text(
+                                text = hint,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
                     }
                 }
             }
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.outlinedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text("入会身份", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("参会信息", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(uiState.userSummary.displayName.firstOrNull()?.toString() ?: "我")
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Avatar(
+                                name = uiState.userSummary.displayName,
+                                avatarUrl = uiState.userSummary.avatar,
+                                modifier = Modifier.size(48.dp),
+                            )
+                            Spacer(modifier = Modifier.width(14.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(uiState.userSummary.displayName, fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    uiState.userSummary.phone.ifBlank { "用户 ID ${uiState.userSummary.userId.ifBlank { "-" }}" },
+                                    text = uiState.userSummary.displayName,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = if (uiState.userSummary.phone.isNotBlank()) uiState.userSummary.phone else "用户 ID: ${uiState.userSummary.userId.ifBlank { "未绑定" }}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
                         HorizontalDivider()
-                        InfoRow("会议", uiState.preJoinMeeting?.title ?: "-")
-                        InfoRow("会议号", uiState.preJoinMeeting?.roomNo?.ifBlank { "-" } ?: "-")
+                        InfoRow("会议标题", uiState.preJoinMeeting?.title ?: "-")
+                        InfoRow("会议号码", uiState.preJoinMeeting?.roomNo?.ifBlank { "-" } ?: "-")
                     }
                 }
             }
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.outlinedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text("设备检查", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        SwitchRow("麦克风", uiState.createForm.audioEnabled, onAudioChanged)
-                        SwitchRow("摄像头", uiState.createForm.videoEnabled, onVideoChanged)
-                        Text("音频输出", style = MaterialTheme.typography.titleSmall)
+                        Text("设备检查与预设", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        SwitchRow(
+                            label = "麦克风",
+                            description = "入会后保持麦克风开启",
+                            checked = uiState.createForm.audioEnabled,
+                            onCheckedChange = onAudioChanged,
+                        )
+                        SwitchRow(
+                            label = "摄像头",
+                            description = "入会后保持摄像头开启",
+                            checked = uiState.createForm.videoEnabled,
+                            onCheckedChange = onVideoChanged,
+                        )
+                        HorizontalDivider()
+                        Text(
+                            text = "音频输出设备",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium,
+                        )
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             uiState.availableAudioRoutes.forEach { route ->
+                                val icon = when (route) {
+                                    AudioRoute.Speaker -> Icons.AutoMirrored.Filled.VolumeUp
+                                    AudioRoute.Earpiece -> Icons.Filled.PhoneIphone
+                                }
                                 FilterChip(
                                     selected = uiState.audioRoute == route,
                                     onClick = { onAudioRouteSelected(route) },
                                     label = { Text(route.label) },
+                                    leadingIcon = {
+                                        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
                                 )
                             }
                         }
@@ -183,16 +246,19 @@ fun PreJoinScreen(
             Button(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
                 enabled = canJoin,
+                shape = RoundedCornerShape(12.dp),
                 onClick = onEnterMeeting,
             ) {
                 Text(
-                    when {
+                    text = when {
                         uiState.permissionHint != null -> "完成设备权限检查"
                         !uiState.createForm.audioEnabled && !uiState.createForm.videoEnabled -> "至少开启一个设备"
-                        else -> "加入会议"
+                        else -> "确认加入会议"
                     },
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(vertical = 4.dp),
                 )
             }
         }
@@ -205,21 +271,64 @@ private fun PreJoinVideoPreview(
     cameraPermissionGranted: Boolean,
     lifecycleOwner: LifecycleOwner,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(320.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .height(300.dp)
+                .clip(RoundedCornerShape(18.dp)),
             contentAlignment = Alignment.Center,
         ) {
             if (enabled && cameraPermissionGranted) {
                 CameraPreview(lifecycleOwner = lifecycleOwner)
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(12.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Videocam,
+                            contentDescription = null,
+                            tint = androidx.compose.ui.graphics.Color.White,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            text = "前置摄像头 · 实时预览",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = androidx.compose.ui.graphics.Color.White,
+                        )
+                    }
+                }
             } else {
-                Text(
-                    text = if (!cameraPermissionGranted) "等待相机权限" else "摄像头已关闭",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.VideocamOff,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(44.dp),
+                    )
+                    Text(
+                        text = if (!cameraPermissionGranted) "等待相机与麦克风权限" else "摄像头已关闭",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
